@@ -7,8 +7,8 @@ import { Logo } from "@/components/Logo";
 export const appNavLinks = [
   { label: "Dashboard", href: "/dashboard" },
   { label: "Documents", href: "/documents" },
-  { label: "Controls", href: "/controls" },
-  { label: "Findings", href: "/findings" },
+  { label: "Requirements", href: "/controls" },
+  { label: "Gaps", href: "/findings" },
   { label: "Reports", href: "/reports" },
   { label: "Settings", href: "/settings" },
 ];

@@ -24,6 +24,10 @@ function logDocumentsDebug(message: string, details?: Record<string, unknown>) {
   }
 }
 
+function formatSectionsLabel(label: string) {
+  return label.replace(/\bchunks\b/gi, "sections");
+}
+
 export function DocumentsClient() {
   const [documents, setDocuments] = useState<MockDocument[]>(initialDocuments);
   const [isLoading, setIsLoading] = useState(true);
@@ -173,7 +177,7 @@ export function DocumentsClient() {
     }, 1000);
 
     window.setTimeout(() => {
-      updateStoredDocument(newDocument.id, { status: "Processed", chunks: "18 chunks" });
+      updateStoredDocument(newDocument.id, { status: "Processed", chunks: "18 sections" });
     }, 3000);
   }
 
@@ -181,8 +185,8 @@ export function DocumentsClient() {
     <div className="space-y-6">
       <PageHeader
         eyebrow="Documents"
-        title="Policy evidence library"
-        description="Track uploaded source material and processing status for evidence review."
+        title="Uploaded documents"
+        description="Add the policies, procedures, vendor materials, and incident response plans your team wants reviewed."
         actions={
           <Button variant="appPrimary" onClick={() => setIsUploadOpen(true)}>
             Upload document
@@ -206,9 +210,9 @@ export function DocumentsClient() {
         <section className="rounded-2xl border border-app-border bg-app-surface p-5 shadow-app-soft">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-app-text">Add source material</h2>
+              <h2 className="text-lg font-semibold text-app-text">Add a document</h2>
               <p className="mt-2 text-sm leading-6 text-app-muted">
-                Supabase stores the file and metadata when configured. Local fallback stores metadata only.
+                Upload policies, procedures, vendor materials, or response plans for review. RegSpan stores the file and basic details now. Document reading and matching will be connected next.
               </p>
             </div>
             <button
@@ -285,7 +289,7 @@ export function DocumentsClient() {
           No documents have been uploaded yet.
         </div>
       ) : (
-        <DataTable columns={["Document name", "Type", "Status", "Uploaded", "Chunks", "Actions"]}>
+        <DataTable columns={["Document name", "Type", "Review status", "Uploaded", "Sections", "Actions"]}>
           {documents.map((document) => (
             <tr key={document.id}>
               <td className="px-4 py-4 font-medium text-app-text">
@@ -298,7 +302,7 @@ export function DocumentsClient() {
                 <StatusBadge>{document.status}</StatusBadge>
               </td>
               <td className="px-4 py-4 text-app-muted">{document.uploaded}</td>
-              <td className="px-4 py-4 text-app-muted">{document.chunks}</td>
+              <td className="px-4 py-4 text-app-muted">{formatSectionsLabel(document.chunks)}</td>
               <td className="px-4 py-4">
                 <Link className="text-sm font-semibold text-app-accent transition-colors hover:text-app-accent-hover" href={`/documents/${document.id}`}>
                   Review

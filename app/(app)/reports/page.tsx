@@ -5,21 +5,21 @@ import { StatusBadge } from "@/components/StatusBadge";
 
 const reports = [
   {
-    name: "Reg S-P Evidence Review Summary",
+    name: "Reg S-P Readiness Summary",
     date: "Today",
-    controlsReviewed: "18 controls",
-    status: "Draft",
+    requirementsReviewed: "18 requirements",
+    status: "Team review",
   },
   {
-    name: "Vendor Oversight Findings Pack",
+    name: "Vendor Oversight Gap Summary",
     date: "Yesterday",
-    controlsReviewed: "6 controls",
+    requirementsReviewed: "6 requirements",
     status: "Prepared",
   },
   {
-    name: "Incident Response Evidence Memo",
+    name: "Incident Response Review Memo",
     date: "Last week",
-    controlsReviewed: "4 controls",
+    requirementsReviewed: "4 requirements",
     status: "Prepared",
   },
 ];
@@ -29,8 +29,8 @@ export default function ReportsPage() {
     <div className="space-y-6">
       <PageHeader
         eyebrow="Reports"
-        title="Reviewer-ready report drafts"
-        description="Prepare cited report drafts for human approval and stakeholder review."
+        title="Review reports"
+        description="Prepare summaries your team can review before sharing with counsel, auditors, or examiners."
         actions={
           <Button variant="appPrimary">Prepare report</Button>
         }
@@ -39,16 +39,16 @@ export default function ReportsPage() {
       <div className="rounded-2xl border border-app-border bg-app-surface p-5 shadow-app-soft">
         <h2 className="text-lg font-semibold text-app-text">Report export placeholder</h2>
         <p className="mt-2 text-sm leading-6 text-app-muted">
-          Export wiring will be added after evidence review and backend workflows are connected.
+          Export options will be added after document review workflows are connected.
         </p>
       </div>
 
-      <DataTable columns={["Report name", "Date", "Controls reviewed", "Status"]}>
+      <DataTable columns={["Report name", "Date", "Requirements reviewed", "Status"]}>
         {reports.map((report) => (
           <tr key={report.name}>
             <td className="px-4 py-4 font-medium text-app-text">{report.name}</td>
             <td className="px-4 py-4 text-app-muted">{report.date}</td>
-            <td className="px-4 py-4 text-app-muted">{report.controlsReviewed}</td>
+            <td className="px-4 py-4 text-app-muted">{report.requirementsReviewed}</td>
             <td className="px-4 py-4">
               <StatusBadge>{report.status}</StatusBadge>
             </td>

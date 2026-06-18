@@ -4,23 +4,52 @@ import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 
 const metrics = [
-  { label: "Reg S-P Readiness", value: "72%" },
-  { label: "High-Risk Gaps", value: "4", tone: "danger" as const },
-  { label: "Controls Requiring Review", value: "12", tone: "warning" as const },
-  { label: "Documents Processed", value: "6" },
-  { label: "Open Remediation Tasks", value: "9", tone: "warning" as const },
+  {
+    label: "Reg S-P Readiness",
+    value: "72%",
+    tooltip:
+      "A summary of how complete your current review looks based on the documents you have uploaded and the issues identified so far.",
+    tooltipPlacement: "right" as const,
+  },
+  {
+    label: "High-Risk Gaps",
+    value: "4",
+    tone: "danger" as const,
+    tooltip:
+      "The number of important issues that may need attention because the current documents appear to be missing key information.",
+  },
+  {
+    label: "Requirements Needing Review",
+    value: "12",
+    tone: "warning" as const,
+    tooltip:
+      "The number of Reg S-P requirement areas that still need someone to review or confirm.",
+  },
+  {
+    label: "Documents Uploaded",
+    value: "6",
+    tooltip: "The number of files currently added to this workspace for review.",
+  },
+  {
+    label: "Open Follow-Up Items",
+    value: "9",
+    tone: "warning" as const,
+    tooltip:
+      "The number of next steps still open, such as missing information, review tasks, or items that may need updates.",
+    tooltipPlacement: "left" as const,
+  },
 ];
 
 const activities = [
   "Privacy Notice.pdf marked for reviewer attention",
-  "Incident Response Plan mapped to 2 draft findings",
-  "Vendor Management Policy processing completed",
+  "Incident Response Plan flagged 2 items for follow-up",
+  "Vendor Management Policy review status updated",
 ];
 
-const findings = [
-  { control: "Service Provider Notice", evidence: "No evidence", risk: "High" },
-  { control: "Incident Response Program", evidence: "2 citations", risk: "High" },
-  { control: "Disposal Procedures", evidence: "3 citations", risk: "Medium" },
+const gaps = [
+  { requirement: "Service Provider Notice", support: "No support found", risk: "High" },
+  { requirement: "Incident Response Program", support: "2 supporting sections", risk: "High" },
+  { requirement: "Disposal Procedures", support: "3 supporting sections", risk: "Medium" },
 ];
 
 const coverage = [
@@ -34,9 +63,9 @@ export default function DashboardPage() {
   return (
     <div className="space-y-8">
       <PageHeader
-        eyebrow="Workspace"
-        title="Evidence readiness dashboard"
-        description="Review draft evidence coverage, gaps, and document status before preparing reports."
+        eyebrow="Overview"
+        title="Reg S-P readiness overview"
+        description="See uploaded documents, open gaps, and review progress in one place."
       />
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
@@ -58,14 +87,14 @@ export default function DashboardPage() {
         </div>
 
         <div>
-          <h2 className="mb-4 text-lg font-semibold text-app-text">Findings requiring review</h2>
-          <DataTable columns={["Control", "Evidence", "Risk"]} minWidth="min-w-[520px]">
-            {findings.map((finding) => (
-              <tr key={finding.control}>
-                <td className="px-4 py-4 font-medium text-app-text">{finding.control}</td>
-                <td className="px-4 py-4 text-app-muted">{finding.evidence}</td>
+          <h2 className="mb-4 text-lg font-semibold text-app-text">Gaps needing review</h2>
+          <DataTable columns={["Requirement", "Document support", "Risk"]} minWidth="min-w-[560px]">
+            {gaps.map((gap) => (
+              <tr key={gap.requirement}>
+                <td className="px-4 py-4 font-medium text-app-text">{gap.requirement}</td>
+                <td className="px-4 py-4 text-app-muted">{gap.support}</td>
                 <td className="px-4 py-4">
-                  <StatusBadge>{finding.risk}</StatusBadge>
+                  <StatusBadge>{gap.risk}</StatusBadge>
                 </td>
               </tr>
             ))}
@@ -75,9 +104,9 @@ export default function DashboardPage() {
 
       <section className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-2xl border border-app-border bg-app-surface p-5 shadow-app-soft">
-          <h2 className="text-lg font-semibold text-app-text">Document processing status</h2>
+          <h2 className="text-lg font-semibold text-app-text">Document review status</h2>
           <div className="mt-5 space-y-3">
-            {["4 processed documents", "1 document needs review", "194 total chunks indexed for review"].map((item) => (
+            {["4 documents reviewed", "1 document needs review", "194 document sections available for review"].map((item) => (
               <p key={item} className="rounded-xl border border-app-border bg-app-elevated px-4 py-3 text-sm text-app-muted">
                 {item}
               </p>
@@ -86,7 +115,7 @@ export default function DashboardPage() {
         </div>
 
         <div className="rounded-2xl border border-app-border bg-app-surface p-5 shadow-app-soft">
-          <h2 className="text-lg font-semibold text-app-text">Evidence coverage by category</h2>
+          <h2 className="text-lg font-semibold text-app-text">Document support by rule area</h2>
           <div className="mt-5 space-y-4">
             {coverage.map((item) => (
               <div key={item.category}>

@@ -46,57 +46,61 @@ const chunkPreviews = [
   },
 ];
 
+function formatSectionsLabel(label: string) {
+  return label.replace(/\bchunks\b/gi, "sections");
+}
+
 function getTimeline(status: DocumentStatus): TimelineStep[] {
   if (status === "Uploaded") {
     return [
-      { label: "Uploaded", status: "Complete", detail: "Source material and metadata are available for review.", state: "complete" },
-      { label: "Text extraction", status: "Not connected", detail: "Text extraction is not connected yet.", state: "pending" },
-      { label: "Chunking", status: "Not connected", detail: "Chunking is not connected yet.", state: "pending" },
-      { label: "Evidence mapping", status: "Not connected", detail: "Evidence mapping is not connected yet.", state: "pending" },
+      { label: "Uploaded", status: "Complete", detail: "File and document details are saved.", state: "complete" },
+      { label: "Text reading", status: "Not connected", detail: "Not connected yet.", state: "pending" },
+      { label: "Document sectioning", status: "Not connected", detail: "Not connected yet.", state: "pending" },
+      { label: "Requirement matching", status: "Not connected", detail: "Not connected yet.", state: "pending" },
     ];
   }
 
   if (status === "Processed") {
     return [
-      { label: "Uploaded", status: "Complete", detail: "Source material is available in the demo workspace.", state: "complete" },
-      { label: "Text extraction", status: "Demo complete", detail: "This is a demo review state; no real extraction has run in the browser.", state: "complete" },
-      { label: "Chunking", status: "Demo complete", detail: "Mock chunk previews are shown for layout review only.", state: "complete" },
-      { label: "Evidence mapping", status: "Not connected", detail: "Evidence mapping is not connected yet.", state: "pending" },
+      { label: "Uploaded", status: "Complete", detail: "File and document details are saved.", state: "complete" },
+      { label: "Text reading", status: "Demo complete", detail: "This is a demo review state; no real text reading has run in the browser.", state: "complete" },
+      { label: "Document sectioning", status: "Demo complete", detail: "Mock document sections are shown for layout review only.", state: "complete" },
+      { label: "Requirement matching", status: "Not connected", detail: "Not connected yet.", state: "pending" },
     ];
   }
 
   if (status === "Processing") {
     return [
-      { label: "Uploaded", status: "Complete", detail: "Source material is available for review.", state: "complete" },
-      { label: "Text extraction", status: "Queued", detail: "Backend extraction is not connected yet.", state: "current" },
-      { label: "Chunking", status: "Pending", detail: "Chunking is not connected yet.", state: "pending" },
-      { label: "Evidence mapping", status: "Pending", detail: "Evidence mapping is not connected yet.", state: "pending" },
+      { label: "Uploaded", status: "Complete", detail: "File and document details are saved.", state: "complete" },
+      { label: "Text reading", status: "Queued", detail: "Not connected yet.", state: "current" },
+      { label: "Document sectioning", status: "Pending", detail: "Not connected yet.", state: "pending" },
+      { label: "Requirement matching", status: "Pending", detail: "Not connected yet.", state: "pending" },
     ];
   }
 
   if (status === "Needs Review") {
     return [
-      { label: "Uploaded", status: "Complete", detail: "Source material is available for reviewer attention.", state: "complete" },
-      { label: "Text extraction", status: "Review needed", detail: "This demo state needs reviewer attention before report use.", state: "review" },
-      { label: "Chunking", status: "Review needed", detail: "Chunk grouping should be checked before report use.", state: "review" },
-      { label: "Evidence mapping", status: "Not connected", detail: "Evidence mapping is not connected yet.", state: "pending" },
+      { label: "Uploaded", status: "Complete", detail: "File and document details are saved.", state: "complete" },
+      { label: "Text reading", status: "Needs review", detail: "This demo state needs reviewer attention before report use.", state: "review" },
+      { label: "Document sectioning", status: "Needs review", detail: "Document sections should be checked before report use.", state: "review" },
+      { label: "Requirement matching", status: "Not connected", detail: "Not connected yet.", state: "pending" },
     ];
   }
 
   if (status === "Failed") {
     return [
-      { label: "Uploaded", status: "Complete", detail: "Source material was added to the demo workspace.", state: "complete" },
-      { label: "Text extraction", status: "Failed", detail: "Processing could not continue for this demo document.", state: "blocked" },
-      { label: "Chunking", status: "Blocked", detail: "Chunking is blocked until processing is retried.", state: "blocked" },
-      { label: "Evidence mapping", status: "Blocked", detail: "Evidence mapping is not available for this document.", state: "blocked" },
+      { label: "Uploaded", status: "Complete", detail: "File and document details are saved.", state: "complete" },
+      { label: "Text reading", status: "Failed", detail: "Review could not continue for this demo document.", state: "blocked" },
+      { label: "Document sectioning", status: "Blocked", detail: "Document sectioning is blocked until review is retried.", state: "blocked" },
+      { label: "Requirement matching", status: "Blocked", detail: "Requirement matching is not available for this document.", state: "blocked" },
     ];
   }
 
   return [
-    { label: "Uploaded", status: "Complete", detail: "Source material was added for review.", state: "complete" },
-    { label: "Text extraction", status: "Queued", detail: "Backend extraction is not connected yet.", state: "pending" },
-    { label: "Chunking", status: "Pending", detail: "Chunking is not connected yet.", state: "pending" },
-    { label: "Evidence mapping", status: "Pending", detail: "Evidence mapping is not connected yet.", state: "pending" },
+    { label: "Uploaded", status: "Complete", detail: "File and document details are saved.", state: "complete" },
+    { label: "Text reading", status: "Queued", detail: "Not connected yet.", state: "pending" },
+    { label: "Document sectioning", status: "Pending", detail: "Not connected yet.", state: "pending" },
+    { label: "Requirement matching", status: "Pending", detail: "Not connected yet.", state: "pending" },
   ];
 }
 
@@ -163,7 +167,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
 
     const supabase = getBrowserSupabaseClient();
     if (!supabase) {
-      setError("Supabase is not configured, so reprocessing metadata cannot be updated.");
+      setError("Supabase is not configured, so review status cannot be updated.");
       return;
     }
 
@@ -176,9 +180,9 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
       .eq("id", document.id);
 
     if (updateError) {
-      setError(`Reprocess update failed: ${updateError.message}`);
+      setError(`Review status update failed: ${updateError.message}`);
     } else {
-      setMessage("Document marked for reprocessing. Backend extraction is not connected yet.");
+      setMessage("Document marked for review again. Document reading and matching are not connected yet.");
       setRefreshKey((current) => current + 1);
     }
 
@@ -187,7 +191,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
 
   async function handleReplace() {
     if (!document || !replacementFile) {
-      setError("Choose a replacement source file first.");
+      setError("Choose a replacement file first.");
       return;
     }
 
@@ -241,7 +245,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
       }
     }
 
-    setMessage("Replacement uploaded. Backend extraction is not connected yet.");
+    setMessage("Replacement uploaded. Document reading and matching are not connected yet.");
     setReplacementFile(null);
     setIsReplaceOpen(false);
     setRefreshKey((current) => current + 1);
@@ -254,7 +258,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
     }
 
     const confirmed = window.confirm(
-      "Remove this document metadata and stored source file from the demo workspace?",
+      "Remove this document and stored file from the demo workspace?",
     );
 
     if (!confirmed) {
@@ -335,7 +339,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
       <PageHeader
         eyebrow="Document review"
         title={document.name}
-        description={`${document.type} · Uploaded ${document.uploaded} · ${document.chunks}`}
+        description={`${document.type} · Uploaded ${document.uploaded} · ${document.status}`}
       />
 
       {message ? (
@@ -366,7 +370,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
               onClick={handleReprocess}
               className="h-9 rounded-lg border border-app-border bg-app-elevated px-3 text-sm font-semibold text-app-muted transition-colors hover:border-app-accent hover:text-app-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {activeAction === "reprocess" ? "Queuing..." : "Reprocess"}
+              {activeAction === "reprocess" ? "Queuing..." : "Mark for review again"}
             </button>
             <button
               type="button"
@@ -377,7 +381,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
               }}
               className="h-9 rounded-lg border border-app-border bg-app-elevated px-3 text-sm font-semibold text-app-muted transition-colors hover:border-app-accent hover:text-app-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Replace
+              Replace file
             </button>
             <button
               type="button"
@@ -385,7 +389,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
               onClick={handleDelete}
               className="h-9 rounded-lg border border-app-danger-soft bg-app-danger-soft px-3 text-sm font-semibold text-app-danger transition-colors hover:border-app-danger hover:bg-app-danger-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-danger disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {activeAction === "delete" ? "Deleting..." : "Delete"}
+              {activeAction === "delete" ? "Deleting..." : "Delete document"}
             </button>
           </div>
         </div>
@@ -430,8 +434,8 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
           {[
             { label: "Document type", value: document.type },
             { label: "Uploaded", value: document.uploaded },
-            { label: "Chunks", value: document.chunks },
-            { label: "Status", value: document.status },
+            { label: "Sections", value: formatSectionsLabel(document.chunks) },
+            { label: "Review status", value: document.status },
             ...(document.fileSize ? [{ label: "File size", value: `${Math.round(document.fileSize / 1024)} KB` }] : []),
             ...(document.mimeType ? [{ label: "MIME type", value: document.mimeType }] : []),
           ].map((item) => (
@@ -461,7 +465,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
 
       <section className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
         <div className="rounded-2xl border border-app-border bg-app-surface p-5 shadow-app-soft">
-          <h2 className="text-lg font-semibold text-app-text">Processing timeline</h2>
+          <h2 className="text-lg font-semibold text-app-text">Review timeline</h2>
           <div className="mt-5 space-y-3">
             {getTimeline(document.status).map((item, index) => (
               <div key={item.label} className="flex gap-3 rounded-xl border border-app-border bg-app-elevated p-4">
@@ -482,7 +486,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
 
         <div className="space-y-4">
           <div className="rounded-2xl border border-app-border bg-app-surface p-5 shadow-app-soft">
-            <h2 className="text-lg font-semibold text-app-text">Extracted chunk preview</h2>
+            <h2 className="text-lg font-semibold text-app-text">Document sections preview</h2>
             {document.status === "Processed" ? (
               <div className="mt-5 space-y-3">
                 {chunkPreviews.map((chunk) => (
@@ -497,15 +501,15 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
               </div>
             ) : (
               <p className="mt-3 rounded-xl border border-app-border bg-app-elevated p-4 text-sm leading-6 text-app-muted">
-                Chunk previews will appear here after backend document processing is connected.
+                Document sections will appear here after document reading is connected.
               </p>
             )}
           </div>
 
           <div className="rounded-2xl border border-app-border bg-app-surface p-5 shadow-app-soft">
-            <h2 className="text-lg font-semibold text-app-text">Evidence mapping status</h2>
+            <h2 className="text-lg font-semibold text-app-text">Document matching status</h2>
             <p className="mt-3 rounded-xl border border-app-border bg-app-elevated p-4 text-sm leading-6 text-app-muted">
-              Reg S-P control mapping will run after backend processing and retrieval are connected.
+              Reg S-P requirement matching will run after document reading is connected.
             </p>
           </div>
         </div>

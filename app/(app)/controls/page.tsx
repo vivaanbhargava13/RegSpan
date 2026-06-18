@@ -2,29 +2,29 @@ import { DataTable } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 
-const controls = [
+const requirements = [
   {
     id: "SP-01",
     category: "Incident Response",
     requirement: "Maintain a written incident response program for covered data events.",
     status: "Partial",
-    evidenceCount: "2",
+    supportCount: "2",
     severity: "High",
   },
   {
     id: "SP-02",
     category: "Vendor Oversight",
-    requirement: "Review service provider notice and oversight evidence.",
+    requirement: "Review service provider notice and oversight documentation.",
     status: "Missing",
-    evidenceCount: "0",
+    supportCount: "0",
     severity: "High",
   },
   {
     id: "SP-03",
     category: "Privacy",
-    requirement: "Confirm privacy notice evidence is current and reviewable.",
+    requirement: "Confirm privacy notice documentation is current and reviewable.",
     status: "Requires Review",
-    evidenceCount: "1",
+    supportCount: "1",
     severity: "Medium",
   },
   {
@@ -32,7 +32,7 @@ const controls = [
     category: "Disposal",
     requirement: "Document disposal procedures for customer information.",
     status: "Complete",
-    evidenceCount: "3",
+    supportCount: "3",
     severity: "Medium",
   },
 ];
@@ -41,26 +41,26 @@ export default function ControlsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Controls"
-        title="Reg S-P control checklist"
-        description="Review draft control coverage and evidence counts before assigning remediation."
+        eyebrow="Requirements"
+        title="Reg S-P requirements"
+        description="Review the rule areas RegSpan checks against your uploaded documents."
       />
 
       <DataTable
-        columns={["Control ID", "Category", "Requirement", "Status", "Evidence count", "Severity"]}
+        columns={["Requirement ID", "Rule area", "Requirement", "Status", "Supporting sections", "Risk"]}
         minWidth="min-w-[900px]"
       >
-        {controls.map((control) => (
-          <tr key={control.id}>
-            <td className="px-4 py-4 font-semibold text-app-text">{control.id}</td>
-            <td className="px-4 py-4 text-app-muted">{control.category}</td>
-            <td className="px-4 py-4 text-app-muted">{control.requirement}</td>
+        {requirements.map((requirement) => (
+          <tr key={requirement.id}>
+            <td className="px-4 py-4 font-semibold text-app-text">{requirement.id}</td>
+            <td className="px-4 py-4 text-app-muted">{requirement.category}</td>
+            <td className="px-4 py-4 text-app-muted">{requirement.requirement}</td>
             <td className="px-4 py-4">
-              <StatusBadge>{control.status}</StatusBadge>
+              <StatusBadge>{requirement.status}</StatusBadge>
             </td>
-            <td className="px-4 py-4 text-app-muted">{control.evidenceCount}</td>
+            <td className="px-4 py-4 text-app-muted">{requirement.supportCount}</td>
             <td className="px-4 py-4">
-              <StatusBadge>{control.severity}</StatusBadge>
+              <StatusBadge>{requirement.severity}</StatusBadge>
             </td>
           </tr>
         ))}

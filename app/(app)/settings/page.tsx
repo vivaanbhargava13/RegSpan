@@ -12,15 +12,15 @@ const sections = [
   },
   {
     title: "Security",
-    body: "Configure access controls and document handling policies in a future backend phase.",
+    body: "Configure access settings and document handling policies in a future backend phase.",
   },
   {
     title: "Data retention",
-    body: "Define retention windows for documents, chunks, findings, and exported reports later.",
+    body: "Define retention windows for documents, review notes, gaps, and exported reports later.",
   },
   {
-    title: "Model/data handling",
-    body: "Review model usage, citation behavior, and data handling settings before production use.",
+    title: "Data handling",
+    body: "Review document handling, reference behavior, and workspace data settings before production use.",
   },
 ];
 
@@ -30,7 +30,7 @@ export default function SettingsPage() {
       <PageHeader
         eyebrow="Settings"
         title="Workspace settings"
-        description="Nonfunctional placeholders for the settings areas needed in the product shell."
+        description="Manage appearance, demo workspace details, and data handling notes."
       />
 
       <AppearanceSettings />

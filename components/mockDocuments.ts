@@ -44,7 +44,7 @@ export const initialDocuments: MockDocument[] = [
     type: "Incident Response",
     status: "Processed",
     uploaded: "2 days ago",
-    chunks: "84 chunks",
+    chunks: "84 sections",
   },
   {
     id: "demo-vendor-management-policy",
@@ -52,7 +52,7 @@ export const initialDocuments: MockDocument[] = [
     type: "Vendor Oversight",
     status: "Processed",
     uploaded: "3 days ago",
-    chunks: "52 chunks",
+    chunks: "52 sections",
   },
   {
     id: "demo-privacy-notice",
@@ -60,7 +60,7 @@ export const initialDocuments: MockDocument[] = [
     type: "Privacy",
     status: "Needs Review",
     uploaded: "5 days ago",
-    chunks: "31 chunks",
+    chunks: "31 sections",
   },
   {
     id: "demo-data-disposal-policy",
@@ -68,7 +68,7 @@ export const initialDocuments: MockDocument[] = [
     type: "Disposal",
     status: "Processed",
     uploaded: "1 week ago",
-    chunks: "27 chunks",
+    chunks: "27 sections",
   },
 ];
 

@@ -2,36 +2,36 @@ import { DataTable } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 
-const findings = [
+const gaps = [
   {
-    control: "Incident Response Program",
+    requirement: "Incident Response Program",
     status: "Partial",
-    evidence: "2 citations",
+    support: "2 supporting sections",
     gap: "Escalation timing needs reviewer confirmation.",
     risk: "High",
     reviewStatus: "Requires Review",
   },
   {
-    control: "Service Provider Notice",
+    requirement: "Service Provider Notice",
     status: "Missing",
-    evidence: "No evidence",
-    gap: "No cited provider notice evidence found in current documents.",
+    support: "No support found",
+    gap: "No provider notice documentation found in current documents.",
     risk: "High",
-    reviewStatus: "Draft",
+    reviewStatus: "Needs Review",
   },
   {
-    control: "Privacy Notice",
+    requirement: "Privacy Notice",
     status: "Requires Review",
-    evidence: "1 citation",
+    support: "1 supporting section",
     gap: "Notice language may need stakeholder review.",
     risk: "Medium",
     reviewStatus: "Requires Review",
   },
   {
-    control: "Disposal Procedures",
+    requirement: "Disposal Procedures",
     status: "Complete",
-    evidence: "3 citations",
-    gap: "No draft gap noted.",
+    support: "3 supporting sections",
+    gap: "No open gap noted.",
     risk: "Medium",
     reviewStatus: "Prepared",
   },
@@ -41,28 +41,28 @@ export default function FindingsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Findings"
-        title="Draft findings review"
-        description="Triage draft gaps and evidence notes before including them in reviewer-ready reports."
+        eyebrow="Gaps"
+        title="Open documentation gaps"
+        description="Review missing, weak, or unclear documentation that may need follow-up."
       />
 
       <DataTable
-        columns={["Control", "Status", "Evidence", "Gap", "Risk", "Review status"]}
+        columns={["Requirement", "Status", "Document support", "Gap", "Risk", "Review status"]}
         minWidth="min-w-[960px]"
       >
-        {findings.map((finding) => (
-          <tr key={finding.control}>
-            <td className="px-4 py-4 font-medium text-app-text">{finding.control}</td>
+        {gaps.map((gap) => (
+          <tr key={gap.requirement}>
+            <td className="px-4 py-4 font-medium text-app-text">{gap.requirement}</td>
             <td className="px-4 py-4">
-              <StatusBadge>{finding.status}</StatusBadge>
+              <StatusBadge>{gap.status}</StatusBadge>
             </td>
-            <td className="px-4 py-4 text-app-muted">{finding.evidence}</td>
-            <td className="px-4 py-4 text-app-muted">{finding.gap}</td>
+            <td className="px-4 py-4 text-app-muted">{gap.support}</td>
+            <td className="px-4 py-4 text-app-muted">{gap.gap}</td>
             <td className="px-4 py-4">
-              <StatusBadge>{finding.risk}</StatusBadge>
+              <StatusBadge>{gap.risk}</StatusBadge>
             </td>
             <td className="px-4 py-4">
-              <StatusBadge>{finding.reviewStatus}</StatusBadge>
+              <StatusBadge>{gap.reviewStatus}</StatusBadge>
             </td>
           </tr>
         ))}
