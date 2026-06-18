@@ -9,12 +9,16 @@ import { Logo } from "@/components/Logo";
 
 type AuthMode = "login" | "signup";
 type FormValues = {
+  firstName: string;
+  lastName: string;
   email: string;
   password: string;
   confirmPassword: string;
 };
 
 const initialValues: FormValues = {
+  firstName: "",
+  lastName: "",
   email: "",
   password: "",
   confirmPassword: "",
@@ -56,6 +60,12 @@ export function AuthForm() {
     }
 
     if (isSignup) {
+      if (!values.firstName.trim() || !values.lastName.trim()) {
+        setError("First name and last name are required.");
+        setMessage("");
+        return;
+      }
+
       if (!values.confirmPassword.trim()) {
         setError("Confirm your password to create an account.");
         setMessage("");
@@ -71,7 +81,7 @@ export function AuthForm() {
 
     setError("");
     // Temporary demo auth only. Do not store passwords or send credentials to an API.
-    createDemoSession(values.email.trim());
+    createDemoSession(values.email.trim(), values.firstName.trim(), values.lastName.trim());
     setMessage("Opening your demo workspace...");
     router.push("/dashboard");
   }
@@ -106,6 +116,34 @@ export function AuthForm() {
         </div>
 
         <form className="mt-8 space-y-5" onSubmit={handleSubmit} noValidate>
+          {isSignup ? (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="block">
+                <span className="text-sm font-semibold text-ink">First name</span>
+                <input
+                  value={values.firstName}
+                  onChange={(event) => updateField("firstName", event.target.value)}
+                  type="text"
+                  autoComplete="given-name"
+                  placeholder="First"
+                  className="mt-2 h-11 w-full rounded-lg border border-line bg-white px-3 text-sm text-ink outline-none transition focus:border-accent focus:ring-4 focus:ring-accent-soft"
+                />
+              </label>
+
+              <label className="block">
+                <span className="text-sm font-semibold text-ink">Last name</span>
+                <input
+                  value={values.lastName}
+                  onChange={(event) => updateField("lastName", event.target.value)}
+                  type="text"
+                  autoComplete="family-name"
+                  placeholder="Last"
+                  className="mt-2 h-11 w-full rounded-lg border border-line bg-white px-3 text-sm text-ink outline-none transition focus:border-accent focus:ring-4 focus:ring-accent-soft"
+                />
+              </label>
+            </div>
+          ) : null}
+
           <label className="block">
             <span className="text-sm font-semibold text-ink">Email</span>
             <input

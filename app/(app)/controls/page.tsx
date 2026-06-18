@@ -40,9 +40,9 @@ export default function ControlsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <p className="text-sm font-semibold uppercase tracking-normal text-accent">Controls</p>
-        <h1 className="mt-2 text-3xl font-semibold text-ink">Reg S-P control checklist</h1>
-        <p className="mt-3 max-w-2xl text-sm leading-6 text-muted">
+        <p className="text-sm font-semibold uppercase tracking-normal text-app-accent">Controls</p>
+        <h1 className="mt-2 text-3xl font-semibold text-app-text">Reg S-P control checklist</h1>
+        <p className="mt-3 max-w-2xl text-sm leading-6 text-app-muted">
           Review draft control coverage and evidence counts before assigning remediation.
         </p>
       </div>
@@ -53,13 +53,13 @@ export default function ControlsPage() {
       >
         {controls.map((control) => (
           <tr key={control.id}>
-            <td className="px-4 py-4 font-semibold text-ink">{control.id}</td>
-            <td className="px-4 py-4 text-muted">{control.category}</td>
-            <td className="px-4 py-4 text-muted">{control.requirement}</td>
+            <td className="px-4 py-4 font-semibold text-app-text">{control.id}</td>
+            <td className="px-4 py-4 text-app-muted">{control.category}</td>
+            <td className="px-4 py-4 text-app-muted">{control.requirement}</td>
             <td className="px-4 py-4">
               <StatusBadge>{control.status}</StatusBadge>
             </td>
-            <td className="px-4 py-4 text-muted">{control.evidenceCount}</td>
+            <td className="px-4 py-4 text-app-muted">{control.evidenceCount}</td>
             <td className="px-4 py-4">
               <StatusBadge>{control.severity}</StatusBadge>
             </td>

@@ -17,8 +17,8 @@ export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="hidden min-h-screen w-64 shrink-0 border-r border-line bg-white px-4 py-5 md:block">
-      <Logo href="/dashboard" />
+    <aside className="hidden min-h-screen w-64 shrink-0 border-r border-app-border bg-app-surface px-4 py-5 md:block">
+      <Logo href="/dashboard" tone="dark" />
       <nav className="mt-8 space-y-1">
         {appNavLinks.map((link) => {
           const isActive = pathname === link.href;
@@ -28,7 +28,7 @@ export function Sidebar() {
               key={link.href}
               href={link.href}
               className={`block rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors ${
-                isActive ? "bg-accent-soft text-accent" : "text-muted hover:bg-canvas hover:text-ink"
+                isActive ? "bg-app-accent-soft text-app-accent" : "text-app-muted hover:bg-app-elevated hover:text-app-text"
               }`}
             >
               {link.label}

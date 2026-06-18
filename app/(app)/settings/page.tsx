@@ -25,18 +25,18 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <p className="text-sm font-semibold uppercase tracking-normal text-accent">Settings</p>
-        <h1 className="mt-2 text-3xl font-semibold text-ink">Workspace settings</h1>
-        <p className="mt-3 max-w-2xl text-sm leading-6 text-muted">
+        <p className="text-sm font-semibold uppercase tracking-normal text-app-accent">Settings</p>
+        <h1 className="mt-2 text-3xl font-semibold text-app-text">Workspace settings</h1>
+        <p className="mt-3 max-w-2xl text-sm leading-6 text-app-muted">
           Nonfunctional placeholders for the settings areas needed in the product shell.
         </p>
       </div>
 
       <section className="grid gap-4 md:grid-cols-2">
         {sections.map((section) => (
-          <article key={section.title} className="rounded-2xl border border-line bg-white p-5 shadow-sm">
-            <h2 className="text-lg font-semibold text-ink">{section.title}</h2>
-            <p className="mt-3 text-sm leading-6 text-muted">{section.body}</p>
+          <article key={section.title} className="rounded-2xl border border-app-border bg-app-surface p-5 shadow-app-soft">
+            <h2 className="text-lg font-semibold text-app-text">{section.title}</h2>
+            <p className="mt-3 text-sm leading-6 text-app-muted">{section.body}</p>
           </article>
         ))}
       </section>

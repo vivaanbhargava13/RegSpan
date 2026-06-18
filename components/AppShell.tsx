@@ -31,8 +31,8 @@ export function AppShell({ children }: AppShellProps) {
 
   if (isCheckingSession || !session) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-canvas px-6">
-        <div className="rounded-2xl border border-line bg-white px-6 py-5 text-sm font-semibold text-muted shadow-soft">
+      <main className="flex min-h-screen items-center justify-center bg-app-bg px-6">
+        <div className="rounded-2xl border border-app-border bg-app-surface px-6 py-5 text-sm font-semibold text-app-muted shadow-app-soft">
           Checking demo workspace...
         </div>
       </main>
@@ -40,7 +40,7 @@ export function AppShell({ children }: AppShellProps) {
   }
 
   return (
-    <div className="min-h-screen bg-canvas text-ink">
+    <div className="min-h-screen bg-app-bg text-app-text">
       <div className="flex min-h-screen">
         <Sidebar />
         <div className="min-w-0 flex-1">

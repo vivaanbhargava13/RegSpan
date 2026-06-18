@@ -40,9 +40,9 @@ export default function FindingsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <p className="text-sm font-semibold uppercase tracking-normal text-accent">Findings</p>
-        <h1 className="mt-2 text-3xl font-semibold text-ink">Draft findings review</h1>
-        <p className="mt-3 max-w-2xl text-sm leading-6 text-muted">
+        <p className="text-sm font-semibold uppercase tracking-normal text-app-accent">Findings</p>
+        <h1 className="mt-2 text-3xl font-semibold text-app-text">Draft findings review</h1>
+        <p className="mt-3 max-w-2xl text-sm leading-6 text-app-muted">
           Triage draft gaps and evidence notes before including them in reviewer-ready reports.
         </p>
       </div>
@@ -53,12 +53,12 @@ export default function FindingsPage() {
       >
         {findings.map((finding) => (
           <tr key={finding.control}>
-            <td className="px-4 py-4 font-medium text-ink">{finding.control}</td>
+            <td className="px-4 py-4 font-medium text-app-text">{finding.control}</td>
             <td className="px-4 py-4">
               <StatusBadge>{finding.status}</StatusBadge>
             </td>
-            <td className="px-4 py-4 text-muted">{finding.evidence}</td>
-            <td className="px-4 py-4 text-muted">{finding.gap}</td>
+            <td className="px-4 py-4 text-app-muted">{finding.evidence}</td>
+            <td className="px-4 py-4 text-app-muted">{finding.gap}</td>
             <td className="px-4 py-4">
               <StatusBadge>{finding.risk}</StatusBadge>
             </td>

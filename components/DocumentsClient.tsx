@@ -180,38 +180,38 @@ export function DocumentsClient() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-normal text-accent">Documents</p>
-          <h1 className="mt-2 text-3xl font-semibold text-ink">Policy evidence library</h1>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-muted">
+          <p className="text-sm font-semibold uppercase tracking-normal text-app-accent">Documents</p>
+          <h1 className="mt-2 text-3xl font-semibold text-app-text">Policy evidence library</h1>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-app-muted">
             Track uploaded source material and processing status for evidence review.
           </p>
         </div>
-        <Button onClick={() => setIsUploadOpen(true)}>Upload document</Button>
+        <Button variant="appPrimary" onClick={() => setIsUploadOpen(true)}>Upload document</Button>
       </div>
 
       {warning ? (
-        <p className="rounded-xl border border-[#f1dfbd] bg-[#fff6e8] px-4 py-3 text-sm font-medium text-warning">
+        <p className="rounded-xl border border-[#6f5420] bg-[#3b3016] px-4 py-3 text-sm font-medium text-app-warning">
           {warning}
         </p>
       ) : null}
 
       {error ? (
-        <p className="rounded-xl border border-[#efd1d1] bg-[#fff0f0] px-4 py-3 text-sm font-medium text-danger">
+        <p className="rounded-xl border border-[#783636] bg-[#411d1d] px-4 py-3 text-sm font-medium text-app-danger">
           {error}
         </p>
       ) : null}
 
       {isUploadOpen ? (
-        <section className="rounded-2xl border border-line bg-white p-5 shadow-sm">
+        <section className="rounded-2xl border border-app-border bg-app-surface p-5 shadow-app-soft">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-ink">Add source material</h2>
-              <p className="mt-2 text-sm leading-6 text-muted">
+              <h2 className="text-lg font-semibold text-app-text">Add source material</h2>
+              <p className="mt-2 text-sm leading-6 text-app-muted">
                 Supabase stores the file and metadata when configured. Local fallback stores metadata only.
               </p>
             </div>
             <button
-              className="text-left text-sm font-semibold text-muted transition-colors hover:text-ink sm:text-right"
+              className="text-left text-sm font-semibold text-app-muted transition-colors hover:text-app-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent sm:text-right"
               type="button"
               onClick={resetForm}
             >
@@ -221,7 +221,7 @@ export function DocumentsClient() {
 
           <form className="mt-6 grid gap-5 lg:grid-cols-2" onSubmit={handleSubmit} noValidate>
             <label className="block">
-              <span className="text-sm font-semibold text-ink">File</span>
+              <span className="text-sm font-semibold text-app-text">File</span>
               <input
                 type="file"
                 accept=".pdf,.doc,.docx,.txt"
@@ -229,19 +229,19 @@ export function DocumentsClient() {
                   setSelectedFile(event.target.files?.[0] ?? null);
                   setError("");
                 }}
-                className="mt-2 block w-full rounded-lg border border-line bg-white px-3 py-2 text-sm text-muted file:mr-3 file:rounded-md file:border-0 file:bg-accent-soft file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-accent"
+                className="mt-2 block w-full rounded-lg border border-app-border bg-app-bg px-3 py-2 text-sm text-app-muted file:mr-3 file:rounded-md file:border-0 file:bg-app-accent-soft file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-app-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent"
               />
             </label>
 
             <label className="block">
-              <span className="text-sm font-semibold text-ink">Document type</span>
+              <span className="text-sm font-semibold text-app-text">Document type</span>
               <select
                 value={documentType}
                 onChange={(event) => {
                   setDocumentType(event.target.value);
                   setError("");
                 }}
-                className="mt-2 h-11 w-full rounded-lg border border-line bg-white px-3 text-sm text-ink outline-none transition focus:border-accent focus:ring-4 focus:ring-accent-soft"
+                className="mt-2 h-11 w-full rounded-lg border border-app-border bg-app-bg px-3 text-sm text-app-text outline-none transition focus:border-app-accent focus:ring-4 focus:ring-app-accent-soft"
               >
                 <option value="">Select document type</option>
                 {documentTypes.map((type) => (
@@ -253,21 +253,21 @@ export function DocumentsClient() {
             </label>
 
             <label className="block lg:col-span-2">
-              <span className="text-sm font-semibold text-ink">Notes</span>
+              <span className="text-sm font-semibold text-app-text">Notes</span>
               <textarea
                 value={notes}
                 onChange={(event) => setNotes(event.target.value)}
                 rows={4}
                 placeholder="Optional review context"
-                className="mt-2 w-full rounded-lg border border-line bg-white px-3 py-2 text-sm text-ink outline-none transition focus:border-accent focus:ring-4 focus:ring-accent-soft"
+                className="mt-2 w-full rounded-lg border border-app-border bg-app-bg px-3 py-2 text-sm text-app-text outline-none transition placeholder:text-app-muted focus:border-app-accent focus:ring-4 focus:ring-app-accent-soft"
               />
             </label>
 
             <div className="flex flex-col gap-3 sm:flex-row lg:col-span-2">
-              <Button type="submit" disabled={isSubmitting}>
+              <Button type="submit" variant="appPrimary" disabled={isSubmitting}>
                 {isSubmitting ? "Adding document..." : "Add document"}
               </Button>
-              <Button type="button" variant="secondary" onClick={resetForm}>
+              <Button type="button" variant="appSecondary" onClick={resetForm}>
                 Cancel
               </Button>
             </div>
@@ -276,30 +276,30 @@ export function DocumentsClient() {
       ) : null}
 
       {isLoading ? (
-        <div className="rounded-2xl border border-line bg-white p-5 text-sm font-semibold text-muted shadow-sm">
+        <div className="rounded-2xl border border-app-border bg-app-surface p-5 text-sm font-semibold text-app-muted shadow-app-soft">
           Loading documents...
         </div>
       ) : documents.length === 0 ? (
-        <div className="rounded-2xl border border-line bg-white p-5 text-sm font-medium text-muted shadow-sm">
+        <div className="rounded-2xl border border-app-border bg-app-surface p-5 text-sm font-medium text-app-muted shadow-app-soft">
           No documents have been uploaded yet.
         </div>
       ) : (
         <DataTable columns={["Document name", "Type", "Status", "Uploaded", "Chunks", "Actions"]}>
           {documents.map((document) => (
             <tr key={document.id}>
-              <td className="px-4 py-4 font-medium text-ink">
+              <td className="px-4 py-4 font-medium text-app-text">
                 <span className="block max-w-[320px] truncate" title={document.name}>
                   {document.name}
                 </span>
               </td>
-              <td className="px-4 py-4 text-muted">{document.type}</td>
+              <td className="px-4 py-4 text-app-muted">{document.type}</td>
               <td className="px-4 py-4">
                 <StatusBadge>{document.status}</StatusBadge>
               </td>
-              <td className="px-4 py-4 text-muted">{document.uploaded}</td>
-              <td className="px-4 py-4 text-muted">{document.chunks}</td>
+              <td className="px-4 py-4 text-app-muted">{document.uploaded}</td>
+              <td className="px-4 py-4 text-app-muted">{document.chunks}</td>
               <td className="px-4 py-4">
-                <Link className="text-sm font-semibold text-accent" href={`/documents/${document.id}`}>
+                <Link className="text-sm font-semibold text-app-accent transition-colors hover:text-[#7bd8b2]" href={`/documents/${document.id}`}>
                   Review
                 </Link>
               </td>

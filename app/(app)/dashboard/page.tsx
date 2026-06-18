@@ -33,9 +33,9 @@ export default function DashboardPage() {
   return (
     <div className="space-y-8">
       <div>
-        <p className="text-sm font-semibold uppercase tracking-normal text-accent">Workspace</p>
-        <h1 className="mt-2 text-3xl font-semibold text-ink">Evidence readiness dashboard</h1>
-        <p className="mt-3 max-w-2xl text-sm leading-6 text-muted">
+        <p className="text-sm font-semibold uppercase tracking-normal text-app-accent">Workspace</p>
+        <h1 className="mt-2 text-3xl font-semibold text-app-text">Evidence readiness dashboard</h1>
+        <p className="mt-3 max-w-2xl text-sm leading-6 text-app-muted">
           Review draft evidence coverage, gaps, and document status before preparing reports.
         </p>
       </div>
@@ -47,11 +47,11 @@ export default function DashboardPage() {
       </section>
 
       <section className="grid gap-4 lg:grid-cols-[1fr_1.2fr]">
-        <div className="rounded-2xl border border-line bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-semibold text-ink">Recent activity</h2>
+        <div className="rounded-2xl border border-app-border bg-app-surface p-5 shadow-app-soft">
+          <h2 className="text-lg font-semibold text-app-text">Recent activity</h2>
           <div className="mt-5 space-y-3">
             {activities.map((activity) => (
-              <div key={activity} className="rounded-xl border border-line bg-canvas p-4 text-sm text-muted">
+              <div key={activity} className="rounded-xl border border-app-border bg-app-elevated p-4 text-sm text-app-muted">
                 {activity}
               </div>
             ))}
@@ -59,12 +59,12 @@ export default function DashboardPage() {
         </div>
 
         <div>
-          <h2 className="mb-4 text-lg font-semibold text-ink">Findings requiring review</h2>
+          <h2 className="mb-4 text-lg font-semibold text-app-text">Findings requiring review</h2>
           <DataTable columns={["Control", "Evidence", "Risk"]} minWidth="min-w-[520px]">
             {findings.map((finding) => (
               <tr key={finding.control}>
-                <td className="px-4 py-4 font-medium text-ink">{finding.control}</td>
-                <td className="px-4 py-4 text-muted">{finding.evidence}</td>
+                <td className="px-4 py-4 font-medium text-app-text">{finding.control}</td>
+                <td className="px-4 py-4 text-app-muted">{finding.evidence}</td>
                 <td className="px-4 py-4">
                   <StatusBadge>{finding.risk}</StatusBadge>
                 </td>
@@ -75,28 +75,28 @@ export default function DashboardPage() {
       </section>
 
       <section className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-2xl border border-line bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-semibold text-ink">Document processing status</h2>
+        <div className="rounded-2xl border border-app-border bg-app-surface p-5 shadow-app-soft">
+          <h2 className="text-lg font-semibold text-app-text">Document processing status</h2>
           <div className="mt-5 space-y-3">
             {["4 processed documents", "1 document needs review", "194 total chunks indexed for review"].map((item) => (
-              <p key={item} className="rounded-xl border border-line bg-canvas px-4 py-3 text-sm text-muted">
+              <p key={item} className="rounded-xl border border-app-border bg-app-elevated px-4 py-3 text-sm text-app-muted">
                 {item}
               </p>
             ))}
           </div>
         </div>
 
-        <div className="rounded-2xl border border-line bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-semibold text-ink">Evidence coverage by category</h2>
+        <div className="rounded-2xl border border-app-border bg-app-surface p-5 shadow-app-soft">
+          <h2 className="text-lg font-semibold text-app-text">Evidence coverage by category</h2>
           <div className="mt-5 space-y-4">
             {coverage.map((item) => (
               <div key={item.category}>
                 <div className="flex justify-between text-sm font-medium">
                   <span>{item.category}</span>
-                  <span className="text-muted">{item.value}</span>
+                  <span className="text-app-muted">{item.value}</span>
                 </div>
-                <div className="mt-2 h-2 rounded-full bg-canvas">
-                  <div className="h-2 rounded-full bg-accent" style={{ width: item.value }} />
+                <div className="mt-2 h-2 rounded-full bg-app-elevated">
+                  <div className="h-2 rounded-full bg-app-accent" style={{ width: item.value }} />
                 </div>
               </div>
             ))}

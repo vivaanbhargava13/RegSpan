@@ -28,18 +28,18 @@ export default function ReportsPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-normal text-accent">Reports</p>
-          <h1 className="mt-2 text-3xl font-semibold text-ink">Reviewer-ready report drafts</h1>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-muted">
+          <p className="text-sm font-semibold uppercase tracking-normal text-app-accent">Reports</p>
+          <h1 className="mt-2 text-3xl font-semibold text-app-text">Reviewer-ready report drafts</h1>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-app-muted">
             Prepare cited report drafts for human approval and stakeholder review.
           </p>
         </div>
-        <Button>Prepare report</Button>
+        <Button variant="appPrimary">Prepare report</Button>
       </div>
 
-      <div className="rounded-2xl border border-line bg-white p-5 shadow-sm">
-        <h2 className="text-lg font-semibold text-ink">Report export placeholder</h2>
-        <p className="mt-2 text-sm leading-6 text-muted">
+      <div className="rounded-2xl border border-app-border bg-app-surface p-5 shadow-app-soft">
+        <h2 className="text-lg font-semibold text-app-text">Report export placeholder</h2>
+        <p className="mt-2 text-sm leading-6 text-app-muted">
           Export wiring will be added after evidence review and backend workflows are connected.
         </p>
       </div>
@@ -47,9 +47,9 @@ export default function ReportsPage() {
       <DataTable columns={["Report name", "Date", "Controls reviewed", "Status"]}>
         {reports.map((report) => (
           <tr key={report.name}>
-            <td className="px-4 py-4 font-medium text-ink">{report.name}</td>
-            <td className="px-4 py-4 text-muted">{report.date}</td>
-            <td className="px-4 py-4 text-muted">{report.controlsReviewed}</td>
+            <td className="px-4 py-4 font-medium text-app-text">{report.name}</td>
+            <td className="px-4 py-4 text-app-muted">{report.date}</td>
+            <td className="px-4 py-4 text-app-muted">{report.controlsReviewed}</td>
             <td className="px-4 py-4">
               <StatusBadge>{report.status}</StatusBadge>
             </td>
