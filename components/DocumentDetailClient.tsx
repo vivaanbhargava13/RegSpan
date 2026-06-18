@@ -2,8 +2,15 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { findMockDocument, type DocumentStatus, type MockDocument } from "@/components/mockDocuments";
+import {
+  findMockDocument,
+  mapSupabaseDocument,
+  type DocumentStatus,
+  type MockDocument,
+  type SupabaseDocumentRecord,
+} from "@/components/mockDocuments";
 import { StatusBadge } from "@/components/StatusBadge";
+import { getBrowserSupabaseClient } from "@/components/supabaseClient";
 
 type DocumentDetailClientProps = {
   documentId: string;
@@ -37,6 +44,15 @@ const chunkPreviews = [
 ];
 
 function getTimeline(status: DocumentStatus): TimelineStep[] {
+  if (status === "Uploaded") {
+    return [
+      { label: "Uploaded", status: "Complete", detail: "Source material and metadata are available for review.", state: "complete" },
+      { label: "Text extraction", status: "Not connected", detail: "Text extraction has not been connected yet.", state: "pending" },
+      { label: "Chunking", status: "Pending", detail: "Chunking will wait for backend document processing.", state: "pending" },
+      { label: "Evidence mapping", status: "Pending", detail: "Control mapping is not connected yet.", state: "pending" },
+    ];
+  }
+
   if (status === "Processed") {
     return [
       { label: "Uploaded", status: "Complete", detail: "Source material is listed in the demo workspace.", state: "complete" },
@@ -92,10 +108,36 @@ const stateClasses: Record<TimelineState, string> = {
 export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) {
   const [document, setDocument] = useState<MockDocument | null>(null);
   const [hasLoaded, setHasLoaded] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    setDocument(findMockDocument(documentId));
-    setHasLoaded(true);
+    async function loadDocument() {
+      const supabase = getBrowserSupabaseClient();
+
+      if (supabase) {
+        const { data, error: loadError } = await supabase
+          .from("documents")
+          .select("*")
+          .eq("workspace_id", "demo")
+          .eq("id", documentId)
+          .maybeSingle();
+
+        if (loadError) {
+          setError(`Unable to load Supabase document metadata: ${loadError.message}`);
+        }
+
+        if (data) {
+          setDocument(mapSupabaseDocument(data as SupabaseDocumentRecord));
+          setHasLoaded(true);
+          return;
+        }
+      }
+
+      setDocument(findMockDocument(documentId));
+      setHasLoaded(true);
+    }
+
+    void loadDocument();
   }, [documentId]);
 
   if (!hasLoaded) {
@@ -128,6 +170,12 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
         Back to documents
       </Link>
 
+      {error ? (
+        <p className="rounded-xl border border-[#f1dfbd] bg-[#fff6e8] px-4 py-3 text-sm font-medium text-warning">
+          {error}
+        </p>
+      ) : null}
+
       <section className="rounded-2xl border border-line bg-white p-6 shadow-sm">
         <div className="flex min-w-0 flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
@@ -157,6 +205,9 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
             { label: "Uploaded", value: document.uploaded },
             { label: "Chunks", value: document.chunks },
             { label: "Status", value: document.status },
+            ...(document.fileSize ? [{ label: "File size", value: `${Math.round(document.fileSize / 1024)} KB` }] : []),
+            ...(document.mimeType ? [{ label: "MIME type", value: document.mimeType }] : []),
+            ...(document.storagePath ? [{ label: "Storage path", value: document.storagePath }] : []),
           ].map((item) => (
             <div key={item.label} className="rounded-xl border border-line bg-canvas p-4">
               <dt className="text-xs font-semibold uppercase tracking-normal text-muted">{item.label}</dt>
@@ -215,7 +266,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
               </div>
             ) : (
               <p className="mt-3 rounded-xl border border-line bg-canvas p-4 text-sm leading-6 text-muted">
-                Chunk previews will appear here after mock processing reaches a processed review state.
+                Chunk previews will appear here after backend document processing is connected.
               </p>
             )}
           </div>

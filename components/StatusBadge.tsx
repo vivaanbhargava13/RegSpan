@@ -4,6 +4,7 @@ type StatusBadgeProps = {
 
 const statusClasses: Record<string, string> = {
   Complete: "bg-accent-soft text-accent border-[#cce5da]",
+  Uploaded: "bg-canvas text-muted border-line",
   Processed: "bg-accent-soft text-accent border-[#cce5da]",
   Queued: "bg-canvas text-muted border-line",
   Processing: "bg-[#fff6e8] text-warning border-[#f1dfbd]",
