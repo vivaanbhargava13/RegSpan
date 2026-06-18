@@ -6,8 +6,8 @@ type MetricCardProps = {
 
 const toneClasses: Record<NonNullable<MetricCardProps["tone"]>, string> = {
   default: "text-app-accent bg-app-accent-soft border-app-accent-soft",
-  warning: "text-app-warning bg-[#3b3016] border-[#6f5420]",
-  danger: "text-app-danger bg-[#411d1d] border-[#783636]",
+  warning: "text-app-warning bg-app-warning-soft border-app-warning-soft",
+  danger: "text-app-danger bg-app-danger-soft border-app-danger-soft",
 };
 
 export function MetricCard({ label, value, tone = "default" }: MetricCardProps) {

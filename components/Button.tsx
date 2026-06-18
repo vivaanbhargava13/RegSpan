@@ -17,7 +17,7 @@ const variantClasses: Record<ButtonVariant, string> = {
     "border border-line bg-white text-ink shadow-sm hover:border-[#c6d5ce] hover:bg-canvas focus-visible:outline-accent",
   ghost: "text-muted hover:bg-canvas hover:text-ink focus-visible:outline-accent",
   light: "bg-white text-ink shadow-sm hover:bg-accent-soft focus-visible:outline-white",
-  appPrimary: "bg-app-accent text-app-bg shadow-sm hover:bg-[#7bd8b2] focus-visible:outline-app-accent",
+  appPrimary: "bg-app-accent text-app-bg shadow-sm hover:bg-app-accent-hover focus-visible:outline-app-accent",
   appSecondary:
     "border border-app-border bg-app-surface text-app-text shadow-sm hover:border-app-accent hover:bg-app-elevated focus-visible:outline-app-accent",
 };

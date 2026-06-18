@@ -20,7 +20,7 @@ export function DataTable({ columns, children, minWidth = "min-w-[720px]" }: Dat
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-app-border">{children}</tbody>
+          <tbody className="divide-y divide-app-border [&_tr:hover]:bg-app-elevated">{children}</tbody>
         </table>
       </div>
     </div>

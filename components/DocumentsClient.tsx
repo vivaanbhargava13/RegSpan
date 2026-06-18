@@ -190,13 +190,13 @@ export function DocumentsClient() {
       </div>
 
       {warning ? (
-        <p className="rounded-xl border border-[#6f5420] bg-[#3b3016] px-4 py-3 text-sm font-medium text-app-warning">
+        <p className="rounded-xl border border-app-warning-soft bg-app-warning-soft px-4 py-3 text-sm font-medium text-app-warning">
           {warning}
         </p>
       ) : null}
 
       {error ? (
-        <p className="rounded-xl border border-[#783636] bg-[#411d1d] px-4 py-3 text-sm font-medium text-app-danger">
+        <p className="rounded-xl border border-app-danger-soft bg-app-danger-soft px-4 py-3 text-sm font-medium text-app-danger">
           {error}
         </p>
       ) : null}
@@ -299,7 +299,7 @@ export function DocumentsClient() {
               <td className="px-4 py-4 text-app-muted">{document.uploaded}</td>
               <td className="px-4 py-4 text-app-muted">{document.chunks}</td>
               <td className="px-4 py-4">
-                <Link className="text-sm font-semibold text-app-accent transition-colors hover:text-[#7bd8b2]" href={`/documents/${document.id}`}>
+                <Link className="text-sm font-semibold text-app-accent transition-colors hover:text-app-accent-hover" href={`/documents/${document.id}`}>
                   Review
                 </Link>
               </td>

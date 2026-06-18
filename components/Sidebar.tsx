@@ -27,8 +27,10 @@ export function Sidebar() {
             <Link
               key={link.href}
               href={link.href}
-              className={`block rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors ${
-                isActive ? "bg-app-accent-soft text-app-accent" : "text-app-muted hover:bg-app-elevated hover:text-app-text"
+              className={`block rounded-lg border-l-2 px-3 py-2.5 text-sm font-semibold transition-colors ${
+                isActive
+                  ? "border-app-accent bg-app-elevated text-app-accent"
+                  : "border-transparent text-app-muted hover:bg-app-elevated hover:text-app-text"
               }`}
             >
               {link.label}

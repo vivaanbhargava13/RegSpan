@@ -100,11 +100,11 @@ function getTimeline(status: DocumentStatus): TimelineStep[] {
 }
 
 const stateClasses: Record<TimelineState, string> = {
-  complete: "bg-app-accent text-app-bg",
-  current: "bg-[#3b3016] text-app-warning",
+  complete: "bg-app-success text-app-bg",
+  current: "bg-app-warning-soft text-app-warning",
   pending: "bg-app-elevated text-app-muted",
-  blocked: "bg-[#411d1d] text-app-danger",
-  review: "bg-[#3b3016] text-app-warning",
+  blocked: "bg-app-danger-soft text-app-danger",
+  review: "bg-app-warning-soft text-app-warning",
 };
 
 export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) {
@@ -327,24 +327,24 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
 
   return (
     <div className="space-y-6">
-      <Link href="/documents" className="text-sm font-semibold text-app-accent transition-colors hover:text-[#7bd8b2]">
+      <Link href="/documents" className="text-sm font-semibold text-app-accent transition-colors hover:text-app-accent-hover">
         Back to documents
       </Link>
 
       {message ? (
-        <p className="rounded-xl border border-app-accent-soft bg-app-accent-soft px-4 py-3 text-sm font-medium text-app-success">
+        <p className="rounded-xl border border-app-success-soft bg-app-success-soft px-4 py-3 text-sm font-medium text-app-success">
           {message}
         </p>
       ) : null}
 
       {warning ? (
-        <p className="rounded-xl border border-[#6f5420] bg-[#3b3016] px-4 py-3 text-sm font-medium text-app-warning">
+        <p className="rounded-xl border border-app-warning-soft bg-app-warning-soft px-4 py-3 text-sm font-medium text-app-warning">
           {warning}
         </p>
       ) : null}
 
       {error ? (
-        <p className="rounded-xl border border-[#783636] bg-[#411d1d] px-4 py-3 text-sm font-medium text-app-danger">
+        <p className="rounded-xl border border-app-danger-soft bg-app-danger-soft px-4 py-3 text-sm font-medium text-app-danger">
           {error}
         </p>
       ) : null}
@@ -383,7 +383,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
               type="button"
               disabled={Boolean(activeAction)}
               onClick={handleDelete}
-              className="h-9 rounded-lg border border-[#783636] bg-[#411d1d] px-3 text-sm font-semibold text-app-danger transition-colors hover:bg-[#522323] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-danger disabled:cursor-not-allowed disabled:opacity-60"
+              className="h-9 rounded-lg border border-app-danger-soft bg-app-danger-soft px-3 text-sm font-semibold text-app-danger transition-colors hover:border-app-danger hover:bg-[#4a1c21] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-danger disabled:cursor-not-allowed disabled:opacity-60"
             >
               {activeAction === "delete" ? "Deleting..." : "Delete"}
             </button>
@@ -407,7 +407,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
                   type="button"
                   disabled={Boolean(activeAction)}
                   onClick={handleReplace}
-                  className="h-10 rounded-lg bg-app-accent px-4 text-sm font-semibold text-app-bg transition-colors hover:bg-[#7bd8b2] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent disabled:cursor-not-allowed disabled:opacity-60"
+                  className="h-10 rounded-lg bg-app-accent px-4 text-sm font-semibold text-app-bg transition-colors hover:bg-app-accent-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {activeAction === "replace" ? "Replacing..." : "Replace file"}
                 </button>

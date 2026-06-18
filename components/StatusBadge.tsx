@@ -3,20 +3,20 @@ type StatusBadgeProps = {
 };
 
 const statusClasses: Record<string, string> = {
-  Complete: "bg-app-accent-soft text-app-success border-app-accent-soft",
-  Uploaded: "bg-app-elevated text-app-muted border-app-border",
-  Processed: "bg-app-accent-soft text-app-success border-app-accent-soft",
-  Queued: "bg-app-elevated text-app-muted border-app-border",
-  Processing: "bg-[#3b3016] text-app-warning border-[#6f5420]",
-  Failed: "bg-[#411d1d] text-app-danger border-[#783636]",
-  Partial: "bg-[#3b3016] text-app-warning border-[#6f5420]",
-  "Needs Review": "bg-[#3b3016] text-app-warning border-[#6f5420]",
-  "Requires Review": "bg-[#3b3016] text-app-warning border-[#6f5420]",
-  Missing: "bg-[#411d1d] text-app-danger border-[#783636]",
-  High: "bg-[#411d1d] text-app-danger border-[#783636]",
-  Medium: "bg-[#3b3016] text-app-warning border-[#6f5420]",
+  Complete: "bg-app-success-soft text-app-success border-app-success-soft",
+  Uploaded: "bg-app-success-soft text-app-success border-app-success-soft",
+  Processed: "bg-app-success-soft text-app-success border-app-success-soft",
+  Queued: "bg-app-accent-soft text-app-accent border-app-accent-soft",
+  Processing: "bg-app-warning-soft text-app-warning border-app-warning-soft",
+  Failed: "bg-app-danger-soft text-app-danger border-app-danger-soft",
+  Partial: "bg-app-warning-soft text-app-warning border-app-warning-soft",
+  "Needs Review": "bg-app-warning-soft text-app-warning border-app-warning-soft",
+  "Requires Review": "bg-app-warning-soft text-app-warning border-app-warning-soft",
+  Missing: "bg-app-danger-soft text-app-danger border-app-danger-soft",
+  High: "bg-app-danger-soft text-app-danger border-app-danger-soft",
+  Medium: "bg-app-warning-soft text-app-warning border-app-warning-soft",
   Draft: "bg-app-elevated text-app-muted border-app-border",
-  Prepared: "bg-app-accent-soft text-app-success border-app-accent-soft",
+  Prepared: "bg-app-success-soft text-app-success border-app-success-soft",
   Pending: "bg-app-elevated text-app-muted border-app-border",
 };
 
