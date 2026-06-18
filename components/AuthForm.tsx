@@ -2,7 +2,9 @@
 
 import { FormEvent, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/Button";
+import { createDemoSession } from "@/components/demoAuth";
 import { Logo } from "@/components/Logo";
 
 type AuthMode = "login" | "signup";
@@ -19,6 +21,7 @@ const initialValues: FormValues = {
 };
 
 export function AuthForm() {
+  const router = useRouter();
   const [mode, setMode] = useState<AuthMode>("login");
   const [values, setValues] = useState<FormValues>(initialValues);
   const [message, setMessage] = useState("");
@@ -67,7 +70,10 @@ export function AuthForm() {
     }
 
     setError("");
-    setMessage("Backend auth will be connected next.");
+    // Temporary demo auth only. Do not store passwords or send credentials to an API.
+    createDemoSession(values.email.trim());
+    setMessage("Opening your demo workspace...");
+    router.push("/dashboard");
   }
 
   return (

@@ -1,0 +1,108 @@
+import { DataTable } from "@/components/DataTable";
+import { MetricCard } from "@/components/MetricCard";
+import { StatusBadge } from "@/components/StatusBadge";
+
+const metrics = [
+  { label: "Reg S-P Readiness", value: "72%" },
+  { label: "High-Risk Gaps", value: "4", tone: "danger" as const },
+  { label: "Controls Requiring Review", value: "12", tone: "warning" as const },
+  { label: "Documents Processed", value: "6" },
+  { label: "Open Remediation Tasks", value: "9", tone: "warning" as const },
+];
+
+const activities = [
+  "Privacy Notice.pdf marked for reviewer attention",
+  "Incident Response Plan mapped to 2 draft findings",
+  "Vendor Management Policy processing completed",
+];
+
+const findings = [
+  { control: "Service Provider Notice", evidence: "No evidence", risk: "High" },
+  { control: "Incident Response Program", evidence: "2 citations", risk: "High" },
+  { control: "Disposal Procedures", evidence: "3 citations", risk: "Medium" },
+];
+
+const coverage = [
+  { category: "Incident Response", value: "68%" },
+  { category: "Vendor Oversight", value: "74%" },
+  { category: "Privacy", value: "61%" },
+  { category: "Disposal", value: "82%" },
+];
+
+export default function DashboardPage() {
+  return (
+    <div className="space-y-8">
+      <div>
+        <p className="text-sm font-semibold uppercase tracking-normal text-accent">Workspace</p>
+        <h1 className="mt-2 text-3xl font-semibold text-ink">Evidence readiness dashboard</h1>
+        <p className="mt-3 max-w-2xl text-sm leading-6 text-muted">
+          Review draft evidence coverage, gaps, and document status before preparing reports.
+        </p>
+      </div>
+
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        {metrics.map((metric) => (
+          <MetricCard key={metric.label} {...metric} />
+        ))}
+      </section>
+
+      <section className="grid gap-4 lg:grid-cols-[1fr_1.2fr]">
+        <div className="rounded-2xl border border-line bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-semibold text-ink">Recent activity</h2>
+          <div className="mt-5 space-y-3">
+            {activities.map((activity) => (
+              <div key={activity} className="rounded-xl border border-line bg-canvas p-4 text-sm text-muted">
+                {activity}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <h2 className="mb-4 text-lg font-semibold text-ink">Findings requiring review</h2>
+          <DataTable columns={["Control", "Evidence", "Risk"]} minWidth="min-w-[520px]">
+            {findings.map((finding) => (
+              <tr key={finding.control}>
+                <td className="px-4 py-4 font-medium text-ink">{finding.control}</td>
+                <td className="px-4 py-4 text-muted">{finding.evidence}</td>
+                <td className="px-4 py-4">
+                  <StatusBadge>{finding.risk}</StatusBadge>
+                </td>
+              </tr>
+            ))}
+          </DataTable>
+        </div>
+      </section>
+
+      <section className="grid gap-4 lg:grid-cols-2">
+        <div className="rounded-2xl border border-line bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-semibold text-ink">Document processing status</h2>
+          <div className="mt-5 space-y-3">
+            {["4 processed documents", "1 document needs review", "194 total chunks indexed for review"].map((item) => (
+              <p key={item} className="rounded-xl border border-line bg-canvas px-4 py-3 text-sm text-muted">
+                {item}
+              </p>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-line bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-semibold text-ink">Evidence coverage by category</h2>
+          <div className="mt-5 space-y-4">
+            {coverage.map((item) => (
+              <div key={item.category}>
+                <div className="flex justify-between text-sm font-medium">
+                  <span>{item.category}</span>
+                  <span className="text-muted">{item.value}</span>
+                </div>
+                <div className="mt-2 h-2 rounded-full bg-canvas">
+                  <div className="h-2 rounded-full bg-accent" style={{ width: item.value }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
