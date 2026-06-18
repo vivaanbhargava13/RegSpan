@@ -19,7 +19,7 @@ const variantClasses: Record<ButtonVariant, string> = {
   light: "bg-white text-ink shadow-sm hover:bg-accent-soft focus-visible:outline-white",
   appPrimary: "bg-app-accent text-app-bg shadow-sm hover:bg-app-accent-hover focus-visible:outline-app-accent",
   appSecondary:
-    "border border-app-border bg-app-surface text-app-text shadow-sm hover:border-app-accent hover:bg-app-elevated focus-visible:outline-app-accent",
+    "border border-app-border bg-app-surface text-app-text shadow-sm hover:border-app-border-strong hover:bg-app-elevated focus-visible:outline-app-accent",
 };
 
 const sizeClasses: Record<ButtonSize, string> = {

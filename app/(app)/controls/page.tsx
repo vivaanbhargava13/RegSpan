@@ -1,4 +1,5 @@
 import { DataTable } from "@/components/DataTable";
+import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 
 const controls = [
@@ -39,13 +40,11 @@ const controls = [
 export default function ControlsPage() {
   return (
     <div className="space-y-6">
-      <div>
-        <p className="text-sm font-semibold uppercase tracking-normal text-app-accent">Controls</p>
-        <h1 className="mt-2 text-3xl font-semibold text-app-text">Reg S-P control checklist</h1>
-        <p className="mt-3 max-w-2xl text-sm leading-6 text-app-muted">
-          Review draft control coverage and evidence counts before assigning remediation.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Controls"
+        title="Reg S-P control checklist"
+        description="Review draft control coverage and evidence counts before assigning remediation."
+      />
 
       <DataTable
         columns={["Control ID", "Category", "Requirement", "Status", "Evidence count", "Severity"]}

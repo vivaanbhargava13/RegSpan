@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { Button } from "@/components/Button";
 import { DataTable } from "@/components/DataTable";
+import { PageHeader } from "@/components/PageHeader";
 import {
   documentTypes,
   initialDocuments,
@@ -178,16 +179,16 @@ export function DocumentsClient() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-sm font-semibold uppercase tracking-normal text-app-accent">Documents</p>
-          <h1 className="mt-2 text-3xl font-semibold text-app-text">Policy evidence library</h1>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-app-muted">
-            Track uploaded source material and processing status for evidence review.
-          </p>
-        </div>
-        <Button variant="appPrimary" onClick={() => setIsUploadOpen(true)}>Upload document</Button>
-      </div>
+      <PageHeader
+        eyebrow="Documents"
+        title="Policy evidence library"
+        description="Track uploaded source material and processing status for evidence review."
+        actions={
+          <Button variant="appPrimary" onClick={() => setIsUploadOpen(true)}>
+            Upload document
+          </Button>
+        }
+      />
 
       {warning ? (
         <p className="rounded-xl border border-app-warning-soft bg-app-warning-soft px-4 py-3 text-sm font-medium text-app-warning">

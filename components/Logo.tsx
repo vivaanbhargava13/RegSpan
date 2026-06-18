@@ -16,7 +16,7 @@ export function Logo({ href = "/", tone = "light" }: LogoProps) {
       <span
         className={`grid size-9 place-items-center rounded-xl border text-sm font-bold ${
           tone === "dark"
-            ? "border-app-border bg-app-accent-soft text-app-accent"
+            ? "border-app-border-strong bg-app-accent-soft text-app-accent"
             : "border-[#b9d8cb] bg-accent-soft text-accent"
         }`}
       >

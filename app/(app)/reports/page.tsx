@@ -1,5 +1,6 @@
 import { Button } from "@/components/Button";
 import { DataTable } from "@/components/DataTable";
+import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 
 const reports = [
@@ -26,16 +27,14 @@ const reports = [
 export default function ReportsPage() {
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-sm font-semibold uppercase tracking-normal text-app-accent">Reports</p>
-          <h1 className="mt-2 text-3xl font-semibold text-app-text">Reviewer-ready report drafts</h1>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-app-muted">
-            Prepare cited report drafts for human approval and stakeholder review.
-          </p>
-        </div>
-        <Button variant="appPrimary">Prepare report</Button>
-      </div>
+      <PageHeader
+        eyebrow="Reports"
+        title="Reviewer-ready report drafts"
+        description="Prepare cited report drafts for human approval and stakeholder review."
+        actions={
+          <Button variant="appPrimary">Prepare report</Button>
+        }
+      />
 
       <div className="rounded-2xl border border-app-border bg-app-surface p-5 shadow-app-soft">
         <h2 className="text-lg font-semibold text-app-text">Report export placeholder</h2>

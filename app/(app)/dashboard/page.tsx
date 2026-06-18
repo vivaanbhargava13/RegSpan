@@ -1,5 +1,6 @@
 import { DataTable } from "@/components/DataTable";
 import { MetricCard } from "@/components/MetricCard";
+import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 
 const metrics = [
@@ -32,13 +33,11 @@ const coverage = [
 export default function DashboardPage() {
   return (
     <div className="space-y-8">
-      <div>
-        <p className="text-sm font-semibold uppercase tracking-normal text-app-accent">Workspace</p>
-        <h1 className="mt-2 text-3xl font-semibold text-app-text">Evidence readiness dashboard</h1>
-        <p className="mt-3 max-w-2xl text-sm leading-6 text-app-muted">
-          Review draft evidence coverage, gaps, and document status before preparing reports.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Workspace"
+        title="Evidence readiness dashboard"
+        description="Review draft evidence coverage, gaps, and document status before preparing reports."
+      />
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {metrics.map((metric) => (

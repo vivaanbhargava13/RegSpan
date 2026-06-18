@@ -1,4 +1,5 @@
 import { DataTable } from "@/components/DataTable";
+import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 
 const findings = [
@@ -39,13 +40,11 @@ const findings = [
 export default function FindingsPage() {
   return (
     <div className="space-y-6">
-      <div>
-        <p className="text-sm font-semibold uppercase tracking-normal text-app-accent">Findings</p>
-        <h1 className="mt-2 text-3xl font-semibold text-app-text">Draft findings review</h1>
-        <p className="mt-3 max-w-2xl text-sm leading-6 text-app-muted">
-          Triage draft gaps and evidence notes before including them in reviewer-ready reports.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Findings"
+        title="Draft findings review"
+        description="Triage draft gaps and evidence notes before including them in reviewer-ready reports."
+      />
 
       <DataTable
         columns={["Control", "Status", "Evidence", "Gap", "Risk", "Review status"]}

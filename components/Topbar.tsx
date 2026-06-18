@@ -15,12 +15,12 @@ export function Topbar({ session }: TopbarProps) {
   const displayName = getSessionDisplayName(session);
 
   return (
-    <header className="sticky top-0 z-10 border-b border-app-border bg-app-bg/90 backdrop-blur">
+    <header className="sticky top-0 z-10 border-b border-app-border bg-app-shell/90 backdrop-blur">
       <div className="flex min-h-16 flex-col gap-3 px-4 py-3 lg:flex-row lg:items-center lg:justify-between lg:px-8">
         <div>
           <div className="flex flex-wrap items-center gap-3">
             <p className="text-sm font-semibold text-app-text">{session.workspaceName}</p>
-            <span className="rounded-full border border-app-border bg-app-elevated px-2.5 py-1 text-xs font-semibold text-app-accent">
+            <span className="rounded-full border border-app-border-strong bg-app-accent-soft px-2.5 py-1 text-xs font-semibold text-app-accent">
               Demo workspace
             </span>
           </div>
@@ -39,7 +39,7 @@ export function Topbar({ session }: TopbarProps) {
               key={link.href}
               href={link.href}
               className={`whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold ${
-                isActive ? "bg-app-elevated text-app-accent" : "text-app-muted"
+                isActive ? "bg-app-accent-soft text-app-accent" : "text-app-muted"
               }`}
             >
               {link.label}

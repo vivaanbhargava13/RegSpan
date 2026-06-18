@@ -10,6 +10,7 @@ import {
   type MockDocument,
   type SupabaseDocumentRecord,
 } from "@/components/mockDocuments";
+import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { getBrowserSupabaseClient } from "@/components/supabaseClient";
 
@@ -331,6 +332,12 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
         Back to documents
       </Link>
 
+      <PageHeader
+        eyebrow="Document review"
+        title={document.name}
+        description={`${document.type} · Uploaded ${document.uploaded} · ${document.chunks}`}
+      />
+
       {message ? (
         <p className="rounded-xl border border-app-success-soft bg-app-success-soft px-4 py-3 text-sm font-medium text-app-success">
           {message}
@@ -350,16 +357,9 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
       ) : null}
 
       <section className="rounded-2xl border border-app-border bg-app-surface p-6 shadow-app-soft">
-        <div className="flex min-w-0 flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0">
-            <p className="text-sm font-semibold uppercase tracking-normal text-app-accent">Document review</p>
-            <h1 className="mt-2 max-w-4xl break-words text-3xl font-semibold text-app-text">{document.name}</h1>
-            <p className="mt-3 max-w-3xl text-sm leading-6 text-app-muted">
-              {document.type} · Uploaded {document.uploaded} · {document.chunks}
-            </p>
-          </div>
+        <div className="flex min-w-0 flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+          <StatusBadge>{document.status}</StatusBadge>
           <div className="flex shrink-0 flex-col gap-3 sm:flex-row lg:items-center">
-            <StatusBadge>{document.status}</StatusBadge>
             <button
               type="button"
               disabled={Boolean(activeAction)}
@@ -383,7 +383,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
               type="button"
               disabled={Boolean(activeAction)}
               onClick={handleDelete}
-              className="h-9 rounded-lg border border-app-danger-soft bg-app-danger-soft px-3 text-sm font-semibold text-app-danger transition-colors hover:border-app-danger hover:bg-[#4a1c21] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-danger disabled:cursor-not-allowed disabled:opacity-60"
+              className="h-9 rounded-lg border border-app-danger-soft bg-app-danger-soft px-3 text-sm font-semibold text-app-danger transition-colors hover:border-app-danger hover:bg-app-danger-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-danger disabled:cursor-not-allowed disabled:opacity-60"
             >
               {activeAction === "delete" ? "Deleting..." : "Delete"}
             </button>

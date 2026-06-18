@@ -1,3 +1,6 @@
+import { AppearanceSettings } from "@/components/AppearanceSettings";
+import { PageHeader } from "@/components/PageHeader";
+
 const sections = [
   {
     title: "Workspace profile",
@@ -24,13 +27,13 @@ const sections = [
 export default function SettingsPage() {
   return (
     <div className="space-y-6">
-      <div>
-        <p className="text-sm font-semibold uppercase tracking-normal text-app-accent">Settings</p>
-        <h1 className="mt-2 text-3xl font-semibold text-app-text">Workspace settings</h1>
-        <p className="mt-3 max-w-2xl text-sm leading-6 text-app-muted">
-          Nonfunctional placeholders for the settings areas needed in the product shell.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Settings"
+        title="Workspace settings"
+        description="Nonfunctional placeholders for the settings areas needed in the product shell."
+      />
+
+      <AppearanceSettings />
 
       <section className="grid gap-4 md:grid-cols-2">
         {sections.map((section) => (
