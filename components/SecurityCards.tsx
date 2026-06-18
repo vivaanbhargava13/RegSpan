@@ -15,7 +15,7 @@ const cards = [
 
 export function SecurityCards() {
   return (
-    <section id="security" className="px-6 py-20 lg:px-8">
+    <section id="security" className="scroll-mt-24 px-6 py-20 lg:px-8">
       <div className="mx-auto max-w-7xl">
         <div className="max-w-2xl">
           <p className="text-sm font-semibold uppercase tracking-normal text-accent">Security</p>

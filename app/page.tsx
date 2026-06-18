@@ -16,7 +16,7 @@ export default function Home() {
             Reg S-P readiness workflow foundation
           </div>
           <h1 className="max-w-4xl text-5xl font-semibold leading-[1.03] tracking-normal text-ink sm:text-6xl lg:text-7xl">
-            AI-assisted Reg S-P evidence mapping for financial firms.
+            AI-assisted <span className="whitespace-nowrap">Reg S-P</span> evidence mapping for financial firms.
           </h1>
           <p className="mt-7 max-w-2xl text-lg leading-8 text-muted sm:text-xl">
             Upload cybersecurity, privacy, vendor, and incident response

@@ -19,7 +19,7 @@ const steps = [
 
 export function HowItWorks() {
   return (
-    <section id="workflow" className="border-y border-line bg-white px-6 py-20 lg:px-8">
+    <section id="workflow" className="scroll-mt-24 border-y border-line bg-white px-6 py-20 lg:px-8">
       <div className="mx-auto max-w-7xl">
         <div className="max-w-2xl">
           <p className="text-sm font-semibold uppercase tracking-normal text-accent">Workflow</p>

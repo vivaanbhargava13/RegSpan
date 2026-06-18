@@ -95,7 +95,7 @@ export function AuthForm() {
         <div className="mt-8">
           <h1 className="text-2xl font-semibold tracking-normal text-ink">{title}</h1>
           <p className="mt-2 text-sm leading-6 text-muted">
-            Use your work email to continue. Authentication is a UI placeholder for now.
+            Access your RegSpan workspace for evidence review, findings, and reports.
           </p>
         </div>
 

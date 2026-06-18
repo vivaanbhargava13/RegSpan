@@ -40,7 +40,7 @@ export function ProductPreview() {
     <section
       id="product"
       aria-label="RegSpan product preview"
-      className="relative rounded-2xl border border-line bg-white p-3 shadow-soft"
+      className="relative scroll-mt-28 rounded-2xl border border-line bg-white p-3 shadow-soft"
     >
       <div className="rounded-xl border border-line bg-canvas p-4 sm:p-5">
         <div className="flex items-center justify-between gap-4 border-b border-line pb-4">
@@ -61,7 +61,7 @@ export function ProductPreview() {
 
         <div className="mt-5 overflow-hidden rounded-xl border border-line bg-white">
           <div className="border-b border-line px-4 py-3">
-            <p className="text-sm font-semibold text-ink">AI-suggested findings</p>
+            <p className="text-sm font-semibold text-ink">Draft findings.</p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[560px] border-collapse text-left text-sm">
