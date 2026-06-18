@@ -5,6 +5,9 @@ type StatusBadgeProps = {
 const statusClasses: Record<string, string> = {
   Complete: "bg-accent-soft text-accent border-[#cce5da]",
   Processed: "bg-accent-soft text-accent border-[#cce5da]",
+  Queued: "bg-canvas text-muted border-line",
+  Processing: "bg-[#fff6e8] text-warning border-[#f1dfbd]",
+  Failed: "bg-[#fff0f0] text-danger border-[#efd1d1]",
   Partial: "bg-[#fff6e8] text-warning border-[#f1dfbd]",
   "Needs Review": "bg-[#fff6e8] text-warning border-[#f1dfbd]",
   "Requires Review": "bg-[#fff6e8] text-warning border-[#f1dfbd]",
