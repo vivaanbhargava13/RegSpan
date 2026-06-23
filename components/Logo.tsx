@@ -1,28 +1,41 @@
+import Image from "next/image";
 import Link from "next/link";
 
 type LogoProps = {
   href?: string;
   tone?: "light" | "dark";
+  variant?: "full" | "mark";
 };
 
-export function Logo({ href = "/", tone = "light" }: LogoProps) {
+export function Logo({ href = "/", tone = "light", variant = "full" }: LogoProps) {
+  const isDark = tone === "dark";
+
   return (
     <Link
       href={href}
+      aria-label="RegSpan"
       className={`inline-flex items-center gap-2.5 text-lg font-semibold ${
-        tone === "dark" ? "text-app-text" : "text-ink"
+        isDark ? "text-app-text" : "text-ink"
       }`}
     >
       <span
-        className={`grid size-9 place-items-center rounded-xl border text-sm font-bold ${
-          tone === "dark"
-            ? "border-app-border-strong bg-app-accent-soft text-app-accent"
-            : "border-[#b9d8cb] bg-accent-soft text-accent"
+        className={`grid size-9 place-items-center rounded-xl border ${
+          isDark
+            ? "border-app-border-strong bg-app-accent-soft"
+            : "border-line bg-white"
         }`}
       >
-        R
+        <Image
+          src="/brand/regspan-mark.png"
+          alt=""
+          width={27}
+          height={27}
+          aria-hidden="true"
+          className="h-7 w-7 object-contain"
+          priority
+        />
       </span>
-      <span>RegSpan</span>
+      {variant === "full" ? <span>RegSpan</span> : null}
     </Link>
   );
 }
