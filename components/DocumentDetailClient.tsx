@@ -13,6 +13,7 @@ import {
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { getBrowserSupabaseClient } from "@/components/supabaseClient";
+import type { DocumentChunk } from "@/lib/types/ingestion";
 
 type DocumentDetailClientProps = {
   documentId: string;
@@ -28,7 +29,23 @@ type TimelineStep = {
   state: TimelineState;
 };
 
-const chunkPreviews = [
+type HierarchyHeading = {
+  children?: unknown[];
+};
+
+type HierarchyRow = {
+  hierarchy_json: {
+    headings?: HierarchyHeading[];
+  } | null;
+};
+
+type HierarchySummary = {
+  isGenerated: boolean;
+  topLevelCount: number;
+  childCount: number;
+};
+
+const fallbackChunkPreviews = [
   {
     title: "Preparation and incident response procedures",
     page: "Page 4",
@@ -48,6 +65,50 @@ const chunkPreviews = [
 
 function formatSectionsLabel(label: string) {
   return label.replace(/\bchunks\b/gi, "sections");
+}
+
+function formatPageRange(pageStart: number | null, pageEnd: number | null) {
+  if (pageStart === null && pageEnd === null) {
+    return "Page unavailable";
+  }
+
+  if (pageStart === pageEnd || pageEnd === null) {
+    return `Page ${pageStart}`;
+  }
+
+  return `Pages ${pageStart ?? pageEnd}–${pageEnd}`;
+}
+
+function summarizeHierarchy(row: HierarchyRow | null): HierarchySummary {
+  const headings = Array.isArray(row?.hierarchy_json?.headings)
+    ? row.hierarchy_json.headings
+    : [];
+  const childCount = headings.reduce(
+    (count, heading) =>
+      count + (Array.isArray(heading.children) ? heading.children.length : 0),
+    0,
+  );
+
+  return {
+    isGenerated: headings.length > 0,
+    topLevelCount: headings.length,
+    childCount,
+  };
+}
+
+function formatHierarchySummary(summary: HierarchySummary) {
+  if (!summary.isGenerated) {
+    return "Not generated";
+  }
+
+  const topLevelLabel = `${summary.topLevelCount} top-level section${
+    summary.topLevelCount === 1 ? "" : "s"
+  }`;
+  const childLabel = `${summary.childCount} child section${
+    summary.childCount === 1 ? "" : "s"
+  }`;
+
+  return `Generated · ${topLevelLabel} · ${childLabel}`;
 }
 
 function getTimeline(status: DocumentStatus): TimelineStep[] {
@@ -115,6 +176,8 @@ const stateClasses: Record<TimelineState, string> = {
 export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) {
   const router = useRouter();
   const [document, setDocument] = useState<MockDocument | null>(null);
+  const [chunks, setChunks] = useState<DocumentChunk[]>([]);
+  const [hierarchySummary, setHierarchySummary] = useState<HierarchySummary | null>(null);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [activeAction, setActiveAction] = useState<ActionName | null>(null);
@@ -141,12 +204,45 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
         }
 
         if (data) {
+          const [chunksResult, hierarchyResult] = await Promise.all([
+            supabase
+              .from("document_chunks")
+              .select("*")
+              .eq("workspace_id", "demo")
+              .eq("document_id", documentId)
+              .order("chunk_index", { ascending: true }),
+            supabase
+              .from("document_hierarchy")
+              .select("hierarchy_json")
+              .eq("workspace_id", "demo")
+              .eq("document_id", documentId)
+              .maybeSingle(),
+          ]);
+
+          const loadedChunks = chunksResult.error
+            ? []
+            : ((chunksResult.data ?? []) as DocumentChunk[]);
+
+          if (chunksResult.error || hierarchyResult.error) {
+            setWarning(
+              "Document metadata loaded, but processed data is unavailable. Confirm the ingestion migration has been applied.",
+            );
+          }
+
+          setChunks(loadedChunks);
+          setHierarchySummary(
+            hierarchyResult.error
+              ? null
+              : summarizeHierarchy(hierarchyResult.data as HierarchyRow | null),
+          );
           setDocument(mapSupabaseDocument(data as SupabaseDocumentRecord));
           setHasLoaded(true);
           return;
         }
       }
 
+      setChunks([]);
+      setHierarchySummary(null);
       setDocument(findMockDocument(documentId));
       setHasLoaded(true);
     }
@@ -165,25 +261,31 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
       return;
     }
 
-    const supabase = getBrowserSupabaseClient();
-    if (!supabase) {
-      setError("Supabase is not configured, so review status cannot be updated.");
-      return;
-    }
-
     resetActionState();
     setActiveAction("reprocess");
-    const { error: updateError } = await supabase
-      .from("documents")
-      .update({ status: "Queued", chunks_label: "Pending" })
-      .eq("workspace_id", "demo")
-      .eq("id", document.id);
+    try {
+      const response = await fetch(`/api/documents/${document.id}/mock-process`, {
+        method: "POST",
+      });
+      const result = (await response.json()) as {
+        ok?: boolean;
+        chunkCount?: number;
+        error?: string;
+      };
 
-    if (updateError) {
-      setError(`Review status update failed: ${updateError.message}`);
-    } else {
-      setMessage("Document marked for review again. Document reading and matching are not connected yet.");
+      if (!response.ok || !result.ok) {
+        throw new Error(result.error || "Mock processing failed.");
+      }
+
+      setMessage(`Mock processing completed with ${result.chunkCount ?? 0} chunks.`);
+      router.refresh();
       setRefreshKey((current) => current + 1);
+    } catch (actionError) {
+      setError(
+        actionError instanceof Error
+          ? actionError.message
+          : "Mock processing failed.",
+      );
     }
 
     setActiveAction(null);
@@ -370,7 +472,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
               onClick={handleReprocess}
               className="h-9 rounded-lg border border-app-border bg-app-elevated px-3 text-sm font-semibold text-app-muted transition-colors hover:border-app-accent hover:text-app-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {activeAction === "reprocess" ? "Queuing..." : "Mark for review again"}
+              {activeAction === "reprocess" ? "Reprocessing..." : "Reprocess"}
             </button>
             <button
               type="button"
@@ -436,6 +538,10 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
             { label: "Uploaded", value: document.uploaded },
             { label: "Sections", value: formatSectionsLabel(document.chunks) },
             { label: "Review status", value: document.status },
+            ...(chunks.length > 0 ? [{ label: "Processed chunks", value: String(chunks.length) }] : []),
+            ...(hierarchySummary !== null
+              ? [{ label: "Hierarchy", value: formatHierarchySummary(hierarchySummary) }]
+              : []),
             ...(document.fileSize ? [{ label: "File size", value: `${Math.round(document.fileSize / 1024)} KB` }] : []),
             ...(document.mimeType ? [{ label: "MIME type", value: document.mimeType }] : []),
           ].map((item) => (
@@ -486,10 +592,33 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
 
         <div className="space-y-4">
           <div className="rounded-2xl border border-app-border bg-app-surface p-5 shadow-app-soft">
-            <h2 className="text-lg font-semibold text-app-text">Document sections preview</h2>
-            {document.status === "Processed" ? (
+            <h2 className="text-lg font-semibold text-app-text">Processed chunks</h2>
+            {chunks.length > 0 ? (
               <div className="mt-5 space-y-3">
-                {chunkPreviews.map((chunk) => (
+                {chunks.map((chunk) => (
+                  <article key={chunk.id} className="rounded-xl border border-app-border bg-app-elevated p-4">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <span className="text-xs font-semibold uppercase tracking-normal text-app-muted">
+                          Chunk {chunk.chunk_index}
+                        </span>
+                        <h3 className="mt-1 text-sm font-semibold text-app-text">
+                          {chunk.section_path || chunk.section_heading || "Unsectioned content"}
+                        </h3>
+                      </div>
+                      <span className="shrink-0 text-xs font-semibold text-app-muted">
+                        {formatPageRange(chunk.page_start, chunk.page_end)}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-sm leading-6 text-app-muted">
+                      {chunk.content.length > 220 ? `${chunk.content.slice(0, 220)}…` : chunk.content}
+                    </p>
+                  </article>
+                ))}
+              </div>
+            ) : document.status === "Processed" ? (
+              <div className="mt-5 space-y-3">
+                {fallbackChunkPreviews.map((chunk) => (
                   <article key={chunk.title} className="rounded-xl border border-app-border bg-app-elevated p-4">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                       <h3 className="text-sm font-semibold text-app-text">{chunk.title}</h3>

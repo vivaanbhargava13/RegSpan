@@ -1,0 +1,159 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+export const DEMO_WORKSPACE_ID = "demo";
+
+export type IngestionDocument = {
+  id: string;
+  workspace_id: string;
+  filename: string;
+  status: string | null;
+};
+
+export async function getIngestionDocument(
+  supabase: SupabaseClient,
+  documentId: string,
+) {
+  return supabase
+    .from("documents")
+    .select("id, workspace_id, filename, status")
+    .eq("workspace_id", DEMO_WORKSPACE_ID)
+    .eq("id", documentId)
+    .maybeSingle<IngestionDocument>();
+}
+
+export function createMockChunks(document: IngestionDocument) {
+  const baseMetadata = {
+    document_id: document.id,
+    workspace_id: document.workspace_id,
+    filename: document.filename,
+    parent_heading: "Incident Response",
+    parent_chunk_start: 0,
+    parent_chunk_end: 4,
+  };
+
+  const chunks = [
+    {
+      content:
+        "Following confirmation of unauthorized access to customer information, the incident response lead will assess the scope of affected records and determine whether customer notification is required.",
+      page_start: 1,
+      page_end: 2,
+      section_heading: "Customer Notification",
+      section_path: "Incident Response > Customer Notification",
+      section_chunk_start: 0,
+      section_chunk_end: 2,
+    },
+    {
+      content:
+        "Customer notices will describe the nature and date of the incident, the information involved, actions taken to protect affected individuals, and a point of contact for questions.",
+      page_start: 2,
+      page_end: 2,
+      section_heading: "Customer Notification",
+      section_path: "Incident Response > Customer Notification",
+      section_chunk_start: 0,
+      section_chunk_end: 2,
+    },
+    {
+      content:
+        "Legal, Privacy, and Communications must approve notification language and delivery timing. Notices should be issued as soon as practicable after containment and required investigation steps.",
+      page_start: 2,
+      page_end: 3,
+      section_heading: "Customer Notification",
+      section_path: "Incident Response > Customer Notification",
+      section_chunk_start: 0,
+      section_chunk_end: 2,
+    },
+    {
+      content:
+        "Service providers must promptly escalate suspected customer information incidents to the incident response lead and preserve relevant logs, communications, and forensic evidence.",
+      page_start: 4,
+      page_end: 5,
+      section_heading: "Service Provider Escalation",
+      section_path: "Incident Response > Service Provider Escalation",
+      section_chunk_start: 3,
+      section_chunk_end: 3,
+    },
+    {
+      content:
+        "After recovery, the response team will document lessons learned, assign corrective actions, and track updates to safeguards, procedures, and vendor oversight through completion.",
+      page_start: 6,
+      page_end: 6,
+      section_heading: "Post-Incident Review",
+      section_path: "Incident Response > Post-Incident Review",
+      section_chunk_start: 4,
+      section_chunk_end: 4,
+    },
+  ];
+
+  return chunks.map((chunk, chunkIndex) => ({
+    workspace_id: document.workspace_id,
+    document_id: document.id,
+    chunk_index: chunkIndex,
+    content: chunk.content,
+    metadata: {
+      ...baseMetadata,
+      page_start: chunk.page_start,
+      page_end: chunk.page_end,
+      section_heading: chunk.section_heading,
+      section_path: chunk.section_path,
+      chunk_index: chunkIndex,
+      section_chunk_start: chunk.section_chunk_start,
+      section_chunk_end: chunk.section_chunk_end,
+    },
+    page_start: chunk.page_start,
+    page_end: chunk.page_end,
+    section_heading: chunk.section_heading,
+    parent_heading: baseMetadata.parent_heading,
+    section_path: chunk.section_path,
+    section_chunk_start: chunk.section_chunk_start,
+    section_chunk_end: chunk.section_chunk_end,
+    parent_chunk_start: baseMetadata.parent_chunk_start,
+    parent_chunk_end: baseMetadata.parent_chunk_end,
+  }));
+}
+
+export function createMockHierarchy(document: IngestionDocument) {
+  return {
+    workspace_id: document.workspace_id,
+    document_id: document.id,
+    hierarchy_json: {
+      document_id: document.id,
+      filename: document.filename,
+      headings: [
+        {
+          heading: "Incident Response",
+          section_path: "Incident Response",
+          page_start: 1,
+          page_end: 6,
+          chunk_start: 0,
+          chunk_end: 4,
+          children: [
+            {
+              heading: "Customer Notification",
+              section_path: "Incident Response > Customer Notification",
+              page_start: 1,
+              page_end: 3,
+              chunk_start: 0,
+              chunk_end: 2,
+            },
+            {
+              heading: "Service Provider Escalation",
+              section_path: "Incident Response > Service Provider Escalation",
+              page_start: 4,
+              page_end: 5,
+              chunk_start: 3,
+              chunk_end: 3,
+            },
+            {
+              heading: "Post-Incident Review",
+              section_path: "Incident Response > Post-Incident Review",
+              page_start: 6,
+              page_end: 6,
+              chunk_start: 4,
+              chunk_end: 4,
+            },
+          ],
+        },
+      ],
+    },
+  };
+}
