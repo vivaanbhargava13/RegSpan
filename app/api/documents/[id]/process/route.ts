@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server";
-import { getIngestionDocument } from "@/lib/ingestion";
+import {
+  authorizeIngestionRequest,
+  IngestionAuthorizationError,
+} from "@/lib/ingestionAuthorization";
 import { getServerSupabaseAdminClient } from "@/lib/supabase/server";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
 };
 
-export async function POST(_request: Request, { params }: RouteContext) {
+export async function POST(request: Request, { params }: RouteContext) {
   let supabase;
 
   try {
@@ -25,22 +28,17 @@ export async function POST(_request: Request, { params }: RouteContext) {
   }
 
   const { id } = await params;
-  const { data: document, error: documentError } = await getIngestionDocument(
-    supabase,
-    id,
-  );
+  let document;
 
-  if (documentError) {
+  try {
+    document = await authorizeIngestionRequest(supabase, request, id);
+  } catch (error) {
     return NextResponse.json(
-      { ok: false, error: `Unable to load document: ${documentError.message}` },
-      { status: 500 },
-    );
-  }
-
-  if (!document) {
-    return NextResponse.json(
-      { ok: false, error: "Document not found." },
-      { status: 404 },
+      {
+        ok: false,
+        error: error instanceof Error ? error.message : "Unable to authorize request.",
+      },
+      { status: error instanceof IngestionAuthorizationError ? error.status : 500 },
     );
   }
 
