@@ -15,7 +15,13 @@ export function getBrowserSupabaseClient() {
   }
 
   if (!browserClient) {
-    browserClient = createClient(supabaseUrl as string, supabaseAnonKey as string);
+    browserClient = createClient(supabaseUrl as string, supabaseAnonKey as string, {
+      auth: {
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+        persistSession: true,
+      },
+    });
   }
 
   return browserClient;

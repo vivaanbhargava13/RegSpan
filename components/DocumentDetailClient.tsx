@@ -14,6 +14,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { getBrowserSupabaseClient } from "@/components/supabaseClient";
 import type { DocumentChunk } from "@/lib/types/ingestion";
+import { getCurrentWorkspace, type CurrentWorkspace } from "@/lib/workspaces";
 
 type DocumentDetailClientProps = {
   documentId: string;
@@ -176,6 +177,7 @@ const stateClasses: Record<TimelineState, string> = {
 export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) {
   const router = useRouter();
   const [document, setDocument] = useState<MockDocument | null>(null);
+  const [workspace, setWorkspace] = useState<CurrentWorkspace | null>(null);
   const [chunks, setChunks] = useState<DocumentChunk[]>([]);
   const [hierarchySummary, setHierarchySummary] = useState<HierarchySummary | null>(null);
   const [hasLoaded, setHasLoaded] = useState(false);
@@ -192,10 +194,26 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
       const supabase = getBrowserSupabaseClient();
 
       if (supabase) {
+        let currentWorkspace: CurrentWorkspace;
+
+        try {
+          currentWorkspace = await getCurrentWorkspace(supabase);
+          setWorkspace(currentWorkspace);
+        } catch (workspaceError) {
+          setError(
+            workspaceError instanceof Error
+              ? workspaceError.message
+              : "Unable to load your workspace.",
+          );
+          setDocument(null);
+          setHasLoaded(true);
+          return;
+        }
+
         const { data, error: loadError } = await supabase
           .from("documents")
           .select("*")
-          .eq("workspace_id", "demo")
+          .eq("workspace_id", currentWorkspace.id)
           .eq("id", documentId)
           .maybeSingle();
 
@@ -208,13 +226,13 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
             supabase
               .from("document_chunks")
               .select("*")
-              .eq("workspace_id", "demo")
+              .eq("workspace_id", currentWorkspace.id)
               .eq("document_id", documentId)
               .order("chunk_index", { ascending: true }),
             supabase
               .from("document_hierarchy")
               .select("hierarchy_json")
-              .eq("workspace_id", "demo")
+              .eq("workspace_id", currentWorkspace.id)
               .eq("document_id", documentId)
               .maybeSingle(),
           ]);
@@ -239,6 +257,12 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
           setHasLoaded(true);
           return;
         }
+
+        setChunks([]);
+        setHierarchySummary(null);
+        setDocument(null);
+        setHasLoaded(true);
+        return;
       }
 
       setChunks([]);
@@ -264,8 +288,21 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
     resetActionState();
     setActiveAction("reprocess");
     try {
+      const supabase = getBrowserSupabaseClient();
+      if (!supabase) {
+        throw new Error("Supabase Auth is not configured.");
+      }
+
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !sessionData.session) {
+        throw new Error(sessionError?.message || "Your session has expired. Log in again.");
+      }
+
       const response = await fetch(`/api/documents/${document.id}/mock-process`, {
         method: "POST",
+        headers: {
+          Authorization: `Bearer ${sessionData.session.access_token}`,
+        },
       });
       const result = (await response.json()) as {
         ok?: boolean;
@@ -297,6 +334,11 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
       return;
     }
 
+    if (!workspace) {
+      setError("Your workspace is not available.");
+      return;
+    }
+
     const supabase = getBrowserSupabaseClient();
     if (!supabase) {
       setError("Supabase is not configured, so replacement upload cannot run.");
@@ -306,7 +348,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
     resetActionState();
     setActiveAction("replace");
     const uploadedAt = new Date().toISOString();
-    const replacementPath = `demo/${document.id}/replacement-${Date.now()}-${replacementFile.name}`;
+    const replacementPath = `${workspace.id}/${document.id}/replacement-${Date.now()}-${replacementFile.name}`;
     const { error: uploadError } = await supabase.storage
       .from("documents")
       .upload(replacementPath, replacementFile, {
@@ -331,7 +373,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
         chunks_label: "Pending",
         uploaded_at: uploadedAt,
       })
-      .eq("workspace_id", "demo")
+      .eq("workspace_id", workspace.id)
       .eq("id", document.id);
 
     if (updateError) {
@@ -360,7 +402,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
     }
 
     const confirmed = window.confirm(
-      "Remove this document and stored file from the demo workspace?",
+      "Remove this document and stored file from your workspace?",
     );
 
     if (!confirmed) {
@@ -370,6 +412,11 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
     const supabase = getBrowserSupabaseClient();
     if (!supabase) {
       setError("Supabase is not configured, so this document cannot be deleted.");
+      return;
+    }
+
+    if (!workspace) {
+      setError("Your workspace is not available.");
       return;
     }
 
@@ -391,7 +438,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
     const { error: rowDeleteError } = await supabase
       .from("documents")
       .delete()
-      .eq("workspace_id", "demo")
+      .eq("workspace_id", workspace.id)
       .eq("id", document.id);
 
     if (rowDeleteError) {
@@ -425,7 +472,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
         <div className="rounded-2xl border border-app-border bg-app-surface p-6 shadow-app-soft">
           <h1 className="text-2xl font-semibold text-app-text">Document not found</h1>
           <p className="mt-3 text-sm leading-6 text-app-muted">
-            This mock document is not available in the current demo workspace.
+            This document is not available in your current workspace.
           </p>
         </div>
       </div>

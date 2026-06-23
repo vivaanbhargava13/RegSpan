@@ -30,7 +30,7 @@ export default function SettingsPage() {
       <PageHeader
         eyebrow="Settings"
         title="Workspace settings"
-        description="Manage appearance, demo workspace details, and data handling notes."
+        description="Manage appearance, workspace details, and data handling notes."
       />
 
       <AppearanceSettings />

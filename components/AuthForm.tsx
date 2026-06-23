@@ -1,11 +1,10 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/Button";
-import { createDemoSession } from "@/components/demoAuth";
 import { Logo } from "@/components/Logo";
+import { getBrowserSupabaseClient } from "@/components/supabaseClient";
 
 type AuthMode = "login" | "signup";
 type FormValues = {
@@ -25,9 +24,10 @@ const initialValues: FormValues = {
 };
 
 export function AuthForm() {
-  const router = useRouter();
   const [mode, setMode] = useState<AuthMode>("login");
   const [values, setValues] = useState<FormValues>(initialValues);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -36,6 +36,46 @@ export function AuthForm() {
     () => (isSignup ? "Create your RegSpan account" : "Log in to RegSpan"),
     [isSignup],
   );
+
+  useEffect(() => {
+    const supabase = getBrowserSupabaseClient();
+
+    if (!supabase) {
+      setError(
+        "Supabase Auth is not configured. Add the public Supabase URL and anon key to your local environment.",
+      );
+      setIsCheckingSession(false);
+      return;
+    }
+
+    let isMounted = true;
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        if (isMounted && session) {
+          window.location.replace("/dashboard");
+        }
+      },
+    );
+
+    void supabase.auth.getSession().then(({ data, error: sessionError }) => {
+      if (!isMounted) {
+        return;
+      }
+
+      if (sessionError) {
+        setError(`Unable to load your session: ${sessionError.message}`);
+      } else if (data.session) {
+        window.location.replace("/dashboard");
+      }
+
+      setIsCheckingSession(false);
+    });
+
+    return () => {
+      isMounted = false;
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
 
   function updateField(field: keyof FormValues, value: string) {
     setValues((current) => ({ ...current, [field]: value }));
@@ -50,7 +90,7 @@ export function AuthForm() {
     setMessage("");
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!values.email.trim() || !values.password.trim()) {
@@ -79,11 +119,81 @@ export function AuthForm() {
       }
     }
 
+    const supabase = getBrowserSupabaseClient();
+
+    if (!supabase) {
+      setError(
+        "Supabase Auth is not configured. Add the public Supabase URL and anon key to your local environment.",
+      );
+      return;
+    }
+
     setError("");
-    // Temporary demo auth only. Do not store passwords or send credentials to an API.
-    createDemoSession(values.email.trim(), values.firstName.trim(), values.lastName.trim());
-    setMessage("Opening your demo workspace...");
-    router.push("/dashboard");
+    setMessage("");
+    setIsSubmitting(true);
+
+    try {
+      if (isSignup) {
+        const firstName = values.firstName.trim();
+        const lastName = values.lastName.trim();
+        const { data, error: signUpError } = await supabase.auth.signUp({
+          email: values.email.trim(),
+          password: values.password,
+          options: {
+            emailRedirectTo: `${window.location.origin}/auth`,
+            data: {
+              first_name: firstName,
+              last_name: lastName,
+              full_name: `${firstName} ${lastName}`.trim(),
+            },
+          },
+        });
+
+        if (signUpError) {
+          throw signUpError;
+        }
+
+        if (data.session) {
+          setMessage("Account created. Opening your workspace...");
+          window.location.replace("/dashboard");
+        } else {
+          setMessage("Account created. Check your email to confirm your address, then log in.");
+        }
+      } else {
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email: values.email.trim(),
+          password: values.password,
+        });
+
+        if (signInError) {
+          throw signInError;
+        }
+
+        setMessage("Opening your workspace...");
+        window.location.replace("/dashboard");
+      }
+    } catch (authError) {
+      setError(
+        authError instanceof Error
+          ? authError.message
+          : "Authentication failed. Please try again.",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  if (isCheckingSession) {
+    return (
+      <section className="w-full max-w-md">
+        <div className="mb-8 text-center">
+          <Logo />
+        </div>
+        <div className="rounded-2xl border border-line bg-white p-6 text-center text-sm font-semibold text-muted shadow-soft sm:p-8">
+          Checking your session...
+        </div>
+      </section>
+    );
   }
 
   return (
@@ -194,8 +304,14 @@ export function AuthForm() {
             </p>
           ) : null}
 
-          <Button type="submit" className="w-full">
-            {isSignup ? "Create account" : "Log in"}
+          <Button type="submit" className="w-full" disabled={isSubmitting}>
+            {isSubmitting
+              ? isSignup
+                ? "Creating account..."
+                : "Logging in..."
+              : isSignup
+                ? "Create account"
+                : "Log in"}
           </Button>
         </form>
 

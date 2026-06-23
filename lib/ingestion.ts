@@ -1,7 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export const DEMO_WORKSPACE_ID = "demo";
-
 export type IngestionDocument = {
   id: string;
   workspace_id: string;
@@ -16,7 +14,6 @@ export async function getIngestionDocument(
   return supabase
     .from("documents")
     .select("id, workspace_id, filename, status")
-    .eq("workspace_id", DEMO_WORKSPACE_ID)
     .eq("id", documentId)
     .maybeSingle<IngestionDocument>();
 }

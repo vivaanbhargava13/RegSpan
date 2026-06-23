@@ -17,6 +17,7 @@ import {
 } from "@/components/mockDocuments";
 import { StatusBadge } from "@/components/StatusBadge";
 import { getBrowserSupabaseClient, isSupabaseConfigured as hasSupabaseEnv } from "@/components/supabaseClient";
+import { getCurrentWorkspace, type CurrentWorkspace } from "@/lib/workspaces";
 
 function logDocumentsDebug(message: string, details?: Record<string, unknown>) {
   if (process.env.NODE_ENV === "development") {
@@ -30,6 +31,7 @@ function formatSectionsLabel(label: string) {
 
 export function DocumentsClient() {
   const [documents, setDocuments] = useState<MockDocument[]>(initialDocuments);
+  const [workspace, setWorkspace] = useState<CurrentWorkspace | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
@@ -50,7 +52,7 @@ export function DocumentsClient() {
 
     if (!supabase) {
       setDocuments(readAllDocuments());
-      setWarning("Supabase is not configured. Using local mock document data for this demo workspace.");
+      setWarning("Supabase is not configured. Using local mock document data.");
       setIsLoading(false);
       return;
     }
@@ -58,12 +60,28 @@ export function DocumentsClient() {
     setIsLoading(true);
     setWarning("");
     setError("");
+    let currentWorkspace: CurrentWorkspace;
+
+    try {
+      currentWorkspace = await getCurrentWorkspace(supabase);
+      setWorkspace(currentWorkspace);
+    } catch (workspaceError) {
+      setError(
+        workspaceError instanceof Error
+          ? workspaceError.message
+          : "Unable to load your workspace.",
+      );
+      setDocuments([]);
+      setIsLoading(false);
+      return;
+    }
+
     const { data, error: loadError } = await supabase
       .from("documents")
       .select(
         "id, workspace_id, filename, document_type, notes, status, chunks_label, storage_path, file_size, mime_type, uploaded_at",
       )
-      .eq("workspace_id", "demo")
+      .eq("workspace_id", currentWorkspace.id)
       .order("uploaded_at", { ascending: false });
 
     if (loadError) {
@@ -112,11 +130,27 @@ export function DocumentsClient() {
     const supabase = getBrowserSupabaseClient();
 
     if (supabase) {
+      let activeWorkspace = workspace;
+
+      if (!activeWorkspace) {
+        try {
+          activeWorkspace = await getCurrentWorkspace(supabase);
+          setWorkspace(activeWorkspace);
+        } catch (workspaceError) {
+          setError(
+            workspaceError instanceof Error
+              ? workspaceError.message
+              : "Unable to load your workspace.",
+          );
+          return;
+        }
+      }
+
       setIsSubmitting(true);
       setError("");
 
       const documentId = crypto.randomUUID();
-      const storagePath = `demo/${documentId}/${selectedFile.name}`;
+      const storagePath = `${activeWorkspace.id}/${documentId}/${selectedFile.name}`;
       const { error: uploadError } = await supabase.storage
         .from("documents")
         .upload(storagePath, selectedFile, {
@@ -132,7 +166,7 @@ export function DocumentsClient() {
 
       const { error: insertError } = await supabase.from("documents").insert({
         id: documentId,
-        workspace_id: "demo",
+        workspace_id: activeWorkspace.id,
         filename: selectedFile.name,
         document_type: documentType,
         notes: notes.trim() || null,
