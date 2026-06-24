@@ -34,6 +34,9 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // pdf-parse loads pdfjs-dist's native Node ESM implementation dynamically.
+  // Externalizing both prevents webpack from rewriting pdf.js initialization.
+  serverExternalPackages: ["pdf-parse", "pdfjs-dist"],
   async headers() {
     return [
       {

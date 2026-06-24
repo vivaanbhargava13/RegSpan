@@ -1,10 +1,23 @@
 import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { getCorrelationId, isUuid } from "@/lib/documentSecurity";
+import {
+  getCorrelationId,
+  isUuid,
+  MAX_DOCUMENT_BYTES,
+} from "@/lib/documentSecurity";
 import { authenticateIngestionWorker } from "@/lib/ingestionWorker";
 import { WorkerSecretConfigurationError } from "@/lib/ingestionWorkerAuth";
+import {
+  assertSupportedPdf,
+  buildDeterministicChunks,
+  extractPdfPages,
+  PdfProcessingError,
+  PDF_EXTRACTION_VERSION,
+} from "@/lib/pdfIngestion";
 import { recordSecurityAuditEvent } from "@/lib/securityAudit";
 import { getServerSupabaseAdminClient } from "@/lib/supabase/server";
+
+export const runtime = "nodejs";
 
 const MAX_WORKER_BODY_BYTES = 8 * 1024;
 const PROCESSABLE_STATUSES = new Set(["Queued", "Processing", "Reprocessing"]);
@@ -26,11 +39,16 @@ type WorkerJob = {
 type WorkerDocument = {
   id: string;
   workspace_id: string;
+  filename: string | null;
+  storage_path: string | null;
+  mime_type: string | null;
+  file_size: number | null;
 };
 
 type WorkerResult = {
-  result: "completed" | "already_completed";
-  job_status: "Processed";
+  result: "claimed" | "resumed" | "completed" | "already_completed";
+  job_status: "Processing" | "Processed";
+  chunk_count?: number;
   replayed: boolean;
 };
 
@@ -68,12 +86,13 @@ function isValidationError(message: string) {
 async function markWorkerFailure(
   supabase: SupabaseClient,
   payload: WorkerPayload,
+  safeMessage: string,
 ) {
   const { error } = await supabase.rpc("fail_ingestion_job_v1", {
     p_job_id: payload.jobId,
     p_document_id: payload.documentId,
     p_workspace_id: payload.workspaceId,
-    p_error_message: "Placeholder ingestion worker failed.",
+    p_error_message: safeMessage,
   });
 
   if (error) {
@@ -81,6 +100,7 @@ async function markWorkerFailure(
       correlationId: payload.correlationId,
       jobId: payload.jobId,
       documentId: payload.documentId,
+      workspaceId: payload.workspaceId,
       stage: "mark_failed",
       error: error.message,
     });
@@ -199,7 +219,7 @@ export async function POST(request: Request) {
     stage = "load_document";
     const { data: document, error: documentError } = await supabase
       .from("documents")
-      .select("id, workspace_id")
+      .select("id, workspace_id, filename, storage_path, mime_type, file_size")
       .eq("id", payload.documentId)
       .maybeSingle<WorkerDocument>();
 
@@ -225,6 +245,7 @@ export async function POST(request: Request) {
         correlationId,
         jobId: payload.jobId,
         documentId: payload.documentId,
+        workspaceId: payload.workspaceId,
         stage,
         code: validationCode,
       });
@@ -276,9 +297,17 @@ export async function POST(request: Request) {
       metadata: { document_id: payload.documentId, initial_status: job.status },
     });
 
-    stage = "process_placeholder";
-    const { data, error: processError } = await supabase.rpc(
-      "process_ingestion_job_placeholder",
+    console.info("[RegSpan worker] Worker request accepted", {
+      correlationId,
+      jobId: payload.jobId,
+      documentId: payload.documentId,
+      workspaceId: payload.workspaceId,
+      stage: "accepted",
+    });
+
+    stage = "claim_job";
+    const { data: claimData, error: claimError } = await supabase.rpc(
+      "claim_ingestion_job_v1",
       {
         p_job_id: payload.jobId,
         p_document_id: payload.documentId,
@@ -287,14 +316,15 @@ export async function POST(request: Request) {
       },
     );
 
-    if (processError) {
-      if (isValidationError(processError.message)) {
+    if (claimError) {
+      if (isValidationError(claimError.message)) {
         console.warn("[RegSpan worker] Transactional validation rejected", {
           correlationId,
           jobId: payload.jobId,
           documentId: payload.documentId,
+          workspaceId: payload.workspaceId,
           stage,
-          error: processError.message,
+          code: claimError.code,
         });
         await recordSecurityAuditEvent(supabase, {
           request,
@@ -308,10 +338,157 @@ export async function POST(request: Request) {
         });
         return jsonError(409, "The processing job changed state.", "job_state_changed");
       }
-      throw new Error(`placeholder_processing_failed:${processError.message}`);
+      console.error("[RegSpan worker] Job claim failed", {
+        correlationId,
+        jobId: payload.jobId,
+        documentId: payload.documentId,
+        workspaceId: payload.workspaceId,
+        stage,
+        code: claimError.code,
+      });
+      throw new Error("job_claim_failed");
     }
 
-    const result = data as WorkerResult;
+    const claimResult = claimData as WorkerResult;
+    if (claimResult.result === "already_completed") {
+      await recordSecurityAuditEvent(supabase, {
+        request,
+        correlationId,
+        action: "ingestion.worker.completed",
+        outcome: "success",
+        workspaceId: payload.workspaceId,
+        targetType: "processing_job",
+        targetId: payload.jobId,
+        metadata: {
+          document_id: payload.documentId,
+          chunk_count: claimResult.chunk_count ?? null,
+          replayed: true,
+          extraction_version: PDF_EXTRACTION_VERSION,
+        },
+      });
+      return NextResponse.json({
+        ok: true,
+        jobId: payload.jobId,
+        status: "already_completed",
+        chunkCount: claimResult.chunk_count ?? null,
+        replayed: true,
+      });
+    }
+
+    console.info("[RegSpan worker] Processing job claimed", {
+      correlationId,
+      jobId: payload.jobId,
+      documentId: payload.documentId,
+      workspaceId: payload.workspaceId,
+      stage,
+      resumed: claimResult.result === "resumed",
+    });
+
+    stage = "validate_document_type";
+    assertSupportedPdf(document.filename ?? "", document.mime_type);
+
+    if (!document.storage_path) {
+      throw new PdfProcessingError(
+        "storage_path_missing",
+        "The PDF storage object is unavailable.",
+        422,
+      );
+    }
+
+    stage = "download_private_document";
+    const { data: fileBlob, error: downloadError } = await supabase.storage
+      .from("documents")
+      .download(document.storage_path);
+
+    if (downloadError || !fileBlob) {
+      console.error("[RegSpan worker] Private document download failed", {
+        correlationId,
+        jobId: payload.jobId,
+        documentId: payload.documentId,
+        workspaceId: payload.workspaceId,
+        stage,
+        code: downloadError?.name ?? "missing_blob",
+      });
+      throw new PdfProcessingError(
+        "storage_download_failed",
+        "The PDF could not be downloaded for processing.",
+        502,
+      );
+    }
+
+    if (
+      fileBlob.size === 0 ||
+      fileBlob.size > MAX_DOCUMENT_BYTES ||
+      (document.file_size !== null && document.file_size > MAX_DOCUMENT_BYTES) ||
+      (fileBlob.type.length > 0 && fileBlob.type !== "application/pdf")
+    ) {
+      throw new PdfProcessingError(
+        "invalid_pdf_size",
+        "The PDF file size is invalid for processing.",
+        422,
+      );
+    }
+
+    stage = "extract_pdf_text";
+    const pages = await extractPdfPages(
+      new Uint8Array(await fileBlob.arrayBuffer()),
+    );
+
+    stage = "build_document_chunks";
+    const { chunks, hierarchy } = buildDeterministicChunks({
+      pages,
+      documentId: payload.documentId,
+      workspaceId: payload.workspaceId,
+      jobId: payload.jobId,
+      filename: document.filename ?? "document.pdf",
+    });
+
+    stage = "store_document_chunks";
+    const { data: completionData, error: completionError } = await supabase.rpc(
+      "complete_ingestion_job_with_chunks_v1",
+      {
+        p_job_id: payload.jobId,
+        p_document_id: payload.documentId,
+        p_workspace_id: payload.workspaceId,
+        p_chunks: chunks,
+        p_hierarchy: hierarchy,
+      },
+    );
+
+    if (completionError) {
+      if (isValidationError(completionError.message)) {
+        console.warn("[RegSpan worker] Completion transaction rejected", {
+          correlationId,
+          jobId: payload.jobId,
+          documentId: payload.documentId,
+          workspaceId: payload.workspaceId,
+          stage,
+          code: completionError.code,
+        });
+        await recordSecurityAuditEvent(supabase, {
+          request,
+          correlationId,
+          action: "ingestion.worker.validation_mismatch",
+          outcome: "failure",
+          workspaceId: payload.workspaceId,
+          targetType: "processing_job",
+          targetId: payload.jobId,
+          metadata: { document_id: payload.documentId, code: "completion_rejected" },
+        });
+        return jsonError(409, "The processing job changed state.", "job_state_changed");
+      }
+      console.error("[RegSpan worker] Chunk completion transaction failed", {
+        correlationId,
+        jobId: payload.jobId,
+        documentId: payload.documentId,
+        workspaceId: payload.workspaceId,
+        stage,
+        code: completionError.code,
+      });
+      throw new Error("chunk_storage_failed");
+    }
+
+    const result = completionData as WorkerResult;
     stage = "write_completion_audit";
     await recordSecurityAuditEvent(supabase, {
       request,
@@ -324,14 +501,29 @@ export async function POST(request: Request) {
       metadata: {
         document_id: payload.documentId,
         replayed: result.replayed,
-        placeholder: true,
+        chunk_count: result.chunk_count ?? chunks.length,
+        page_count: pages.length,
+        extraction_version: PDF_EXTRACTION_VERSION,
       },
+    });
+
+    console.info("[RegSpan worker] PDF ingestion completed", {
+      correlationId,
+      jobId: payload.jobId,
+      documentId: payload.documentId,
+      workspaceId: payload.workspaceId,
+      stage: "completed",
+      chunkCount: result.chunk_count ?? chunks.length,
+      pageCount: pages.length,
+      replayed: result.replayed,
     });
 
     return NextResponse.json({
       ok: true,
       jobId: payload.jobId,
       status: result.result,
+      chunkCount: result.chunk_count ?? chunks.length,
+      pageCount: pages.length,
       replayed: result.replayed,
     });
   } catch (error) {
@@ -339,12 +531,19 @@ export async function POST(request: Request) {
       correlationId,
       jobId: payload?.jobId,
       documentId: payload?.documentId,
+      workspaceId: payload?.workspaceId,
       stage,
-      error: error instanceof Error ? error.message : "unknown_error",
+      code: error instanceof PdfProcessingError ? error.code : "worker_failed",
     });
 
     if (supabase && payload) {
-      await markWorkerFailure(supabase, payload);
+      const safeMessage = error instanceof PdfProcessingError
+        ? error.safeMessage
+        : "PDF ingestion failed.";
+      const errorCode = error instanceof PdfProcessingError
+        ? error.code
+        : "worker_failed";
+      await markWorkerFailure(supabase, payload, safeMessage);
       await recordSecurityAuditEvent(supabase, {
         request,
         correlationId,
@@ -353,8 +552,16 @@ export async function POST(request: Request) {
         workspaceId: payload.workspaceId,
         targetType: "processing_job",
         targetId: payload.jobId,
-        metadata: { document_id: payload.documentId, failing_stage: stage },
+        metadata: {
+          document_id: payload.documentId,
+          failing_stage: stage,
+          code: errorCode,
+        },
       });
+
+      if (error instanceof PdfProcessingError) {
+        return jsonError(error.status, error.safeMessage, error.code);
+      }
     }
 
     return jsonError(500, "The ingestion worker failed.", "worker_failed");

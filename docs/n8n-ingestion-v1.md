@@ -37,7 +37,7 @@ Store these only in n8n's encrypted credentials/environment configuration:
 - `INGESTION_WORKER_SECRET`: a separate high-entropy, 32-character-or-longer
   bearer secret matching RegSpan's server-only value.
 
-The placeholder worker does not require Supabase credentials in n8n. n8n calls
+The ingestion worker does not require Supabase credentials in n8n. n8n calls
 the authenticated RegSpan endpoint instead; the Supabase service role remains in
 the RegSpan server environment.
 
@@ -46,7 +46,7 @@ or does not match. Compare secrets using a timing-safe mechanism where the n8n
 runtime permits it. Consider also rejecting stale timestamp headers once clock
 skew and retry behavior are defined.
 
-## Current placeholder worker node
+## Current PDF ingestion worker node
 
 After the valid branch of the existing IF node, add an **HTTP Request** node:
 
@@ -75,32 +75,39 @@ node and retains the original Webhook node output:
 
 Do not place the worker secret in the JSON body or a normal workflow Set node.
 Keep it in n8n's encrypted Header Auth credential store. A successful new job
-returns `status: "completed"`; a completed retry returns
+returns `status: "completed"` with `chunkCount` and `pageCount`; a completed retry returns
 `status: "already_completed"`. Both are HTTP 200 and safe to treat as success.
 
-The placeholder endpoint validates the authoritative job/document/workspace
-relationship, records audit events, and moves the job and document to the
-database status `Processed`. It does not read the PDF or create chunks.
+The endpoint validates the authoritative job/document/workspace relationship,
+claims the job, downloads the PDF directly from private Supabase Storage with
+the server-only admin client, extracts page text in RegSpan code, and stores
+deterministic page-aware chunks plus a simple page hierarchy. n8n remains the
+orchestrator and never receives the PDF, Storage path, extracted text, Supabase
+service-role key, or chunks.
 
-## Future real ingestion workflow
+Retries of a completed job do not parse or insert again. A new Reprocessing job
+atomically replaces the document's old chunks and hierarchy only after parsing
+succeeds. Unsupported, empty, image-only/low-text, corrupt, oversized, or timed-
+out PDFs mark the active job and document `Failed` with a safe error message.
+
+## Current workflow sequence
 
 1. Receive the webhook and verify the secret before doing any work.
 2. Validate all four payload fields and treat them only as identifiers.
-3. Fetch the job and document using server-side credentials.
-4. Verify job, document, and workspace IDs match exactly and the job is active.
-5. Mark the verified job and document `Processing` when work begins.
-6. Read the canonical storage path from the authorized document row.
-7. Download the PDF from the private `documents` bucket.
-8. Extract text and chunk it in an isolated worker with size, decompression,
-   memory, and execution-time limits.
-9. Transactionally replace chunks and hierarchy for that document.
-10. Mark the job and document `Processed` on success.
-11. Mark both `Failed` with a non-sensitive error on failure.
+3. Call the authenticated RegSpan worker endpoint with the four opaque IDs.
+4. RegSpan reloads and matches the job, document, and workspace.
+5. RegSpan marks the job/document `Processing`, extracts PDF text, chunks it,
+   and atomically replaces chunks/hierarchy.
+6. RegSpan marks the job/document `Processed`, or `Failed` with safe metadata.
+7. n8n treats `completed` and `already_completed` as successful terminal results.
 
-RegSpan currently implements only the authenticated handoff and placeholder
-status transition. Before real extraction is enabled, add a purpose-built
-transactional worker or callback rather than issuing a fragile sequence of
-unrelated table writes from n8n.
+PDF extraction v1 is text-only. Scanned/image-only PDFs fail as low-text; OCR is
+not implemented. Embeddings, retrieval, controls, findings, LLM calls, and
+reports remain out of scope.
+
+The worker route is pinned to the Next.js Node runtime. `pdf-parse` and
+`pdfjs-dist` are loaded as external native Node modules rather than transformed
+into the Next server bundle; deploy on Node.js 20.16 or newer.
 
 ## Security and operations
 
