@@ -206,7 +206,7 @@ export function DocumentsClient() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <PageHeader
         eyebrow="Documents"
         title="Uploaded documents"
@@ -219,24 +219,24 @@ export function DocumentsClient() {
       />
 
       {warning ? (
-        <p className="rounded-xl border border-app-warning-soft bg-app-warning-soft px-4 py-3 text-sm font-medium text-app-warning">
+        <p className="rounded-xl border border-app-warning/20 bg-app-warning-soft px-4 py-3 text-sm font-medium text-app-warning shadow-sm">
           {warning}
         </p>
       ) : null}
 
       {error ? (
-        <p className="rounded-xl border border-app-danger-soft bg-app-danger-soft px-4 py-3 text-sm font-medium text-app-danger">
+        <p className="rounded-xl border border-app-danger/20 bg-app-danger-soft px-4 py-3 text-sm font-medium text-app-danger shadow-sm">
           {error}
         </p>
       ) : null}
 
       {isUploadOpen ? (
-        <section className="rounded-2xl border border-app-border bg-app-surface p-5 shadow-app-soft">
+        <section className="app-card p-5 lg:p-6">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <h2 className="text-lg font-semibold text-app-text">Add a document</h2>
               <p className="mt-2 text-sm leading-6 text-app-muted">
-                Upload policies, procedures, vendor materials, or response plans for review. RegSpan stores the file and basic details now. Document reading and matching will be connected next.
+                Upload a PDF for secure storage, server-side text extraction, and deterministic document sectioning.
               </p>
             </div>
             <button
@@ -258,7 +258,7 @@ export function DocumentsClient() {
                   setSelectedFile(event.target.files?.[0] ?? null);
                   setError("");
                 }}
-                className="mt-2 block w-full rounded-lg border border-app-border bg-app-bg px-3 py-2 text-sm text-app-muted file:mr-3 file:rounded-md file:border-0 file:bg-app-accent-soft file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-app-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent"
+                className="app-field mt-2 block w-full px-3 py-2 text-sm text-app-muted file:mr-3 file:rounded-lg file:border-0 file:bg-app-accent-soft file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-app-accent"
               />
             </label>
 
@@ -270,7 +270,7 @@ export function DocumentsClient() {
                   setDocumentType(event.target.value);
                   setError("");
                 }}
-                className="mt-2 h-11 w-full rounded-lg border border-app-border bg-app-bg px-3 text-sm text-app-text outline-none transition focus:border-app-accent focus:ring-4 focus:ring-app-accent-soft"
+                className="app-field mt-2 h-11 w-full px-3 text-sm text-app-text"
               >
                 <option value="">Select document type</option>
                 {documentTypes.map((type) => (
@@ -288,7 +288,7 @@ export function DocumentsClient() {
                 onChange={(event) => setNotes(event.target.value)}
                 rows={4}
                 placeholder="Optional review context"
-                className="mt-2 w-full rounded-lg border border-app-border bg-app-bg px-3 py-2 text-sm text-app-text outline-none transition placeholder:text-app-muted focus:border-app-accent focus:ring-4 focus:ring-app-accent-soft"
+                className="app-field mt-2 w-full px-3 py-2 text-sm text-app-text placeholder:text-app-subtle"
               />
             </label>
 
@@ -305,21 +305,25 @@ export function DocumentsClient() {
       ) : null}
 
       {isLoading ? (
-        <div className="rounded-2xl border border-app-border bg-app-surface p-5 text-sm font-semibold text-app-muted shadow-app-soft">
-          Loading documents...
+        <div className="app-card flex items-center gap-3 p-5 text-sm font-semibold text-app-muted">
+          <span aria-hidden="true" className="size-2 animate-pulse rounded-full bg-app-accent" />
+          Loading documents…
         </div>
       ) : documents.length === 0 ? (
-        <div className="rounded-2xl border border-app-border bg-app-surface p-5 text-sm font-medium text-app-muted shadow-app-soft">
-          No documents have been uploaded yet.
+        <div className="app-empty-state">
+          <div className="mx-auto grid size-11 place-items-center rounded-2xl bg-app-accent-soft text-app-accent" aria-hidden="true">↥</div>
+          <h2 className="mt-4 text-base font-semibold text-app-text">No documents yet</h2>
+          <p className="mt-1 text-sm text-app-muted">Upload a policy or procedure to begin a secure document review.</p>
         </div>
       ) : (
         <DataTable columns={["Document name", "Type", "Review status", "Uploaded", "Sections", "Actions"]}>
           {documents.map((document) => (
             <tr key={document.id}>
               <td className="px-4 py-4 font-medium text-app-text">
-                <span className="block max-w-[320px] truncate" title={document.name}>
-                  {document.name}
-                </span>
+                <div className="flex items-center gap-3">
+                  <span aria-hidden="true" className="grid size-9 shrink-0 place-items-center rounded-lg border border-app-border bg-app-elevated font-mono text-[10px] font-bold text-app-accent">PDF</span>
+                  <span className="block max-w-[280px] truncate" title={document.name}>{document.name}</span>
+                </div>
               </td>
               <td className="px-4 py-4 text-app-muted">{document.type}</td>
               <td className="px-4 py-4">
@@ -328,8 +332,8 @@ export function DocumentsClient() {
               <td className="px-4 py-4 text-app-muted">{document.uploaded}</td>
               <td className="px-4 py-4 text-app-muted">{formatSectionsLabel(document.chunks)}</td>
               <td className="px-4 py-4">
-                <Link className="text-sm font-semibold text-app-accent transition-colors hover:text-app-accent-hover" href={`/documents/${document.id}`}>
-                  Review
+                <Link className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-semibold text-app-accent transition-colors hover:bg-app-accent-soft hover:text-app-accent-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-app-accent" href={`/documents/${document.id}`}>
+                  Review <span aria-hidden="true">→</span>
                 </Link>
               </td>
             </tr>

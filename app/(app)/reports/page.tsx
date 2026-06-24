@@ -26,7 +26,7 @@ const reports = [
 
 export default function ReportsPage() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <PageHeader
         eyebrow="Reports"
         title="Review reports"
@@ -36,11 +36,18 @@ export default function ReportsPage() {
         }
       />
 
-      <div className="rounded-2xl border border-app-border bg-app-surface p-5 shadow-app-soft">
-        <h2 className="text-lg font-semibold text-app-text">Report export placeholder</h2>
-        <p className="mt-2 text-sm leading-6 text-app-muted">
-          Export options will be added after document review workflows are connected.
-        </p>
+      <div className="app-card relative overflow-hidden p-6">
+        <div aria-hidden="true" className="absolute inset-y-0 left-0 w-1 bg-app-accent" />
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-app-accent">Export readiness</p>
+            <h2 className="mt-2 app-section-title">Report generation is coming next</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-app-muted">
+              Review outputs will become exportable after requirement matching and findings workflows are connected.
+            </p>
+          </div>
+          <span className="w-fit rounded-full border border-app-border bg-app-elevated px-3 py-1.5 text-xs font-semibold text-app-muted">Not connected</span>
+        </div>
       </div>
 
       <DataTable columns={["Report name", "Date", "Requirements reviewed", "Status"]}>

@@ -47,7 +47,7 @@ export function ThemeToggle({ showLabel = false }: ThemeToggleProps) {
         type="button"
         aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
         onClick={() => setTheme(nextTheme)}
-        className={`relative grid h-10 w-[76px] grid-cols-2 items-center rounded-full border p-1 shadow-app-soft transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent ${
+        className={`relative grid h-10 w-[76px] grid-cols-2 items-center rounded-xl border p-1 shadow-app-soft transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent ${
           isDark
             ? "border-app-border-strong bg-app-accent-soft"
             : "border-app-border bg-app-elevated"
@@ -60,7 +60,7 @@ export function ThemeToggle({ showLabel = false }: ThemeToggleProps) {
           <MoonIcon isActive={isDark} />
         </span>
         <span
-          className={`absolute left-1 top-1 size-8 rounded-full bg-app-accent shadow-[0_8px_22px_rgba(0,0,0,0.22)] transition-transform duration-300 ease-out ${
+          className={`absolute left-1 top-1 size-8 rounded-lg bg-app-accent shadow-[0_6px_16px_rgba(29,78,216,0.24)] transition-transform duration-200 ease-out ${
             isDark ? "translate-x-9" : "translate-x-0"
           }`}
         />

@@ -35,6 +35,8 @@ const config: Config = {
         "app-danger": "rgb(var(--app-danger) / <alpha-value>)",
         "app-danger-soft": "rgb(var(--app-danger-soft) / <alpha-value>)",
         "app-danger-hover": "rgb(var(--app-danger-hover) / <alpha-value>)",
+        "app-review": "rgb(var(--app-review) / <alpha-value>)",
+        "app-review-soft": "rgb(var(--app-review-soft) / <alpha-value>)",
         "light-bg": "#f7f9fc",
         "light-shell": "#ffffff",
         "light-surface": "#ffffff",
@@ -58,6 +60,12 @@ const config: Config = {
       boxShadow: {
         soft: "0 18px 50px rgba(30, 49, 42, 0.08)",
         "app-soft": "var(--app-shadow)",
+        "app-card": "var(--app-card-shadow)",
+        "app-float": "var(--app-float-shadow)",
+      },
+      fontFamily: {
+        sans: ["var(--font-geist-sans)", "ui-sans-serif", "system-ui", "sans-serif"],
+        mono: ["var(--font-geist-mono)", "ui-monospace", "monospace"],
       },
     },
   },

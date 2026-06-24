@@ -103,7 +103,7 @@ export function InfoTooltip({ children, preferredPlacement = "bottom" }: InfoToo
             setIsOpen(false);
           }
         }}
-        className="inline-grid size-7 place-items-center rounded-full border border-app-border bg-app-elevated text-xs font-semibold text-app-muted transition-colors hover:border-app-border-strong hover:text-app-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent"
+        className="inline-grid size-6 place-items-center rounded-full border border-app-border-strong bg-app-surface text-[11px] font-semibold text-app-muted shadow-sm transition-colors hover:border-app-accent hover:bg-app-accent-soft hover:text-app-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent"
       >
         ?
       </button>
@@ -114,7 +114,7 @@ export function InfoTooltip({ children, preferredPlacement = "bottom" }: InfoToo
           id={tooltipId}
           role="tooltip"
           style={{ left: position.left, top: position.top }}
-          className="fixed z-50 w-[min(260px,calc(100vw-24px))] rounded-xl border border-app-border bg-app-shell px-3.5 py-3 text-sm leading-5 text-app-text shadow-app-soft"
+          className="fixed z-50 w-[min(280px,calc(100vw-24px))] rounded-xl border border-app-border bg-app-shell px-4 py-3 text-sm leading-5 text-app-text shadow-app-float"
         >
           {children}
         </div>

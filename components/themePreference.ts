@@ -6,7 +6,7 @@ export type ThemePreference = "dark" | "light";
 
 const THEME_STORAGE_KEY = "regspan.theme";
 const THEME_CHANGE_EVENT = "regspan-theme-change";
-const DEFAULT_THEME: ThemePreference = "dark";
+const DEFAULT_THEME: ThemePreference = "light";
 
 function isThemePreference(value: string | null): value is ThemePreference {
   return value === "dark" || value === "light";

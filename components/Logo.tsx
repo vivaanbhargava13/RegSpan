@@ -14,12 +14,12 @@ export function Logo({ href = "/", tone = "light", variant = "full" }: LogoProps
     <Link
       href={href}
       aria-label="RegSpan"
-      className={`inline-flex items-center gap-2.5 text-lg font-semibold ${
+      className={`inline-flex items-center gap-2.5 text-lg font-semibold tracking-[-0.025em] ${
         isDark ? "text-app-text" : "text-ink"
       }`}
     >
       <span
-        className={`grid size-9 place-items-center rounded-xl border ${
+        className={`grid size-9 place-items-center rounded-xl border shadow-sm ${
           isDark
             ? "border-app-border-strong bg-app-accent-soft"
             : "border-line bg-white"
@@ -35,7 +35,7 @@ export function Logo({ href = "/", tone = "light", variant = "full" }: LogoProps
           priority
         />
       </span>
-      {variant === "full" ? <span>RegSpan</span> : null}
+      {variant === "full" ? <span className="text-[19px]">RegSpan</span> : null}
     </Link>
   );
 }
