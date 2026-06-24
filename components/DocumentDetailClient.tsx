@@ -46,6 +46,17 @@ type HierarchySummary = {
   childCount: number;
 };
 
+const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
+
+function validateSelectedPdf(file: File) {
+  if (file.size === 0) return "The PDF file is empty.";
+  if (file.size > MAX_DOCUMENT_BYTES) return "The PDF exceeds the 10 MB upload limit.";
+  if (file.type !== "application/pdf" || !file.name.toLowerCase().endsWith(".pdf")) {
+    return "Only PDF files are accepted.";
+  }
+  return null;
+}
+
 const fallbackChunkPreviews = [
   {
     title: "Preparation and incident response procedures",
@@ -177,7 +188,6 @@ const stateClasses: Record<TimelineState, string> = {
 export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) {
   const router = useRouter();
   const [document, setDocument] = useState<MockDocument | null>(null);
-  const [workspace, setWorkspace] = useState<CurrentWorkspace | null>(null);
   const [chunks, setChunks] = useState<DocumentChunk[]>([]);
   const [hierarchySummary, setHierarchySummary] = useState<HierarchySummary | null>(null);
   const [hasLoaded, setHasLoaded] = useState(false);
@@ -198,7 +208,6 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
 
         try {
           currentWorkspace = await getCurrentWorkspace(supabase);
-          setWorkspace(currentWorkspace);
         } catch (workspaceError) {
           setError(
             workspaceError instanceof Error
@@ -298,30 +307,31 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
         throw new Error(sessionError?.message || "Your session has expired. Log in again.");
       }
 
-      const response = await fetch(`/api/documents/${document.id}/mock-process`, {
+      const response = await fetch(`/api/documents/${document.id}/process`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${sessionData.session.access_token}`,
+          "Idempotency-Key": crypto.randomUUID(),
         },
       });
       const result = (await response.json()) as {
         ok?: boolean;
-        chunkCount?: number;
+        jobId?: string;
         error?: string;
       };
 
       if (!response.ok || !result.ok) {
-        throw new Error(result.error || "Mock processing failed.");
+        throw new Error(result.error || "Processing could not be started.");
       }
 
-      setMessage(`Mock processing completed with ${result.chunkCount ?? 0} chunks.`);
+      setMessage("Document processing was queued securely.");
       router.refresh();
       setRefreshKey((current) => current + 1);
     } catch (actionError) {
       setError(
         actionError instanceof Error
           ? actionError.message
-          : "Mock processing failed.",
+          : "Processing could not be started.",
       );
     }
 
@@ -334,66 +344,54 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
       return;
     }
 
-    if (!workspace) {
-      setError("Your workspace is not available.");
-      return;
-    }
-
     const supabase = getBrowserSupabaseClient();
     if (!supabase) {
       setError("Supabase is not configured, so replacement upload cannot run.");
       return;
     }
 
+    const fileError = validateSelectedPdf(replacementFile);
+    if (fileError) {
+      setError(fileError);
+      return;
+    }
+
     resetActionState();
     setActiveAction("replace");
-    const uploadedAt = new Date().toISOString();
-    const replacementPath = `${workspace.id}/${document.id}/replacement-${Date.now()}-${replacementFile.name}`;
-    const { error: uploadError } = await supabase.storage
-      .from("documents")
-      .upload(replacementPath, replacementFile, {
-        contentType: replacementFile.type || undefined,
-        upsert: false,
-      });
-
-    if (uploadError) {
-      setError(`Replacement upload failed: ${uploadError.message}`);
-      setActiveAction(null);
-      return;
-    }
-
-    const { error: updateError } = await supabase
-      .from("documents")
-      .update({
-        filename: replacementFile.name,
-        storage_path: replacementPath,
-        file_size: replacementFile.size,
-        mime_type: replacementFile.type || null,
-        status: "Uploaded",
-        chunks_label: "Pending",
-        uploaded_at: uploadedAt,
-      })
-      .eq("workspace_id", workspace.id)
-      .eq("id", document.id);
-
-    if (updateError) {
-      setError(`Replacement metadata update failed: ${updateError.message}`);
-      setActiveAction(null);
-      return;
-    }
-
-    if (document.storagePath) {
-      const { error: removeOldError } = await supabase.storage.from("documents").remove([document.storagePath]);
-      if (removeOldError) {
-        setWarning(`Replacement succeeded, but old storage cleanup failed: ${removeOldError.message}`);
+    try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !sessionData.session) {
+        throw new Error(sessionError?.message || "Your session has expired. Log in again.");
       }
-    }
 
-    setMessage("Replacement uploaded. Document reading and matching are not connected yet.");
-    setReplacementFile(null);
-    setIsReplaceOpen(false);
-    setRefreshKey((current) => current + 1);
-    setActiveAction(null);
+      const formData = new FormData();
+      formData.set("file", replacementFile);
+      const response = await fetch(`/api/documents/${document.id}/replace`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${sessionData.session.access_token}` },
+        body: formData,
+      });
+      const result = (await response.json()) as {
+        ok?: boolean;
+        cleanupWarning?: boolean;
+        error?: string;
+      };
+      if (!response.ok || !result.ok) {
+        throw new Error(result.error || "Replacement failed.");
+      }
+
+      if (result.cleanupWarning) {
+        setWarning("Replacement succeeded; old object cleanup will need server follow-up.");
+      }
+      setMessage("Replacement uploaded. Document reading and matching are not connected yet.");
+      setReplacementFile(null);
+      setIsReplaceOpen(false);
+      setRefreshKey((current) => current + 1);
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "Replacement failed.");
+    } finally {
+      setActiveAction(null);
+    }
   }
 
   async function handleDelete() {
@@ -415,39 +413,27 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
       return;
     }
 
-    if (!workspace) {
-      setError("Your workspace is not available.");
-      return;
-    }
-
-    if (!document.storagePath) {
-      setError("No storage path is available for this document.");
-      return;
-    }
-
     resetActionState();
     setActiveAction("delete");
-    const { error: storageDeleteError } = await supabase.storage.from("documents").remove([document.storagePath]);
+    try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !sessionData.session) {
+        throw new Error(sessionError?.message || "Your session has expired. Log in again.");
+      }
 
-    if (storageDeleteError) {
-      setError(`Storage delete failed: ${storageDeleteError.message}`);
+      const response = await fetch(`/api/documents/${document.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${sessionData.session.access_token}` },
+      });
+      const result = (await response.json()) as { ok?: boolean; error?: string };
+      if (!response.ok || !result.ok) {
+        throw new Error(result.error || "Document delete failed.");
+      }
+      router.push("/documents");
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "Document delete failed.");
       setActiveAction(null);
-      return;
     }
-
-    const { error: rowDeleteError } = await supabase
-      .from("documents")
-      .delete()
-      .eq("workspace_id", workspace.id)
-      .eq("id", document.id);
-
-    if (rowDeleteError) {
-      setError(`Document metadata delete failed: ${rowDeleteError.message}`);
-      setActiveAction(null);
-      return;
-    }
-
-    router.push("/documents");
   }
 
   function handleReplacementFileChange(event: ChangeEvent<HTMLInputElement>) {
@@ -550,7 +536,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
                 <span className="text-sm font-semibold text-app-text">Replacement file</span>
                 <input
                   type="file"
-                  accept=".pdf,.doc,.docx,.txt"
+                  accept="application/pdf,.pdf"
                   onChange={handleReplacementFileChange}
                   className="mt-2 block w-full rounded-lg border border-app-border bg-app-surface px-3 py-2 text-sm text-app-muted file:mr-3 file:rounded-md file:border-0 file:bg-app-accent-soft file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-app-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent"
                 />

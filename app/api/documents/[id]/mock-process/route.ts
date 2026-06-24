@@ -1,208 +1,175 @@
 import { NextResponse } from "next/server";
+import { createMockChunks, createMockHierarchy } from "@/lib/ingestion";
 import {
-  createMockChunks,
-  createMockHierarchy,
-} from "@/lib/ingestion";
-import {
-  authorizeIngestionRequest,
-  IngestionAuthorizationError,
-} from "@/lib/ingestionAuthorization";
+  authorizeDocumentRequest,
+  documentErrorResponse,
+  getCorrelationId,
+  isUuid,
+} from "@/lib/documentSecurity";
+import { recordSecurityAuditEvent } from "@/lib/securityAudit";
 import { getServerSupabaseAdminClient } from "@/lib/supabase/server";
 
-type RouteContext = {
-  params: Promise<{ id: string }>;
-};
+type RouteContext = { params: Promise<{ id: string }> };
+type JobStartResult = { job_id: string; status: string; replayed: boolean };
+
+function processingError(message: string) {
+  if (message.includes("processing_in_progress")) {
+    return { status: 409, error: "This document is already being processed.", code: "processing_in_progress" };
+  }
+  if (message.includes("processing_rate_limited")) {
+    return { status: 429, error: "Please wait a few seconds before processing again.", code: "rate_limited" };
+  }
+  if (message.includes("invalid_idempotency_key")) {
+    return { status: 400, error: "The processing request is invalid.", code: "invalid_request" };
+  }
+  return { status: 500, error: "Mock processing could not be started.", code: "processing_failed" };
+}
 
 export async function POST(request: Request, { params }: RouteContext) {
+  const correlationId = getCorrelationId(request);
+  const { id } = await params;
   let supabase;
+  let jobId: string | null = null;
+  let authorized: Awaited<ReturnType<typeof authorizeDocumentRequest>> | null = null;
 
   try {
     supabase = getServerSupabaseAdminClient();
-  } catch (error) {
-    return NextResponse.json(
+    authorized = await authorizeDocumentRequest(supabase, request, id);
+    const { actor, document } = authorized;
+    const suppliedKey = request.headers.get("idempotency-key")?.trim();
+    const idempotencyKey = suppliedKey && suppliedKey.length <= 128
+      ? suppliedKey
+      : correlationId;
+
+    const { data: startData, error: startError } = await supabase.rpc(
+      "start_processing_job",
       {
-        ok: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Supabase admin client is not configured on the server.",
+        p_workspace_id: document.workspace_id,
+        p_document_id: document.id,
+        p_status: "Processing",
+        p_step: "Creating mock chunks",
+        p_idempotency_key: idempotencyKey,
+        p_request_id: correlationId,
       },
-      { status: 500 },
     );
-  }
 
-  const { id } = await params;
-  let document;
+    if (startError) {
+      console.error("[RegSpan ingestion] Mock start failed", {
+        correlationId,
+        documentId: document.id,
+        error: startError.message,
+      });
+      const mapped = processingError(startError.message);
+      await recordSecurityAuditEvent(supabase, {
+        request,
+        correlationId,
+        action: "document.mock_process",
+        outcome: "failure",
+        workspaceId: document.workspace_id,
+        actorUserId: actor.user.id,
+        targetType: "document",
+        targetId: document.id,
+        metadata: { code: mapped.code },
+      });
+      return NextResponse.json(
+        { ok: false, error: mapped.error, code: mapped.code },
+        { status: mapped.status },
+      );
+    }
 
-  try {
-    document = await authorizeIngestionRequest(supabase, request, id);
-  } catch (error) {
-    return NextResponse.json(
+    const startResult = startData as JobStartResult;
+    jobId = startResult.job_id;
+    const chunks = createMockChunks(document);
+    const hierarchy = createMockHierarchy(document);
+    const { data: chunkCount, error: completionError } = await supabase.rpc(
+      "complete_mock_processing",
       {
-        ok: false,
-        error: error instanceof Error ? error.message : "Unable to authorize request.",
+        p_workspace_id: document.workspace_id,
+        p_document_id: document.id,
+        p_job_id: jobId,
+        p_chunks: chunks,
+        p_hierarchy: hierarchy.hierarchy_json,
       },
-      { status: error instanceof IngestionAuthorizationError ? error.status : 500 },
     );
-  }
 
-  let jobId: string | null = null;
-
-  try {
-    const startedAt = new Date().toISOString();
-    const { data: existingJob, error: existingJobError } = await supabase
-      .from("processing_jobs")
-      .select("id")
-      .eq("workspace_id", document.workspace_id)
-      .eq("document_id", document.id)
-      .in("status", ["Queued", "Processing", "Reprocessing", "Failed"])
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (existingJobError) {
-      throw new Error(`Unable to look up processing job: ${existingJobError.message}`);
+    if (completionError) {
+      throw new Error(`mock_completion_failed:${completionError.message}`);
     }
 
-    if (existingJob) {
-      jobId = existingJob.id;
-      const { error } = await supabase
-        .from("processing_jobs")
-        .update({
-          status: "Processing",
-          step: "Creating mock chunks",
-          error_message: null,
-          started_at: startedAt,
-          completed_at: null,
-          updated_at: startedAt,
-        })
-        .eq("id", jobId);
-
-      if (error) {
-        throw new Error(`Unable to update processing job: ${error.message}`);
-      }
-    } else {
-      const { data: job, error } = await supabase
-        .from("processing_jobs")
-        .insert({
-          workspace_id: document.workspace_id,
-          document_id: document.id,
-          status: "Processing",
-          step: "Creating mock chunks",
-          started_at: startedAt,
-          updated_at: startedAt,
-        })
-        .select("id")
-        .single();
-
-      if (error) {
-        throw new Error(`Unable to create processing job: ${error.message}`);
-      }
-
-      jobId = job.id;
-    }
-
-    const { error: processingStatusError } = await supabase
-      .from("documents")
-      .update({ status: "Processing", chunks_label: "Pending" })
-      .eq("workspace_id", document.workspace_id)
-      .eq("id", document.id);
-
-    if (processingStatusError) {
-      throw new Error(`Unable to mark document as processing: ${processingStatusError.message}`);
-    }
-
-    const { error: chunkDeleteError } = await supabase
-      .from("document_chunks")
-      .delete()
-      .eq("workspace_id", document.workspace_id)
-      .eq("document_id", document.id);
-
-    if (chunkDeleteError) {
-      throw new Error(`Unable to clear existing chunks: ${chunkDeleteError.message}`);
-    }
-
-    const { error: hierarchyDeleteError } = await supabase
-      .from("document_hierarchy")
-      .delete()
-      .eq("workspace_id", document.workspace_id)
-      .eq("document_id", document.id);
-
-    if (hierarchyDeleteError) {
-      throw new Error(`Unable to clear existing hierarchy: ${hierarchyDeleteError.message}`);
-    }
-
-    const mockChunks = createMockChunks(document);
-    const { error: chunkInsertError } = await supabase
-      .from("document_chunks")
-      .insert(mockChunks);
-
-    if (chunkInsertError) {
-      throw new Error(`Unable to insert mock chunks: ${chunkInsertError.message}`);
-    }
-
-    const { error: hierarchyInsertError } = await supabase
-      .from("document_hierarchy")
-      .insert(createMockHierarchy(document));
-
-    if (hierarchyInsertError) {
-      throw new Error(`Unable to insert mock hierarchy: ${hierarchyInsertError.message}`);
-    }
-
-    const completedAt = new Date().toISOString();
-    const { error: documentCompleteError } = await supabase
-      .from("documents")
-      .update({ status: "Processed", chunks_label: `${mockChunks.length} sections` })
-      .eq("workspace_id", document.workspace_id)
-      .eq("id", document.id);
-
-    if (documentCompleteError) {
-      throw new Error(`Unable to complete document processing: ${documentCompleteError.message}`);
-    }
-
-    const { error: jobCompleteError } = await supabase
-      .from("processing_jobs")
-      .update({
-        status: "Processed",
-        step: "Mock processing complete",
-        error_message: null,
-        completed_at: completedAt,
-        updated_at: completedAt,
-      })
-      .eq("id", jobId);
-
-    if (jobCompleteError) {
-      throw new Error(`Unable to complete processing job: ${jobCompleteError.message}`);
-    }
+    await recordSecurityAuditEvent(supabase, {
+      request,
+      correlationId,
+      action: "document.mock_process",
+      outcome: "success",
+      workspaceId: document.workspace_id,
+      actorUserId: actor.user.id,
+      targetType: "document",
+      targetId: document.id,
+      metadata: {
+        job_id: jobId,
+        chunk_count: chunkCount,
+        replayed: startResult.replayed,
+      },
+    });
 
     return NextResponse.json({
       ok: true,
       jobId,
-      chunkCount: mockChunks.length,
+      chunkCount: Number(chunkCount),
+      replayed: startResult.replayed,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Mock processing failed.";
-    const failedAt = new Date().toISOString();
+    console.error("[RegSpan ingestion] Mock processing failed", {
+      correlationId,
+      documentId: id,
+      jobId,
+      error: error instanceof Error ? error.message : "unknown_error",
+    });
 
-    await supabase
-      .from("documents")
-      .update({ status: "Failed", chunks_label: "Pending" })
-      .eq("workspace_id", document.workspace_id)
-      .eq("id", document.id);
-
-    if (jobId) {
+    if (supabase && authorized && jobId) {
+      const failedAt = new Date().toISOString();
       await supabase
         .from("processing_jobs")
         .update({
           status: "Failed",
           step: "Mock processing failed",
-          error_message: message,
+          error_message: "Mock processing failed.",
           completed_at: failedAt,
           updated_at: failedAt,
         })
-        .eq("id", jobId);
+        .eq("id", jobId)
+        .in("status", ["Queued", "Processing", "Reprocessing"]);
+      await supabase
+        .from("documents")
+        .update({ status: "Failed", chunks_label: "Pending" })
+        .eq("id", authorized.document.id)
+        .eq("workspace_id", authorized.document.workspace_id);
+      await recordSecurityAuditEvent(supabase, {
+        request,
+        correlationId,
+        action: "document.mock_process",
+        outcome: "failure",
+        workspaceId: authorized.document.workspace_id,
+        actorUserId: authorized.actor.user.id,
+        targetType: "document",
+        targetId: authorized.document.id,
+        metadata: { code: "processing_failed", job_id: jobId },
+      });
+    } else if (supabase) {
+      await recordSecurityAuditEvent(supabase, {
+        request,
+        correlationId,
+        action: "document.mock_process",
+        outcome: "failure",
+        workspaceId: authorized?.document.workspace_id,
+        actorUserId: authorized?.actor.user.id,
+        targetType: "document",
+        targetId: isUuid(id) ? id : null,
+        metadata: { code: "processing_failed" },
+      });
     }
 
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    const response = documentErrorResponse(error);
+    return NextResponse.json(response.body, { status: response.status });
   }
 }

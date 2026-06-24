@@ -29,9 +29,19 @@ function formatSectionsLabel(label: string) {
   return label.replace(/\bchunks\b/gi, "sections");
 }
 
+const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
+
+function validateSelectedPdf(file: File) {
+  if (file.size === 0) return "The PDF file is empty.";
+  if (file.size > MAX_DOCUMENT_BYTES) return "The PDF exceeds the 10 MB upload limit.";
+  if (file.type !== "application/pdf" || !file.name.toLowerCase().endsWith(".pdf")) {
+    return "Only PDF files are accepted.";
+  }
+  return null;
+}
+
 export function DocumentsClient() {
   const [documents, setDocuments] = useState<MockDocument[]>(initialDocuments);
-  const [workspace, setWorkspace] = useState<CurrentWorkspace | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
@@ -64,7 +74,6 @@ export function DocumentsClient() {
 
     try {
       currentWorkspace = await getCurrentWorkspace(supabase);
-      setWorkspace(currentWorkspace);
     } catch (workspaceError) {
       setError(
         workspaceError instanceof Error
@@ -127,66 +136,47 @@ export function DocumentsClient() {
       return;
     }
 
+    const fileError = validateSelectedPdf(selectedFile);
+    if (fileError) {
+      setError(fileError);
+      return;
+    }
+
     const supabase = getBrowserSupabaseClient();
 
     if (supabase) {
-      let activeWorkspace = workspace;
-
-      if (!activeWorkspace) {
-        try {
-          activeWorkspace = await getCurrentWorkspace(supabase);
-          setWorkspace(activeWorkspace);
-        } catch (workspaceError) {
-          setError(
-            workspaceError instanceof Error
-              ? workspaceError.message
-              : "Unable to load your workspace.",
-          );
-          return;
-        }
-      }
-
       setIsSubmitting(true);
       setError("");
 
-      const documentId = crypto.randomUUID();
-      const storagePath = `${activeWorkspace.id}/${documentId}/${selectedFile.name}`;
-      const { error: uploadError } = await supabase.storage
-        .from("documents")
-        .upload(storagePath, selectedFile, {
-          contentType: selectedFile.type || undefined,
-          upsert: false,
+      try {
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError || !sessionData.session) {
+          throw new Error(sessionError?.message || "Your session has expired. Log in again.");
+        }
+
+        const formData = new FormData();
+        formData.set("file", selectedFile);
+        formData.set("documentType", documentType);
+        formData.set("notes", notes.trim());
+
+        const response = await fetch("/api/documents", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${sessionData.session.access_token}` },
+          body: formData,
         });
+        const result = (await response.json()) as { ok?: boolean; error?: string };
 
-      if (uploadError) {
-        setError(`Supabase storage upload failed: ${uploadError.message}`);
+        if (!response.ok || !result.ok) {
+          throw new Error(result.error || "Document upload failed.");
+        }
+
+        resetForm();
+        await loadDocuments();
+      } catch (uploadError) {
+        setError(uploadError instanceof Error ? uploadError.message : "Document upload failed.");
+      } finally {
         setIsSubmitting(false);
-        return;
       }
-
-      const { error: insertError } = await supabase.from("documents").insert({
-        id: documentId,
-        workspace_id: activeWorkspace.id,
-        filename: selectedFile.name,
-        document_type: documentType,
-        notes: notes.trim() || null,
-        status: "Uploaded",
-        chunks_label: "Pending",
-        storage_path: storagePath,
-        file_size: selectedFile.size,
-        mime_type: selectedFile.type || null,
-        uploaded_at: new Date().toISOString(),
-      });
-
-      if (insertError) {
-        setError(`Document metadata insert failed: ${insertError.message}`);
-        setIsSubmitting(false);
-        return;
-      }
-
-      resetForm();
-      await loadDocuments();
-      setIsSubmitting(false);
       return;
     }
 
@@ -263,7 +253,7 @@ export function DocumentsClient() {
               <span className="text-sm font-semibold text-app-text">File</span>
               <input
                 type="file"
-                accept=".pdf,.doc,.docx,.txt"
+                accept="application/pdf,.pdf"
                 onChange={(event) => {
                   setSelectedFile(event.target.files?.[0] ?? null);
                   setError("");
