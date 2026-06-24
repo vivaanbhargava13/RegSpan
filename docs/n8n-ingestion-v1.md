@@ -34,16 +34,55 @@ Store these only in n8n's encrypted credentials/environment configuration:
 
 - `REGSPAN_WEBHOOK_SECRET`: the same high-entropy, 32-character-or-longer value
   used by RegSpan's `N8N_INGEST_WEBHOOK_SECRET`.
-- `SUPABASE_URL` and an approved server-side Supabase credential for ingestion.
-  If v1 uses the service role, store it only in n8n's encrypted credential store
-  and never expose it in workflow output, webhook responses, or browser code.
+- `INGESTION_WORKER_SECRET`: a separate high-entropy, 32-character-or-longer
+  bearer secret matching RegSpan's server-only value.
+
+The placeholder worker does not require Supabase credentials in n8n. n8n calls
+the authenticated RegSpan endpoint instead; the Supabase service role remains in
+the RegSpan server environment.
 
 Use HTTPS outside local development. Reject requests when the secret is absent
 or does not match. Compare secrets using a timing-safe mechanism where the n8n
 runtime permits it. Consider also rejecting stale timestamp headers once clock
 skew and retry behavior are defined.
 
-## Expected v1 workflow
+## Current placeholder worker node
+
+After the valid branch of the existing IF node, add an **HTTP Request** node:
+
+- Method: `POST`
+- URL, native local n8n: `http://localhost:3000/api/internal/ingest/process-job`
+- URL, Docker Desktop n8n: `http://host.docker.internal:3000/api/internal/ingest/process-job`
+- Production URL: `https://YOUR_REGSPAN_HOST/api/internal/ingest/process-job`
+- Authentication: use an n8n Header Auth credential
+- Header name: `Authorization`
+- Header value: `Bearer YOUR_INGESTION_WORKER_SECRET`
+- Send Body: enabled
+- Body Content Type: JSON
+- Response Format: JSON
+
+Use these JSON body fields when the HTTP Request node directly follows the IF
+node and retains the original Webhook node output:
+
+```json
+{
+  "jobId": "={{ $json.body.jobId }}",
+  "documentId": "={{ $json.body.documentId }}",
+  "workspaceId": "={{ $json.body.workspaceId }}",
+  "correlationId": "={{ $json.body.correlationId }}"
+}
+```
+
+Do not place the worker secret in the JSON body or a normal workflow Set node.
+Keep it in n8n's encrypted Header Auth credential store. A successful new job
+returns `status: "completed"`; a completed retry returns
+`status: "already_completed"`. Both are HTTP 200 and safe to treat as success.
+
+The placeholder endpoint validates the authoritative job/document/workspace
+relationship, records audit events, and moves the job and document to the
+database status `Processed`. It does not read the PDF or create chunks.
+
+## Future real ingestion workflow
 
 1. Receive the webhook and verify the secret before doing any work.
 2. Validate all four payload fields and treat them only as identifiers.
@@ -58,9 +97,10 @@ skew and retry behavior are defined.
 10. Mark the job and document `Processed` on success.
 11. Mark both `Failed` with a non-sensitive error on failure.
 
-RegSpan does not implement steps 5–11 in this change. Before real extraction is
-enabled, add a purpose-built transactional RPC or authenticated callback rather
-than issuing a fragile sequence of unrelated table writes.
+RegSpan currently implements only the authenticated handoff and placeholder
+status transition. Before real extraction is enabled, add a purpose-built
+transactional worker or callback rather than issuing a fragile sequence of
+unrelated table writes from n8n.
 
 ## Security and operations
 
