@@ -57,24 +57,6 @@ function validateSelectedPdf(file: File) {
   return null;
 }
 
-const fallbackChunkPreviews = [
-  {
-    title: "Preparation and incident response procedures",
-    page: "Page 4",
-    excerpt: "Mock excerpt: procedures outline preparation, escalation, and reviewer coordination steps.",
-  },
-  {
-    title: "Detection and analysis process",
-    page: "Page 7",
-    excerpt: "Mock excerpt: detection criteria and analysis responsibilities are summarized for review.",
-  },
-  {
-    title: "Containment and recovery procedures",
-    page: "Page 11",
-    excerpt: "Mock excerpt: containment, recovery, and post-incident documentation steps are noted.",
-  },
-];
-
 function formatSectionsLabel(label: string) {
   return label.replace(/\bchunks\b/gi, "sections");
 }
@@ -123,58 +105,95 @@ function formatHierarchySummary(summary: HierarchySummary) {
   return `Generated · ${topLevelLabel} · ${childLabel}`;
 }
 
-function getTimeline(status: DocumentStatus): TimelineStep[] {
+const requirementMatchingStep: TimelineStep = {
+  label: "Requirement matching",
+  status: "Not connected",
+  detail: "Reg S-P requirement matching has not been implemented yet.",
+  state: "pending",
+};
+
+function getTimeline(status: DocumentStatus, chunkCount: number): TimelineStep[] {
   if (status === "Uploaded") {
     return [
       { label: "Uploaded", status: "Complete", detail: "File and document details are saved.", state: "complete" },
-      { label: "Text reading", status: "Not connected", detail: "Not connected yet.", state: "pending" },
-      { label: "Document sectioning", status: "Not connected", detail: "Not connected yet.", state: "pending" },
-      { label: "Requirement matching", status: "Not connected", detail: "Not connected yet.", state: "pending" },
+      { label: "PDF text extraction", status: "Ready", detail: "Start processing to extract text from the stored PDF.", state: "pending" },
+      { label: "Chunking", status: "Pending", detail: "Document chunks will be generated after PDF text extraction.", state: "pending" },
+      requirementMatchingStep,
     ];
   }
 
   if (status === "Processed") {
     return [
       { label: "Uploaded", status: "Complete", detail: "File and document details are saved.", state: "complete" },
-      { label: "Text reading", status: "Demo complete", detail: "This is a demo review state; no real text reading has run in the browser.", state: "complete" },
-      { label: "Document sectioning", status: "Demo complete", detail: "Mock document sections are shown for layout review only.", state: "complete" },
-      { label: "Requirement matching", status: "Not connected", detail: "Not connected yet.", state: "pending" },
+      {
+        label: "PDF text extraction",
+        status: "Complete",
+        detail: chunkCount > 0
+          ? "PDF text was extracted by the secure ingestion worker."
+          : "PDF processing completed, but no extracted chunks are currently available.",
+        state: "complete",
+      },
+      {
+        label: "Chunking",
+        status: chunkCount > 0 ? "Complete" : "No chunks",
+        detail: chunkCount > 0
+          ? "Document chunks were generated from extracted PDF text."
+          : "Reprocess this document to generate extracted text chunks.",
+        state: chunkCount > 0 ? "complete" : "review",
+      },
+      requirementMatchingStep,
     ];
   }
 
   if (status === "Processing") {
     return [
       { label: "Uploaded", status: "Complete", detail: "File and document details are saved.", state: "complete" },
-      { label: "Text reading", status: "Queued", detail: "Not connected yet.", state: "current" },
-      { label: "Document sectioning", status: "Pending", detail: "Not connected yet.", state: "pending" },
-      { label: "Requirement matching", status: "Pending", detail: "Not connected yet.", state: "pending" },
+      { label: "PDF text extraction", status: "Processing", detail: "The secure ingestion worker is extracting text from the PDF.", state: "current" },
+      { label: "Chunking", status: "Pending", detail: "Chunks will be stored after text extraction completes.", state: "pending" },
+      requirementMatchingStep,
     ];
   }
 
   if (status === "Needs Review") {
     return [
       { label: "Uploaded", status: "Complete", detail: "File and document details are saved.", state: "complete" },
-      { label: "Text reading", status: "Needs review", detail: "This demo state needs reviewer attention before report use.", state: "review" },
-      { label: "Document sectioning", status: "Needs review", detail: "Document sections should be checked before report use.", state: "review" },
-      { label: "Requirement matching", status: "Not connected", detail: "Not connected yet.", state: "pending" },
+      { label: "PDF text extraction", status: "Needs review", detail: "Extracted PDF text requires reviewer attention.", state: "review" },
+      { label: "Chunking", status: "Needs review", detail: chunkCount > 0 ? "Review the generated chunks before continuing." : "No extracted chunks are available for review.", state: "review" },
+      requirementMatchingStep,
     ];
   }
 
   if (status === "Failed") {
     return [
       { label: "Uploaded", status: "Complete", detail: "File and document details are saved.", state: "complete" },
-      { label: "Text reading", status: "Failed", detail: "Review could not continue for this demo document.", state: "blocked" },
-      { label: "Document sectioning", status: "Blocked", detail: "Document sectioning is blocked until review is retried.", state: "blocked" },
-      { label: "Requirement matching", status: "Blocked", detail: "Requirement matching is not available for this document.", state: "blocked" },
+      { label: "PDF text extraction", status: "Failed", detail: "The ingestion worker could not extract usable text from this PDF.", state: "blocked" },
+      { label: "Chunking", status: "Blocked", detail: "Chunks were not generated because PDF text extraction failed.", state: "blocked" },
+      requirementMatchingStep,
     ];
   }
 
   return [
     { label: "Uploaded", status: "Complete", detail: "File and document details are saved.", state: "complete" },
-    { label: "Text reading", status: "Queued", detail: "Not connected yet.", state: "pending" },
-    { label: "Document sectioning", status: "Pending", detail: "Not connected yet.", state: "pending" },
-    { label: "Requirement matching", status: "Pending", detail: "Not connected yet.", state: "pending" },
+    { label: "PDF text extraction", status: "Queued", detail: "The document is queued for secure PDF text extraction.", state: "current" },
+    { label: "Chunking", status: "Pending", detail: "Chunking will begin after the worker extracts PDF text.", state: "pending" },
+    requirementMatchingStep,
   ];
+}
+
+function getChunkEmptyState(status: DocumentStatus) {
+  if (status === "Processed") {
+    return "Processing completed, but no extracted chunks are available. Reprocess the document to run PDF extraction and chunking again.";
+  }
+  if (status === "Processing") {
+    return "PDF text extraction and chunking are currently in progress.";
+  }
+  if (status === "Queued") {
+    return "This document is queued. Extracted chunks will appear after processing completes.";
+  }
+  if (status === "Failed") {
+    return "Extracted chunks are unavailable because PDF processing failed. Reprocess the document to try again.";
+  }
+  return "Start processing this document to extract PDF text and generate chunks.";
 }
 
 const stateClasses: Record<TimelineState, string> = {
@@ -383,7 +402,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
       if (result.cleanupWarning) {
         setWarning("Replacement succeeded; old object cleanup will need server follow-up.");
       }
-      setMessage("Replacement uploaded. Document reading and matching are not connected yet.");
+      setMessage("Replacement uploaded. Reprocess the document to extract text and generate chunks.");
       setReplacementFile(null);
       setIsReplaceOpen(false);
       setRefreshKey((current) => current + 1);
@@ -606,7 +625,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
         <div className="rounded-2xl border border-app-border bg-app-surface p-5 shadow-app-soft">
           <h2 className="text-lg font-semibold text-app-text">Review timeline</h2>
           <div className="mt-5 space-y-3">
-            {getTimeline(document.status).map((item, index) => (
+            {getTimeline(document.status, chunks.length).map((item, index) => (
               <div key={item.label} className="flex gap-3 rounded-xl border border-app-border bg-app-elevated p-4">
                 <span className={`grid size-8 shrink-0 place-items-center rounded-full text-xs font-bold ${stateClasses[item.state]}`}>
                   {index + 1}
@@ -625,7 +644,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
 
         <div className="space-y-4">
           <div className="rounded-2xl border border-app-border bg-app-surface p-5 shadow-app-soft">
-            <h2 className="text-lg font-semibold text-app-text">Processed chunks</h2>
+            <h2 className="text-lg font-semibold text-app-text">Extracted chunks</h2>
             {chunks.length > 0 ? (
               <div className="mt-5 space-y-3">
                 {chunks.map((chunk) => (
@@ -649,21 +668,9 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
                   </article>
                 ))}
               </div>
-            ) : document.status === "Processed" ? (
-              <div className="mt-5 space-y-3">
-                {fallbackChunkPreviews.map((chunk) => (
-                  <article key={chunk.title} className="rounded-xl border border-app-border bg-app-elevated p-4">
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                      <h3 className="text-sm font-semibold text-app-text">{chunk.title}</h3>
-                      <span className="text-xs font-semibold text-app-muted">{chunk.page}</span>
-                    </div>
-                    <p className="mt-2 text-sm leading-6 text-app-muted">{chunk.excerpt}</p>
-                  </article>
-                ))}
-              </div>
             ) : (
               <p className="mt-3 rounded-xl border border-app-border bg-app-elevated p-4 text-sm leading-6 text-app-muted">
-                Document sections will appear here after document reading is connected.
+                {getChunkEmptyState(document.status)}
               </p>
             )}
           </div>
@@ -671,7 +678,9 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
           <div className="rounded-2xl border border-app-border bg-app-surface p-5 shadow-app-soft">
             <h2 className="text-lg font-semibold text-app-text">Document matching status</h2>
             <p className="mt-3 rounded-xl border border-app-border bg-app-elevated p-4 text-sm leading-6 text-app-muted">
-              Reg S-P requirement matching will run after document reading is connected.
+              {chunks.length > 0
+                ? "Reg S-P requirement matching is not connected yet. Extracted chunks are ready for a future matching workflow."
+                : "Reg S-P requirement matching is not connected yet."}
             </p>
           </div>
         </div>
