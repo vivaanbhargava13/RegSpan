@@ -12,6 +12,10 @@ test("embedding credentials remain behind server-only boundaries", async () => {
 
   assert.match(embeddingBoundary, /import ["']server-only["']/);
   assert.match(chunkWorker, /import ["']server-only["']/);
+  assert.match(chunkWorker, /metadata\?\.embedding_input/);
+  assert.match(chunkWorker, /metadata\?\.retrieval_excluded/);
+  assert.match(chunkWorker, /metadata\?\.retrieval_included/);
+  assert.match(chunkWorker, /metadata\?\.evidence_class/);
   assert.match(retrieval, /import ["']server-only["']/);
 
   const clientSources = await Promise.all(

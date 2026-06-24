@@ -60,7 +60,11 @@ test("valid PDF text is extracted and chunked", async () => {
   assert.equal(result.chunks[0].token_estimate, Math.ceil(result.chunks[0].content.length / 4));
   assert.match(result.chunks[0].content_hash, /^[0-9a-f]{64}$/);
   assert.equal(result.chunks[0].metadata.content_hash, result.chunks[0].content_hash);
-  assert.equal(result.chunks[0].metadata.section_path, "Extracted PDF > Page 1");
+  assert.match(result.chunks[0].metadata.source_content_hash, /^[0-9a-f]{64}$/);
+  assert.equal(result.chunks[0].metadata.section_path, "Document Overview");
+  assert.match(result.chunks[0].metadata.embedding_input, /Filename: policy\.pdf/);
+  assert.match(result.chunks[0].metadata.embedding_input, /Section: Document Overview/);
+  assert.equal(result.chunks[0].metadata.embedding_input.endsWith(result.chunks[0].content), true);
   assert.equal(result.hierarchy.headings.length, 1);
 });
 

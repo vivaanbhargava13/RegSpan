@@ -24,14 +24,25 @@ documents are never sent to n8n.
 ## Ingestion sequence
 
 1. The existing authenticated worker downloads and extracts the private PDF.
-2. Deterministic chunks receive page, hierarchy, character-offset, approximate
-   token, processing-job, filename, and SHA-256 content-hash metadata.
+2. Deterministic section-aware chunks preserve likely policy headings,
+   paragraphs, short lists, page ranges, hierarchy, character offsets,
+   approximate token counts, processing-job IDs, filenames, and hashes.
+   Displayed `content` remains faithful extracted text. The embedding input is
+   stored separately in metadata and enriches that content with filename,
+   section path, parent heading, and citation page range.
+   Before section detection, chunking v2 removes classification markings,
+   repeated edge headers/footers, variable-number footer lines, bare page
+   numbers, and numbered citation footnotes. Table-of-contents/navigation pages are
+   excluded from evidence chunks entirely. Included chunks carry explicit
+   `is_boilerplate`, `is_toc`, `is_footnote`, `retrieval_excluded`, and
+   `retrieval_included` flags.
 3. `store_ingestion_chunks_for_embedding_v1` upserts chunks by
    `(document_id, chunk_index)`, preserving stable chunk IDs where possible.
 4. Changed content hashes remove stale embeddings; removed chunks cascade-delete
    their embeddings.
 5. The worker checks `chunk_embeddings` for the configured model and skips every
-   chunk whose stored content hash still matches.
+   chunk whose stored retrieval-input hash still matches. A separate source
+   content hash remains available for citation-integrity checks.
 6. Missing or changed chunks are embedded in bounded batches and upserted by
    `(chunk_id, embedding_model)`.
 7. `finalize_ingestion_embeddings_v1` marks the job and document `Processed`

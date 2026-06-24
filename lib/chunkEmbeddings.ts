@@ -34,7 +34,7 @@ export async function embedDocumentChunks({
 }: EmbedDocumentChunksInput): Promise<EmbedDocumentChunksResult> {
   const { data: chunkData, error: chunkError } = await supabase
     .from("document_chunks")
-    .select("id, content, content_hash")
+    .select("id, content, content_hash, metadata")
     .eq("workspace_id", workspaceId)
     .eq("document_id", documentId)
     .order("chunk_index", { ascending: true });
@@ -51,6 +51,7 @@ export async function embedDocumentChunks({
     id: string;
     content: string;
     content_hash: string | null;
+    metadata: Record<string, unknown> | null;
   }>;
 
   if (chunks.length === 0 || chunks.some((chunk) => !chunk.content_hash)) {
@@ -61,7 +62,18 @@ export async function embedDocumentChunks({
     );
   }
 
-  const embeddableChunks = chunks as EmbeddableChunk[];
+  const retrievalIncludedChunks = chunks.filter(
+    (chunk) => chunk.metadata?.retrieval_excluded !== true
+      && chunk.metadata?.retrieval_included !== false
+      && chunk.metadata?.evidence_class === "evidence",
+  );
+  const embeddableChunks: EmbeddableChunk[] = retrievalIncludedChunks.map((chunk) => ({
+    id: chunk.id,
+    content: typeof chunk.metadata?.embedding_input === "string"
+      ? chunk.metadata.embedding_input
+      : chunk.content,
+    content_hash: chunk.content_hash!,
+  }));
   const { data: embeddingData, error: embeddingError } = await supabase
     .from("chunk_embeddings")
     .select("chunk_id, content_hash, embedding_model")
@@ -114,8 +126,8 @@ export async function embedDocumentChunks({
   return {
     provider: provider.provider,
     model: provider.model,
-    chunkCount: chunks.length,
+    chunkCount: retrievalIncludedChunks.length,
     embeddedCount,
-    skippedCount: chunks.length - embeddedCount,
+    skippedCount: retrievalIncludedChunks.length - embeddedCount,
   };
 }
