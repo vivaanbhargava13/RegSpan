@@ -37,8 +37,26 @@ export type DocumentChunk = {
   section_chunk_end: number | null;
   parent_chunk_start: number | null;
   parent_chunk_end: number | null;
+  filename: string | null;
+  char_start: number | null;
+  char_end: number | null;
+  token_estimate: number | null;
+  processing_job_id: string | null;
+  content_hash: string | null;
   embedding: number[] | string | null;
   created_at: string;
+};
+
+export type ChunkEmbedding = {
+  id: string;
+  chunk_id: string;
+  workspace_id: string;
+  document_id: string;
+  embedding: number[] | string;
+  embedding_model: string;
+  content_hash: string;
+  created_at: string;
+  updated_at: string;
 };
 
 export type DocumentHierarchy = {

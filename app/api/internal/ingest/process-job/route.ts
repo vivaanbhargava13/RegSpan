@@ -14,6 +14,8 @@ import {
   PdfProcessingError,
   PDF_EXTRACTION_VERSION,
 } from "@/lib/pdfIngestion";
+import { embedDocumentChunks } from "@/lib/chunkEmbeddings";
+import { EmbeddingProcessingError } from "@/lib/embeddings";
 import { recordSecurityAuditEvent } from "@/lib/securityAudit";
 import { getServerSupabaseAdminClient } from "@/lib/supabase/server";
 
@@ -46,9 +48,10 @@ type WorkerDocument = {
 };
 
 type WorkerResult = {
-  result: "claimed" | "resumed" | "completed" | "already_completed";
+  result: "claimed" | "resumed" | "chunks_stored" | "completed" | "already_completed";
   job_status: "Processing" | "Processed";
   chunk_count?: number;
+  embedding_count?: number;
   replayed: boolean;
 };
 
@@ -444,8 +447,8 @@ export async function POST(request: Request) {
     });
 
     stage = "store_document_chunks";
-    const { data: completionData, error: completionError } = await supabase.rpc(
-      "complete_ingestion_job_with_chunks_v1",
+    const { data: storageData, error: storageError } = await supabase.rpc(
+      "store_ingestion_chunks_for_embedding_v1",
       {
         p_job_id: payload.jobId,
         p_document_id: payload.documentId,
@@ -455,15 +458,15 @@ export async function POST(request: Request) {
       },
     );
 
-    if (completionError) {
-      if (isValidationError(completionError.message)) {
-        console.warn("[RegSpan worker] Completion transaction rejected", {
+    if (storageError) {
+      if (isValidationError(storageError.message)) {
+        console.warn("[RegSpan worker] Chunk storage transaction rejected", {
           correlationId,
           jobId: payload.jobId,
           documentId: payload.documentId,
           workspaceId: payload.workspaceId,
           stage,
-          code: completionError.code,
+          code: storageError.code,
         });
         await recordSecurityAuditEvent(supabase, {
           request,
@@ -477,7 +480,61 @@ export async function POST(request: Request) {
         });
         return jsonError(409, "The processing job changed state.", "job_state_changed");
       }
-      console.error("[RegSpan worker] Chunk completion transaction failed", {
+      console.error("[RegSpan worker] Chunk storage transaction failed", {
+        correlationId,
+        jobId: payload.jobId,
+        documentId: payload.documentId,
+        workspaceId: payload.workspaceId,
+        stage,
+        code: storageError.code,
+      });
+      throw new Error("chunk_storage_failed");
+    }
+
+    const storageResult = storageData as WorkerResult;
+    if (storageResult.result === "already_completed") {
+      return NextResponse.json({
+        ok: true,
+        jobId: payload.jobId,
+        status: "already_completed",
+        chunkCount: storageResult.chunk_count ?? null,
+        replayed: true,
+      });
+    }
+
+    stage = "generate_chunk_embeddings";
+    const embeddingResult = await embedDocumentChunks({
+      supabase,
+      workspaceId: payload.workspaceId,
+      documentId: payload.documentId,
+    });
+
+    console.info("[RegSpan worker] Chunk embeddings stored", {
+      correlationId,
+      jobId: payload.jobId,
+      documentId: payload.documentId,
+      workspaceId: payload.workspaceId,
+      stage,
+      chunkCount: embeddingResult.chunkCount,
+      embeddedCount: embeddingResult.embeddedCount,
+      skippedCount: embeddingResult.skippedCount,
+      embeddingProvider: embeddingResult.provider,
+      embeddingModel: embeddingResult.model,
+    });
+
+    stage = "finalize_ingestion_embeddings";
+    const { data: completionData, error: completionError } = await supabase.rpc(
+      "finalize_ingestion_embeddings_v1",
+      {
+        p_job_id: payload.jobId,
+        p_document_id: payload.documentId,
+        p_workspace_id: payload.workspaceId,
+        p_embedding_model: embeddingResult.model,
+      },
+    );
+
+    if (completionError) {
+      console.error("[RegSpan worker] Embedding finalization failed", {
         correlationId,
         jobId: payload.jobId,
         documentId: payload.documentId,
@@ -485,7 +542,7 @@ export async function POST(request: Request) {
         stage,
         code: completionError.code,
       });
-      throw new Error("chunk_storage_failed");
+      throw new Error("embedding_finalization_failed");
     }
 
     const result = completionData as WorkerResult;
@@ -502,6 +559,11 @@ export async function POST(request: Request) {
         document_id: payload.documentId,
         replayed: result.replayed,
         chunk_count: result.chunk_count ?? chunks.length,
+        embedding_count: result.embedding_count ?? embeddingResult.chunkCount,
+        embedded_count: embeddingResult.embeddedCount,
+        skipped_embedding_count: embeddingResult.skippedCount,
+        embedding_provider: embeddingResult.provider,
+        embedding_model: embeddingResult.model,
         page_count: pages.length,
         extraction_version: PDF_EXTRACTION_VERSION,
       },
@@ -514,6 +576,9 @@ export async function POST(request: Request) {
       workspaceId: payload.workspaceId,
       stage: "completed",
       chunkCount: result.chunk_count ?? chunks.length,
+      embeddingCount: result.embedding_count ?? embeddingResult.chunkCount,
+      embeddedCount: embeddingResult.embeddedCount,
+      skippedEmbeddingCount: embeddingResult.skippedCount,
       pageCount: pages.length,
       replayed: result.replayed,
     });
@@ -533,14 +598,16 @@ export async function POST(request: Request) {
       documentId: payload?.documentId,
       workspaceId: payload?.workspaceId,
       stage,
-      code: error instanceof PdfProcessingError ? error.code : "worker_failed",
+      code: error instanceof PdfProcessingError || error instanceof EmbeddingProcessingError
+        ? error.code
+        : "worker_failed",
     });
 
     if (supabase && payload) {
-      const safeMessage = error instanceof PdfProcessingError
+      const safeMessage = error instanceof PdfProcessingError || error instanceof EmbeddingProcessingError
         ? error.safeMessage
-        : "PDF ingestion failed.";
-      const errorCode = error instanceof PdfProcessingError
+        : "Document ingestion failed.";
+      const errorCode = error instanceof PdfProcessingError || error instanceof EmbeddingProcessingError
         ? error.code
         : "worker_failed";
       await markWorkerFailure(supabase, payload, safeMessage);
@@ -559,7 +626,7 @@ export async function POST(request: Request) {
         },
       });
 
-      if (error instanceof PdfProcessingError) {
+      if (error instanceof PdfProcessingError || error instanceof EmbeddingProcessingError) {
         return jsonError(error.status, error.safeMessage, error.code);
       }
     }

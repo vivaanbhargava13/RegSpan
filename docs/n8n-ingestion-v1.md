@@ -75,13 +75,14 @@ node and retains the original Webhook node output:
 
 Do not place the worker secret in the JSON body or a normal workflow Set node.
 Keep it in n8n's encrypted Header Auth credential store. A successful new job
-returns `status: "completed"` with `chunkCount` and `pageCount`; a completed retry returns
+returns `status: "completed"` with `chunkCount`, `embeddingCount`, and `pageCount`; a completed retry returns
 `status: "already_completed"`. Both are HTTP 200 and safe to treat as success.
 
 The endpoint validates the authoritative job/document/workspace relationship,
 claims the job, downloads the PDF directly from private Supabase Storage with
 the server-only admin client, extracts page text in RegSpan code, and stores
-deterministic page-aware chunks plus a simple page hierarchy. n8n remains the
+deterministic page-aware chunks plus a simple page hierarchy, then creates
+idempotent retrieval embeddings in RegSpan server code. n8n remains the
 orchestrator and never receives the PDF, Storage path, extracted text, Supabase
 service-role key, or chunks.
 
@@ -96,14 +97,14 @@ out PDFs mark the active job and document `Failed` with a safe error message.
 2. Validate all four payload fields and treat them only as identifiers.
 3. Call the authenticated RegSpan worker endpoint with the four opaque IDs.
 4. RegSpan reloads and matches the job, document, and workspace.
-5. RegSpan marks the job/document `Processing`, extracts PDF text, chunks it,
-   and atomically replaces chunks/hierarchy.
+5. RegSpan marks the job/document `Processing`, extracts PDF text, upserts
+   chunks/hierarchy, and generates only missing or changed chunk embeddings.
 6. RegSpan marks the job/document `Processed`, or `Failed` with safe metadata.
 7. n8n treats `completed` and `already_completed` as successful terminal results.
 
 PDF extraction v1 is text-only. Scanned/image-only PDFs fail as low-text; OCR is
-not implemented. Embeddings, retrieval, controls, findings, LLM calls, and
-reports remain out of scope.
+not implemented. Retrieval infrastructure is documented in `docs/retrieval-v1.md`.
+Controls matching, findings, LLM judgments, and reports remain out of scope.
 
 The worker route is pinned to the Next.js Node runtime. `pdf-parse` and
 `pdfjs-dist` are loaded as external native Node modules rather than transformed

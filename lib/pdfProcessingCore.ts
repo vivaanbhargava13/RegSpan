@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 export const PDF_EXTRACTION_VERSION = "pdf-parse-v1";
 export const MAX_PDF_PAGES = 500;
 export const MAX_EXTRACTED_CHARACTERS = 5_000_000;
@@ -26,6 +28,12 @@ export type StoredDocumentChunk = {
   section_chunk_end: number;
   parent_chunk_start: number;
   parent_chunk_end: number;
+  filename: string;
+  char_start: number;
+  char_end: number;
+  token_estimate: number;
+  processing_job_id: string;
+  content_hash: string;
 };
 
 export class PdfProcessingError extends Error {
@@ -138,8 +146,22 @@ export async function extractPdfPages(data: Uint8Array): Promise<ExtractedPdfPag
   }
 }
 
+type PageTextChunk = {
+  content: string;
+  charStart: number;
+  charEnd: number;
+};
+
+export function hashChunkContent(content: string) {
+  return createHash("sha256").update(content, "utf8").digest("hex");
+}
+
+export function estimateChunkTokens(content: string) {
+  return Math.max(1, Math.ceil(content.length / 4));
+}
+
 function splitPageText(text: string) {
-  const chunks: string[] = [];
+  const chunks: PageTextChunk[] = [];
   let start = 0;
 
   while (start < text.length) {
@@ -157,8 +179,17 @@ function splitPageText(text: string) {
       }
     }
 
-    const content = text.slice(start, end).trim();
-    if (content) chunks.push(content);
+    const rawContent = text.slice(start, end);
+    const leadingWhitespace = rawContent.length - rawContent.trimStart().length;
+    const trailingWhitespace = rawContent.length - rawContent.trimEnd().length;
+    const content = rawContent.trim();
+    if (content) {
+      chunks.push({
+        content,
+        charStart: start + leadingWhitespace,
+        charEnd: end - trailingWhitespace,
+      });
+    }
     if (end >= text.length) break;
 
     const nextStart = Math.max(0, end - CHUNK_OVERLAP_CHARACTERS);
@@ -175,12 +206,18 @@ export function buildDeterministicChunks(input: {
   jobId: string;
   filename: string;
 }) {
-  const pieces = input.pages.flatMap((page) =>
-    splitPageText(page.text).map((content) => ({
-      content,
+  let documentCharacterOffset = 0;
+  const pieces = input.pages.flatMap((page) => {
+    const pageOffset = documentCharacterOffset;
+    documentCharacterOffset += page.text.length + 2;
+
+    return splitPageText(page.text).map((piece) => ({
+      content: piece.content,
       pageNumber: page.pageNumber,
-    })),
-  );
+      charStart: pageOffset + piece.charStart,
+      charEnd: pageOffset + piece.charEnd,
+    }));
+  });
 
   if (pieces.length === 0) {
     throw new PdfProcessingError(
@@ -212,6 +249,8 @@ export function buildDeterministicChunks(input: {
     const bounds = pageBounds.get(piece.pageNumber)!;
     const sectionHeading = `Page ${piece.pageNumber}`;
     const sectionPath = `Extracted PDF > ${sectionHeading}`;
+    const contentHash = hashChunkContent(piece.content);
+    const tokenEstimate = estimateChunkTokens(piece.content);
 
     return {
       chunk_index: chunkIndex,
@@ -220,6 +259,7 @@ export function buildDeterministicChunks(input: {
         document_id: input.documentId,
         workspace_id: input.workspaceId,
         job_id: input.jobId,
+        processing_job_id: input.jobId,
         filename: input.filename,
         page_start: piece.pageNumber,
         page_end: piece.pageNumber,
@@ -231,6 +271,10 @@ export function buildDeterministicChunks(input: {
         section_chunk_end: bounds.end,
         parent_chunk_start: 0,
         parent_chunk_end: parentEnd,
+        char_start: piece.charStart,
+        char_end: piece.charEnd,
+        token_estimate: tokenEstimate,
+        content_hash: contentHash,
         extraction_version: PDF_EXTRACTION_VERSION,
       },
       page_start: piece.pageNumber,
@@ -242,6 +286,12 @@ export function buildDeterministicChunks(input: {
       section_chunk_end: bounds.end,
       parent_chunk_start: 0,
       parent_chunk_end: parentEnd,
+      filename: input.filename,
+      char_start: piece.charStart,
+      char_end: piece.charEnd,
+      token_estimate: tokenEstimate,
+      processing_job_id: input.jobId,
+      content_hash: contentHash,
     };
   });
 

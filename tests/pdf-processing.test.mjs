@@ -53,6 +53,14 @@ test("valid PDF text is extracted and chunked", async () => {
   assert.equal(result.chunks.length, 1);
   assert.equal(result.chunks[0].chunk_index, 0);
   assert.equal(result.chunks[0].page_start, 1);
+  assert.equal(result.chunks[0].filename, "policy.pdf");
+  assert.equal(result.chunks[0].processing_job_id, "30000000-0000-4000-8000-000000000003");
+  assert.equal(result.chunks[0].char_start, 0);
+  assert.equal(result.chunks[0].char_end, result.chunks[0].content.length);
+  assert.equal(result.chunks[0].token_estimate, Math.ceil(result.chunks[0].content.length / 4));
+  assert.match(result.chunks[0].content_hash, /^[0-9a-f]{64}$/);
+  assert.equal(result.chunks[0].metadata.content_hash, result.chunks[0].content_hash);
+  assert.equal(result.chunks[0].metadata.section_path, "Extracted PDF > Page 1");
   assert.equal(result.hierarchy.headings.length, 1);
 });
 
@@ -90,4 +98,3 @@ test("chunk construction is deterministic across retries", () => {
     first.chunks.map((_, index) => index),
   );
 });
-
