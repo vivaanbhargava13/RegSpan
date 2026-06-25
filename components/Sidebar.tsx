@@ -10,6 +10,7 @@ export const appNavLinks = [
   { label: "Requirements", href: "/controls", icon: "requirements" },
   { label: "Gaps", href: "/findings", icon: "gaps" },
   { label: "Reports", href: "/reports", icon: "reports" },
+  { label: "Retrieval", href: "/retrieval-debug", icon: "retrieval" },
   { label: "Settings", href: "/settings", icon: "settings" },
 ];
 
@@ -65,6 +66,14 @@ function NavIcon({ icon }: { icon: string }) {
           <path d="M9 16.25v-3" />
           <path d="M12 16.25v-7" />
           <path d="M15 16.25v-4.75" />
+        </>
+      ) : null}
+      {icon === "retrieval" ? (
+        <>
+          <circle cx="10.75" cy="10.75" r="5.75" />
+          <path d="m15.25 15.25 4.25 4.25" />
+          <path d="M8.25 10.75h5" />
+          <path d="M10.75 8.25v5" />
         </>
       ) : null}
       {icon === "settings" ? (

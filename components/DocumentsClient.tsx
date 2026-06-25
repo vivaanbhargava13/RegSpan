@@ -219,15 +219,17 @@ export function DocumentsClient() {
       />
 
       {warning ? (
-        <p className="rounded-xl border border-app-warning/20 bg-app-warning-soft px-4 py-3 text-sm font-medium text-app-warning shadow-sm">
-          {warning}
-        </p>
+        <div className="flex gap-3 rounded-xl border border-app-warning/20 bg-app-warning-soft px-4 py-3 text-sm font-medium text-app-warning shadow-sm">
+          <span aria-hidden="true" className="mt-2 size-2 shrink-0 rounded-full bg-app-warning" />
+          <p>{warning}</p>
+        </div>
       ) : null}
 
       {error ? (
-        <p className="rounded-xl border border-app-danger/20 bg-app-danger-soft px-4 py-3 text-sm font-medium text-app-danger shadow-sm">
-          {error}
-        </p>
+        <div className="flex gap-3 rounded-xl border border-app-danger/20 bg-app-danger-soft px-4 py-3 text-sm font-medium text-app-danger shadow-sm">
+          <span aria-hidden="true" className="mt-2 size-2 shrink-0 rounded-full bg-app-danger" />
+          <p>{error}</p>
+        </div>
       ) : null}
 
       {isUploadOpen ? (
@@ -311,9 +313,11 @@ export function DocumentsClient() {
         </div>
       ) : documents.length === 0 ? (
         <div className="app-empty-state">
-          <div className="mx-auto grid size-11 place-items-center rounded-2xl bg-app-accent-soft text-app-accent" aria-hidden="true">↥</div>
+          <div className="mx-auto grid size-12 place-items-center rounded-2xl bg-app-accent-soft text-app-accent ring-1 ring-app-accent/10" aria-hidden="true">↥</div>
           <h2 className="mt-4 text-base font-semibold text-app-text">No documents yet</h2>
-          <p className="mt-1 text-sm text-app-muted">Upload a policy or procedure to begin a secure document review.</p>
+          <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-app-muted">
+            Upload a policy or procedure to begin secure extraction, chunking, and evidence review.
+          </p>
         </div>
       ) : (
         <DataTable columns={["Document name", "Type", "Review status", "Uploaded", "Sections", "Actions"]}>

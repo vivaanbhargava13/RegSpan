@@ -522,7 +522,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
               <StatusBadge>{document.status}</StatusBadge>
               <span className="text-xs text-app-muted">Secure document workspace</span>
             </div>
-          <div className="flex shrink-0 flex-col gap-3 sm:flex-row lg:items-center">
+          <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:flex-wrap lg:items-center lg:justify-end">
             <button
               type="button"
               disabled={Boolean(activeAction)}
@@ -605,7 +605,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
             ...(document.fileSize ? [{ label: "File size", value: `${Math.round(document.fileSize / 1024)} KB` }] : []),
             ...(document.mimeType ? [{ label: "MIME type", value: document.mimeType }] : []),
           ].map((item) => (
-            <div key={item.label} className="rounded-xl border border-app-border bg-app-elevated/65 p-4">
+            <div key={item.label} className="rounded-xl border border-app-border bg-app-elevated/65 p-4 shadow-sm">
               <dt className="text-[10px] font-semibold uppercase tracking-[0.1em] text-app-subtle">{item.label}</dt>
               <dd className="mt-2 break-words text-sm font-semibold leading-5 text-app-text">{item.value}</dd>
             </div>
@@ -615,7 +615,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
         {document.storagePath ? (
           <div className="mt-5 rounded-xl border border-app-border bg-app-elevated/45 p-4">
             <h2 className="text-sm font-semibold text-app-text">Storage path</h2>
-            <p className="mt-2 truncate rounded-lg border border-app-border bg-app-surface px-3 py-2 font-mono text-[11px] text-app-muted" title={document.storagePath}>
+            <p className="mt-2 overflow-x-auto rounded-lg border border-app-border bg-app-surface px-3 py-2 font-mono text-[11px] text-app-muted" title={document.storagePath}>
               {document.storagePath}
             </p>
           </div>
@@ -681,7 +681,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
                         {formatPageRange(chunk.page_start, chunk.page_end)}
                       </span>
                     </div>
-                    <p className="mt-3 border-t border-app-border pt-3 text-sm leading-6 text-app-muted">
+                    <p className="mt-3 rounded-xl border border-app-border bg-app-surface px-3.5 py-3 text-sm leading-6 text-app-muted shadow-sm">
                       {chunk.content.length > 220 ? `${chunk.content.slice(0, 220)}…` : chunk.content}
                     </p>
                   </article>

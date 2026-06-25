@@ -131,7 +131,10 @@ export function AppShell({ children }: AppShellProps) {
   }
 
   return (
-    <div data-theme={theme} className="min-h-screen bg-app-bg text-app-text">
+    <div
+      data-theme={theme}
+      className="min-h-screen bg-app-bg text-app-text [background-image:radial-gradient(circle_at_top_right,rgb(var(--app-accent-soft)/0.55),transparent_34rem)]"
+    >
       <div className="flex min-h-screen">
         <Sidebar />
         <div className="min-w-0 flex-1">

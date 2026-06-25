@@ -7,6 +7,7 @@ const protectedPrefixes = [
   "/controls",
   "/findings",
   "/reports",
+  "/retrieval-debug",
   "/settings",
 ];
 

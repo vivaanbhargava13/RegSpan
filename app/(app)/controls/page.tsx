@@ -46,11 +46,14 @@ export default function ControlsPage() {
         description="Review the rule areas RegSpan checks against your uploaded documents."
       />
 
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-app-border bg-app-surface px-4 py-3 shadow-app-soft">
-        <span className="text-xs font-semibold uppercase tracking-[0.08em] text-app-subtle">Baseline</span>
-        <span className="h-4 w-px bg-app-border" />
-        <span className="text-sm font-medium text-app-text">Regulation S-P</span>
-        <span className="ml-auto text-xs text-app-muted">4 requirement areas in view</span>
+      <div className="app-card flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full bg-app-accent-soft px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.08em] text-app-accent">
+            Baseline
+          </span>
+          <span className="text-sm font-semibold text-app-text">Regulation S-P</span>
+        </div>
+        <span className="text-sm text-app-muted">4 requirement areas in view</span>
       </div>
 
       <DataTable

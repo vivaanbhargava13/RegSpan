@@ -19,6 +19,8 @@ export type RetrievedChunk = {
   section_path: string | null;
   content_preview: string;
   similarity: number;
+  evidence_reason: string | null;
+  embedding_input: string | null;
 };
 
 type RetrieveRelevantChunksInput = {
@@ -78,5 +80,46 @@ export async function retrieveRelevantChunks({
     );
   }
 
-  return (data ?? []) as RetrievedChunk[];
+  const results = (data ?? []) as Omit<RetrievedChunk, "evidence_reason" | "embedding_input">[];
+  if (results.length === 0) {
+    return [];
+  }
+
+  const chunkIds = results.map((result) => result.chunk_id);
+  const { data: chunkMetadata, error: metadataError } = await supabase
+    .from("document_chunks")
+    .select("id, metadata")
+    .eq("workspace_id", workspaceId)
+    .in("id", chunkIds);
+
+  if (metadataError) {
+    throw new EmbeddingProcessingError(
+      "retrieval_metadata_failed",
+      "Retrieved chunk metadata could not be loaded.",
+      500,
+    );
+  }
+
+  const metadataByChunkId = new Map(
+    (chunkMetadata ?? []).map((chunk) => [
+      chunk.id as string,
+      (chunk.metadata ?? {}) as Record<string, unknown>,
+    ]),
+  );
+
+  return results.map((result) => {
+    const metadata = metadataByChunkId.get(result.chunk_id) ?? {};
+    const evidenceReason = typeof metadata.evidence_reason === "string"
+      ? metadata.evidence_reason
+      : null;
+    const embeddingInput = typeof metadata.embedding_input === "string"
+      ? metadata.embedding_input
+      : null;
+
+    return {
+      ...result,
+      evidence_reason: evidenceReason,
+      embedding_input: embeddingInput,
+    };
+  });
 }

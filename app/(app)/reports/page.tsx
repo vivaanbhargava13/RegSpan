@@ -36,10 +36,10 @@ export default function ReportsPage() {
         }
       />
 
-      <div className="app-card relative overflow-hidden p-6">
-        <div aria-hidden="true" className="absolute inset-y-0 left-0 w-1 bg-app-accent" />
+      <div className="app-card relative overflow-hidden p-5 lg:p-6">
+        <div aria-hidden="true" className="absolute inset-y-5 left-0 w-1 rounded-r-full bg-app-accent" />
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
+          <div className="pl-2">
             <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-app-accent">Export readiness</p>
             <h2 className="mt-2 app-section-title">Report generation is coming next</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-app-muted">

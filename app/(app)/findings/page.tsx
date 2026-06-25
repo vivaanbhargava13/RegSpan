@@ -50,10 +50,22 @@ export default function FindingsPage() {
         description="Review missing, weak, or unclear documentation that may need follow-up."
       />
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        <div className="app-card-subtle px-4 py-3.5"><span className="text-xs text-app-muted">Open gaps</span><strong className="mt-1 block text-xl text-app-text">{openGapCount}</strong></div>
-        <div className="app-card-subtle px-4 py-3.5"><span className="text-xs text-app-muted">High risk</span><strong className="mt-1 block text-xl text-app-danger">{highRiskCount}</strong></div>
-        <div className="app-card-subtle px-4 py-3.5"><span className="text-xs text-app-muted">Prepared</span><strong className="mt-1 block text-xl text-app-success">{preparedCount}</strong></div>
+      <div className="grid gap-4 sm:grid-cols-3">
+        {[
+          { label: "Open gaps", value: openGapCount, tone: "text-app-text", marker: "bg-app-accent" },
+          { label: "High risk", value: highRiskCount, tone: "text-app-danger", marker: "bg-app-danger" },
+          { label: "Prepared", value: preparedCount, tone: "text-app-success", marker: "bg-app-success" },
+        ].map((metric) => (
+          <div key={metric.label} className="app-card-subtle relative overflow-hidden px-4 py-4 shadow-sm">
+            <span aria-hidden="true" className={`absolute inset-y-4 left-0 w-0.5 rounded-r-full ${metric.marker}`} />
+            <span className="text-xs font-semibold uppercase tracking-[0.08em] text-app-subtle">
+              {metric.label}
+            </span>
+            <strong className={`mt-2 block text-2xl font-semibold tracking-[-0.03em] ${metric.tone}`}>
+              {metric.value}
+            </strong>
+          </div>
+        ))}
       </div>
 
       <DataTable
