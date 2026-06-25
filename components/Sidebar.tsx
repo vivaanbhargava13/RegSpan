@@ -11,6 +11,7 @@ export const appNavLinks = [
   { label: "Gaps", href: "/findings", icon: "gaps" },
   { label: "Reports", href: "/reports", icon: "reports" },
   { label: "Retrieval", href: "/retrieval-debug", icon: "retrieval" },
+  { label: "Internal Debug", href: "/requirement-debug", icon: "matching" },
   { label: "Settings", href: "/settings", icon: "settings" },
 ];
 
@@ -74,6 +75,16 @@ function NavIcon({ icon }: { icon: string }) {
           <path d="m15.25 15.25 4.25 4.25" />
           <path d="M8.25 10.75h5" />
           <path d="M10.75 8.25v5" />
+        </>
+      ) : null}
+      {icon === "matching" ? (
+        <>
+          <path d="M4.75 6.25h6.5" />
+          <path d="M4.75 12h5" />
+          <path d="M4.75 17.75h6.5" />
+          <path d="m14.25 6.25 1.75 1.75 3.25-3.25" />
+          <path d="m14.25 17.75 1.75 1.75 3.25-3.25" />
+          <circle cx="16.75" cy="12" r="2.75" />
         </>
       ) : null}
       {icon === "settings" ? (
