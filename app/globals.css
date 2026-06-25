@@ -4,27 +4,31 @@
 
 :root {
   color-scheme: light;
-  background: #f7faf8;
-  --app-bg: 9 11 16;
-  --app-shell: 13 17 23;
-  --app-surface: 17 24 39;
-  --app-elevated: 24 34 51;
-  --app-border: 43 54 72;
-  --app-border-strong: 70 86 111;
-  --app-text: 243 246 251;
-  --app-muted: 170 181 197;
-  --app-subtle: 125 138 156;
-  --app-accent: 147 197 253;
-  --app-accent-hover: 191 219 254;
-  --app-accent-soft: 23 37 66;
-  --app-success: 134 239 172;
-  --app-success-soft: 18 48 31;
-  --app-warning: 251 191 36;
-  --app-warning-soft: 58 45 18;
-  --app-danger: 252 165 165;
-  --app-danger-soft: 58 23 26;
-  --app-danger-hover: 74 28 33;
-  --app-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
+  background: rgb(244 247 251);
+  --app-bg: 244 247 251;
+  --app-shell: 255 255 255;
+  --app-surface: 255 255 255;
+  --app-elevated: 247 249 252;
+  --app-border: 226 232 240;
+  --app-border-strong: 203 213 225;
+  --app-text: 15 23 42;
+  --app-muted: 71 85 105;
+  --app-subtle: 100 116 139;
+  --app-accent: 29 78 216;
+  --app-accent-hover: 30 64 175;
+  --app-accent-soft: 239 246 255;
+  --app-success: 4 120 87;
+  --app-success-soft: 236 253 245;
+  --app-warning: 180 83 9;
+  --app-warning-soft: 255 251 235;
+  --app-danger: 185 28 28;
+  --app-danger-soft: 254 242 242;
+  --app-danger-hover: 153 27 27;
+  --app-review: 109 40 217;
+  --app-review-soft: 245 243 255;
+  --app-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 10px 30px rgba(15, 23, 42, 0.05);
+  --app-card-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.04);
+  --app-float-shadow: 0 18px 45px rgba(15, 23, 42, 0.12);
 }
 
 [data-theme="dark"] {
@@ -48,31 +52,39 @@
   --app-danger: 252 165 165;
   --app-danger-soft: 58 23 26;
   --app-danger-hover: 74 28 33;
-  --app-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
+  --app-review: 196 181 253;
+  --app-review-soft: 37 28 67;
+  --app-shadow: 0 1px 2px rgba(0, 0, 0, 0.18), 0 14px 36px rgba(0, 0, 0, 0.2);
+  --app-card-shadow: 0 1px 2px rgba(0, 0, 0, 0.16), 0 10px 28px rgba(0, 0, 0, 0.16);
+  --app-float-shadow: 0 22px 52px rgba(0, 0, 0, 0.34);
 }
 
 [data-theme="light"] {
   color-scheme: light;
-  --app-bg: 247 249 252;
+  --app-bg: 244 247 251;
   --app-shell: 255 255 255;
   --app-surface: 255 255 255;
-  --app-elevated: 238 243 248;
-  --app-border: 215 222 232;
-  --app-border-strong: 154 168 186;
-  --app-text: 17 24 39;
-  --app-muted: 75 85 99;
-  --app-subtle: 107 114 128;
-  --app-accent: 37 99 235;
-  --app-accent-hover: 29 78 216;
-  --app-accent-soft: 219 234 254;
-  --app-success: 21 128 61;
-  --app-success-soft: 220 252 231;
+  --app-elevated: 247 249 252;
+  --app-border: 226 232 240;
+  --app-border-strong: 203 213 225;
+  --app-text: 15 23 42;
+  --app-muted: 71 85 105;
+  --app-subtle: 100 116 139;
+  --app-accent: 29 78 216;
+  --app-accent-hover: 30 64 175;
+  --app-accent-soft: 239 246 255;
+  --app-success: 4 120 87;
+  --app-success-soft: 236 253 245;
   --app-warning: 180 83 9;
-  --app-warning-soft: 254 243 199;
+  --app-warning-soft: 255 251 235;
   --app-danger: 185 28 28;
-  --app-danger-soft: 254 226 226;
+  --app-danger-soft: 254 242 242;
   --app-danger-hover: 153 27 27;
-  --app-shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
+  --app-review: 109 40 217;
+  --app-review-soft: 245 243 255;
+  --app-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 10px 30px rgba(15, 23, 42, 0.05);
+  --app-card-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.04);
+  --app-float-shadow: 0 18px 45px rgba(15, 23, 42, 0.12);
 }
 
 * {
@@ -85,11 +97,10 @@ html {
 
 body {
   margin: 0;
-  background:
-    radial-gradient(circle at top left, rgba(23, 107, 87, 0.08), transparent 32rem),
-    linear-gradient(180deg, #ffffff 0%, #f7faf8 48%, #ffffff 100%);
-  color: #13201c;
-  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: rgb(var(--app-bg));
+  color: rgb(var(--app-text));
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  text-rendering: optimizeLegibility;
 }
 
 a {
@@ -98,6 +109,44 @@ a {
 }
 
 ::selection {
-  background: #cce8dc;
-  color: #13201c;
+  background: rgb(var(--app-accent-soft));
+  color: rgb(var(--app-text));
+}
+
+@layer base {
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+}
+
+@layer components {
+  .app-card {
+    @apply rounded-2xl border border-app-border bg-app-surface shadow-app-card;
+  }
+
+  .app-card-subtle {
+    @apply rounded-xl border border-app-border bg-app-elevated;
+  }
+
+  [data-theme="light"] .metric-card {
+    border-color: rgb(var(--app-border-strong) / 0.72);
+    box-shadow:
+      0 1px 2px rgba(15, 23, 42, 0.06),
+      0 10px 28px rgba(15, 23, 42, 0.075);
+  }
+
+  .app-empty-state {
+    @apply rounded-2xl border border-dashed border-app-border-strong bg-app-surface px-6 py-10 text-center shadow-app-card;
+  }
+
+  .app-field {
+    @apply w-full rounded-xl border border-app-border bg-app-surface px-3.5 py-2.5 text-sm text-app-text shadow-sm outline-none transition placeholder:text-app-subtle focus:border-app-accent focus:ring-4 focus:ring-app-accent-soft;
+  }
+
+  .app-section-title {
+    @apply text-base font-semibold tracking-[-0.01em] text-app-text;
+  }
 }

@@ -37,6 +37,8 @@ export async function recordSecurityAuditEvent(
     console.error("[RegSpan security] Audit event insert failed", {
       action: event.action,
       targetId: event.targetId,
+      correlationId: event.correlationId,
+      stage: event.metadata?.failing_stage ?? "write_audit_event",
       error: error.message,
     });
   }

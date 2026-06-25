@@ -39,12 +39,19 @@ const requirements = [
 
 export default function ControlsPage() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <PageHeader
         eyebrow="Requirements"
         title="Reg S-P requirements"
         description="Review the rule areas RegSpan checks against your uploaded documents."
       />
+
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-app-border bg-app-surface px-4 py-3 shadow-app-soft">
+        <span className="text-xs font-semibold uppercase tracking-[0.08em] text-app-subtle">Baseline</span>
+        <span className="h-4 w-px bg-app-border" />
+        <span className="text-sm font-medium text-app-text">Regulation S-P</span>
+        <span className="ml-auto text-xs text-app-muted">4 requirement areas in view</span>
+      </div>
 
       <DataTable
         columns={["Requirement ID", "Rule area", "Requirement", "Status", "Supporting sections", "Risk"]}
@@ -52,7 +59,7 @@ export default function ControlsPage() {
       >
         {requirements.map((requirement) => (
           <tr key={requirement.id}>
-            <td className="px-4 py-4 font-semibold text-app-text">{requirement.id}</td>
+            <td className="px-4 py-4 font-mono text-xs font-semibold text-app-accent">{requirement.id}</td>
             <td className="px-4 py-4 text-app-muted">{requirement.category}</td>
             <td className="px-4 py-4 text-app-muted">{requirement.requirement}</td>
             <td className="px-4 py-4">

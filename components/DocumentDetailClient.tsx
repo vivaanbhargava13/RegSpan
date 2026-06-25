@@ -57,24 +57,6 @@ function validateSelectedPdf(file: File) {
   return null;
 }
 
-const fallbackChunkPreviews = [
-  {
-    title: "Preparation and incident response procedures",
-    page: "Page 4",
-    excerpt: "Mock excerpt: procedures outline preparation, escalation, and reviewer coordination steps.",
-  },
-  {
-    title: "Detection and analysis process",
-    page: "Page 7",
-    excerpt: "Mock excerpt: detection criteria and analysis responsibilities are summarized for review.",
-  },
-  {
-    title: "Containment and recovery procedures",
-    page: "Page 11",
-    excerpt: "Mock excerpt: containment, recovery, and post-incident documentation steps are noted.",
-  },
-];
-
 function formatSectionsLabel(label: string) {
   return label.replace(/\bchunks\b/gi, "sections");
 }
@@ -123,66 +105,103 @@ function formatHierarchySummary(summary: HierarchySummary) {
   return `Generated · ${topLevelLabel} · ${childLabel}`;
 }
 
-function getTimeline(status: DocumentStatus): TimelineStep[] {
+const requirementMatchingStep: TimelineStep = {
+  label: "Requirement matching",
+  status: "Not connected",
+  detail: "Reg S-P requirement matching has not been implemented yet.",
+  state: "pending",
+};
+
+function getTimeline(status: DocumentStatus, chunkCount: number): TimelineStep[] {
   if (status === "Uploaded") {
     return [
       { label: "Uploaded", status: "Complete", detail: "File and document details are saved.", state: "complete" },
-      { label: "Text reading", status: "Not connected", detail: "Not connected yet.", state: "pending" },
-      { label: "Document sectioning", status: "Not connected", detail: "Not connected yet.", state: "pending" },
-      { label: "Requirement matching", status: "Not connected", detail: "Not connected yet.", state: "pending" },
+      { label: "PDF text extraction", status: "Ready", detail: "Start processing to extract text from the stored PDF.", state: "pending" },
+      { label: "Chunking", status: "Pending", detail: "Document chunks will be generated after PDF text extraction.", state: "pending" },
+      requirementMatchingStep,
     ];
   }
 
   if (status === "Processed") {
     return [
       { label: "Uploaded", status: "Complete", detail: "File and document details are saved.", state: "complete" },
-      { label: "Text reading", status: "Demo complete", detail: "This is a demo review state; no real text reading has run in the browser.", state: "complete" },
-      { label: "Document sectioning", status: "Demo complete", detail: "Mock document sections are shown for layout review only.", state: "complete" },
-      { label: "Requirement matching", status: "Not connected", detail: "Not connected yet.", state: "pending" },
+      {
+        label: "PDF text extraction",
+        status: "Complete",
+        detail: chunkCount > 0
+          ? "PDF text was extracted by the secure ingestion worker."
+          : "PDF processing completed, but no extracted chunks are currently available.",
+        state: "complete",
+      },
+      {
+        label: "Chunking",
+        status: chunkCount > 0 ? "Complete" : "No chunks",
+        detail: chunkCount > 0
+          ? "Document chunks were generated from extracted PDF text."
+          : "Reprocess this document to generate extracted text chunks.",
+        state: chunkCount > 0 ? "complete" : "review",
+      },
+      requirementMatchingStep,
     ];
   }
 
   if (status === "Processing") {
     return [
       { label: "Uploaded", status: "Complete", detail: "File and document details are saved.", state: "complete" },
-      { label: "Text reading", status: "Queued", detail: "Not connected yet.", state: "current" },
-      { label: "Document sectioning", status: "Pending", detail: "Not connected yet.", state: "pending" },
-      { label: "Requirement matching", status: "Pending", detail: "Not connected yet.", state: "pending" },
+      { label: "PDF text extraction", status: "Processing", detail: "The secure ingestion worker is extracting text from the PDF.", state: "current" },
+      { label: "Chunking", status: "Pending", detail: "Chunks will be stored after text extraction completes.", state: "pending" },
+      requirementMatchingStep,
     ];
   }
 
   if (status === "Needs Review") {
     return [
       { label: "Uploaded", status: "Complete", detail: "File and document details are saved.", state: "complete" },
-      { label: "Text reading", status: "Needs review", detail: "This demo state needs reviewer attention before report use.", state: "review" },
-      { label: "Document sectioning", status: "Needs review", detail: "Document sections should be checked before report use.", state: "review" },
-      { label: "Requirement matching", status: "Not connected", detail: "Not connected yet.", state: "pending" },
+      { label: "PDF text extraction", status: "Needs review", detail: "Extracted PDF text requires reviewer attention.", state: "review" },
+      { label: "Chunking", status: "Needs review", detail: chunkCount > 0 ? "Review the generated chunks before continuing." : "No extracted chunks are available for review.", state: "review" },
+      requirementMatchingStep,
     ];
   }
 
   if (status === "Failed") {
     return [
       { label: "Uploaded", status: "Complete", detail: "File and document details are saved.", state: "complete" },
-      { label: "Text reading", status: "Failed", detail: "Review could not continue for this demo document.", state: "blocked" },
-      { label: "Document sectioning", status: "Blocked", detail: "Document sectioning is blocked until review is retried.", state: "blocked" },
-      { label: "Requirement matching", status: "Blocked", detail: "Requirement matching is not available for this document.", state: "blocked" },
+      { label: "PDF text extraction", status: "Failed", detail: "The ingestion worker could not extract usable text from this PDF.", state: "blocked" },
+      { label: "Chunking", status: "Blocked", detail: "Chunks were not generated because PDF text extraction failed.", state: "blocked" },
+      requirementMatchingStep,
     ];
   }
 
   return [
     { label: "Uploaded", status: "Complete", detail: "File and document details are saved.", state: "complete" },
-    { label: "Text reading", status: "Queued", detail: "Not connected yet.", state: "pending" },
-    { label: "Document sectioning", status: "Pending", detail: "Not connected yet.", state: "pending" },
-    { label: "Requirement matching", status: "Pending", detail: "Not connected yet.", state: "pending" },
+    { label: "PDF text extraction", status: "Queued", detail: "The document is queued for secure PDF text extraction.", state: "current" },
+    { label: "Chunking", status: "Pending", detail: "Chunking will begin after the worker extracts PDF text.", state: "pending" },
+    requirementMatchingStep,
   ];
 }
 
+function getChunkEmptyState(status: DocumentStatus) {
+  if (status === "Processed") {
+    return "Processing completed, but no extracted chunks are available. Reprocess the document to run PDF extraction and chunking again.";
+  }
+  if (status === "Processing") {
+    return "PDF text extraction and chunking are currently in progress.";
+  }
+  if (status === "Queued") {
+    return "This document is queued. Extracted chunks will appear after processing completes.";
+  }
+  if (status === "Failed") {
+    return "Extracted chunks are unavailable because PDF processing failed. Reprocess the document to try again.";
+  }
+  return "Start processing this document to extract PDF text and generate chunks.";
+}
+
 const stateClasses: Record<TimelineState, string> = {
-  complete: "bg-app-success text-app-bg",
-  current: "bg-app-warning-soft text-app-warning",
-  pending: "bg-app-elevated text-app-muted",
-  blocked: "bg-app-danger-soft text-app-danger",
-  review: "bg-app-warning-soft text-app-warning",
+  complete: "border-app-success/20 bg-app-success text-white",
+  current: "border-app-warning/20 bg-app-warning-soft text-app-warning",
+  pending: "border-app-border bg-app-elevated text-app-muted",
+  blocked: "border-app-danger/20 bg-app-danger-soft text-app-danger",
+  review: "border-app-review/20 bg-app-review-soft text-app-review",
 };
 
 export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) {
@@ -383,7 +402,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
       if (result.cleanupWarning) {
         setWarning("Replacement succeeded; old object cleanup will need server follow-up.");
       }
-      setMessage("Replacement uploaded. Document reading and matching are not connected yet.");
+      setMessage("Replacement uploaded. Reprocess the document to extract text and generate chunks.");
       setReplacementFile(null);
       setIsReplaceOpen(false);
       setRefreshKey((current) => current + 1);
@@ -443,8 +462,9 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
 
   if (!hasLoaded) {
     return (
-      <div className="rounded-2xl border border-app-border bg-app-surface p-5 text-sm font-semibold text-app-muted shadow-app-soft">
-        Loading document review...
+      <div className="app-card flex items-center gap-3 p-5 text-sm font-semibold text-app-muted">
+        <span aria-hidden="true" className="size-2 animate-pulse rounded-full bg-app-accent" />
+        Loading document review…
       </div>
     );
   }
@@ -452,10 +472,10 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
   if (!document) {
     return (
       <div className="space-y-5">
-        <Link href="/documents" className="text-sm font-semibold text-app-accent">
-          Back to documents
+        <Link href="/documents" className="inline-flex items-center gap-2 text-sm font-semibold text-app-accent">
+          <span aria-hidden="true">←</span> Back to documents
         </Link>
-        <div className="rounded-2xl border border-app-border bg-app-surface p-6 shadow-app-soft">
+        <div className="app-card p-6">
           <h1 className="text-2xl font-semibold text-app-text">Document not found</h1>
           <p className="mt-3 text-sm leading-6 text-app-muted">
             This document is not available in your current workspace.
@@ -466,9 +486,9 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
   }
 
   return (
-    <div className="space-y-6">
-      <Link href="/documents" className="text-sm font-semibold text-app-accent transition-colors hover:text-app-accent-hover">
-        Back to documents
+    <div className="space-y-8">
+      <Link href="/documents" className="inline-flex items-center gap-2 rounded-lg px-1 py-1 text-sm font-semibold text-app-accent transition-colors hover:text-app-accent-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-app-accent">
+        <span aria-hidden="true">←</span> Back to documents
       </Link>
 
       <PageHeader
@@ -478,32 +498,36 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
       />
 
       {message ? (
-        <p className="rounded-xl border border-app-success-soft bg-app-success-soft px-4 py-3 text-sm font-medium text-app-success">
+        <p className="rounded-xl border border-app-success/20 bg-app-success-soft px-4 py-3 text-sm font-medium text-app-success shadow-sm">
           {message}
         </p>
       ) : null}
 
       {warning ? (
-        <p className="rounded-xl border border-app-warning-soft bg-app-warning-soft px-4 py-3 text-sm font-medium text-app-warning">
+        <p className="rounded-xl border border-app-warning/20 bg-app-warning-soft px-4 py-3 text-sm font-medium text-app-warning shadow-sm">
           {warning}
         </p>
       ) : null}
 
       {error ? (
-        <p className="rounded-xl border border-app-danger-soft bg-app-danger-soft px-4 py-3 text-sm font-medium text-app-danger">
+        <p className="rounded-xl border border-app-danger/20 bg-app-danger-soft px-4 py-3 text-sm font-medium text-app-danger shadow-sm">
           {error}
         </p>
       ) : null}
 
-      <section className="rounded-2xl border border-app-border bg-app-surface p-6 shadow-app-soft">
-        <div className="flex min-w-0 flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-          <StatusBadge>{document.status}</StatusBadge>
+      <section className="app-card overflow-hidden">
+        <div className="border-b border-app-border bg-app-elevated/55 px-5 py-4 lg:px-6">
+          <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-center gap-3">
+              <StatusBadge>{document.status}</StatusBadge>
+              <span className="text-xs text-app-muted">Secure document workspace</span>
+            </div>
           <div className="flex shrink-0 flex-col gap-3 sm:flex-row lg:items-center">
             <button
               type="button"
               disabled={Boolean(activeAction)}
               onClick={handleReprocess}
-              className="h-9 rounded-lg border border-app-border bg-app-elevated px-3 text-sm font-semibold text-app-muted transition-colors hover:border-app-accent hover:text-app-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent disabled:cursor-not-allowed disabled:opacity-60"
+              className="h-9 rounded-xl border border-app-border bg-app-surface px-3.5 text-sm font-semibold text-app-muted shadow-sm transition-colors hover:border-app-accent hover:text-app-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent disabled:cursor-not-allowed disabled:opacity-60"
             >
               {activeAction === "reprocess" ? "Reprocessing..." : "Reprocess"}
             </button>
@@ -514,7 +538,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
                 resetActionState();
                 setIsReplaceOpen(true);
               }}
-              className="h-9 rounded-lg border border-app-border bg-app-elevated px-3 text-sm font-semibold text-app-muted transition-colors hover:border-app-accent hover:text-app-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent disabled:cursor-not-allowed disabled:opacity-60"
+              className="h-9 rounded-xl border border-app-border bg-app-surface px-3.5 text-sm font-semibold text-app-muted shadow-sm transition-colors hover:border-app-accent hover:text-app-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent disabled:cursor-not-allowed disabled:opacity-60"
             >
               Replace file
             </button>
@@ -522,15 +546,18 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
               type="button"
               disabled={Boolean(activeAction)}
               onClick={handleDelete}
-              className="h-9 rounded-lg border border-app-danger-soft bg-app-danger-soft px-3 text-sm font-semibold text-app-danger transition-colors hover:border-app-danger hover:bg-app-danger-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-danger disabled:cursor-not-allowed disabled:opacity-60"
+              className="h-9 rounded-xl border border-app-danger/20 bg-app-danger-soft px-3.5 text-sm font-semibold text-app-danger transition-colors hover:border-app-danger hover:bg-app-danger/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-danger disabled:cursor-not-allowed disabled:opacity-60"
             >
               {activeAction === "delete" ? "Deleting..." : "Delete document"}
             </button>
           </div>
         </div>
+        </div>
+
+        <div className="p-5 lg:p-6">
 
         {isReplaceOpen ? (
-          <div className="mt-6 rounded-xl border border-app-border bg-app-bg p-4">
+          <div className="mb-6 rounded-xl border border-app-border bg-app-elevated/65 p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <label className="block flex-1">
                 <span className="text-sm font-semibold text-app-text">Replacement file</span>
@@ -538,7 +565,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
                   type="file"
                   accept="application/pdf,.pdf"
                   onChange={handleReplacementFileChange}
-                  className="mt-2 block w-full rounded-lg border border-app-border bg-app-surface px-3 py-2 text-sm text-app-muted file:mr-3 file:rounded-md file:border-0 file:bg-app-accent-soft file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-app-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent"
+                  className="app-field mt-2 block w-full px-3 py-2 text-sm text-app-muted file:mr-3 file:rounded-lg file:border-0 file:bg-app-accent-soft file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-app-accent"
                 />
               </label>
               <div className="flex gap-2">
@@ -546,7 +573,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
                   type="button"
                   disabled={Boolean(activeAction)}
                   onClick={handleReplace}
-                  className="h-10 rounded-lg bg-app-accent px-4 text-sm font-semibold text-app-bg transition-colors hover:bg-app-accent-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent disabled:cursor-not-allowed disabled:opacity-60"
+                  className="h-10 rounded-xl bg-app-accent px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-app-accent-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {activeAction === "replace" ? "Replacing..." : "Replace file"}
                 </button>
@@ -556,7 +583,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
                     setIsReplaceOpen(false);
                     setReplacementFile(null);
                   }}
-                  className="h-10 rounded-lg border border-app-border bg-app-surface px-4 text-sm font-semibold text-app-muted transition-colors hover:border-app-accent hover:text-app-text"
+                  className="h-10 rounded-xl border border-app-border bg-app-surface px-4 text-sm font-semibold text-app-muted shadow-sm transition-colors hover:border-app-accent hover:text-app-text"
                 >
                   Cancel
                 </button>
@@ -565,7 +592,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
           </div>
         ) : null}
 
-        <dl className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <dl className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {[
             { label: "Document type", value: document.type },
             { label: "Uploaded", value: document.uploaded },
@@ -578,43 +605,47 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
             ...(document.fileSize ? [{ label: "File size", value: `${Math.round(document.fileSize / 1024)} KB` }] : []),
             ...(document.mimeType ? [{ label: "MIME type", value: document.mimeType }] : []),
           ].map((item) => (
-            <div key={item.label} className="rounded-xl border border-app-border bg-app-elevated p-4">
-              <dt className="text-xs font-semibold uppercase tracking-normal text-app-muted">{item.label}</dt>
-              <dd className="mt-2 break-words text-sm font-semibold text-app-text">{item.value}</dd>
+            <div key={item.label} className="rounded-xl border border-app-border bg-app-elevated/65 p-4">
+              <dt className="text-[10px] font-semibold uppercase tracking-[0.1em] text-app-subtle">{item.label}</dt>
+              <dd className="mt-2 break-words text-sm font-semibold leading-5 text-app-text">{item.value}</dd>
             </div>
           ))}
         </dl>
 
         {document.storagePath ? (
-          <div className="mt-6 rounded-xl border border-app-border bg-app-bg p-4">
+          <div className="mt-5 rounded-xl border border-app-border bg-app-elevated/45 p-4">
             <h2 className="text-sm font-semibold text-app-text">Storage path</h2>
-            <p className="mt-2 truncate rounded-lg border border-app-border bg-app-surface px-3 py-2 font-mono text-xs text-app-muted" title={document.storagePath}>
+            <p className="mt-2 truncate rounded-lg border border-app-border bg-app-surface px-3 py-2 font-mono text-[11px] text-app-muted" title={document.storagePath}>
               {document.storagePath}
             </p>
           </div>
         ) : null}
 
         {document.notes ? (
-          <div className="mt-6 rounded-xl border border-app-border bg-app-elevated p-4">
+          <div className="mt-5 rounded-xl border border-app-border bg-app-elevated/65 p-4">
             <h2 className="text-sm font-semibold text-app-text">Notes</h2>
             <p className="mt-2 text-sm leading-6 text-app-muted">{document.notes}</p>
           </div>
         ) : null}
+        </div>
       </section>
 
       <section className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
-        <div className="rounded-2xl border border-app-border bg-app-surface p-5 shadow-app-soft">
-          <h2 className="text-lg font-semibold text-app-text">Review timeline</h2>
+        <div className="app-card p-5 lg:p-6">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="app-section-title">Processing timeline</h2>
+            <span className="text-xs font-medium text-app-muted">4 stages</span>
+          </div>
           <div className="mt-5 space-y-3">
-            {getTimeline(document.status).map((item, index) => (
-              <div key={item.label} className="flex gap-3 rounded-xl border border-app-border bg-app-elevated p-4">
-                <span className={`grid size-8 shrink-0 place-items-center rounded-full text-xs font-bold ${stateClasses[item.state]}`}>
+            {getTimeline(document.status, chunks.length).map((item, index) => (
+              <div key={item.label} className="flex gap-3 rounded-xl border border-app-border bg-app-elevated/65 p-4">
+                <span className={`grid size-8 shrink-0 place-items-center rounded-full border text-xs font-bold shadow-sm ${stateClasses[item.state]}`}>
                   {index + 1}
                 </span>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-semibold text-app-text">{item.label}</span>
-                    <span className="text-xs font-semibold text-app-muted">{item.status}</span>
+                    <span className="rounded-full bg-app-surface px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-app-muted ring-1 ring-inset ring-app-border">{item.status}</span>
                   </div>
                   <p className="mt-1 text-sm leading-6 text-app-muted">{item.detail}</p>
                 </div>
@@ -624,54 +655,54 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
         </div>
 
         <div className="space-y-4">
-          <div className="rounded-2xl border border-app-border bg-app-surface p-5 shadow-app-soft">
-            <h2 className="text-lg font-semibold text-app-text">Processed chunks</h2>
+          <div className="app-card p-5 lg:p-6">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-app-accent">Evidence workspace</p>
+                <h2 className="mt-1 app-section-title">Extracted chunks</h2>
+              </div>
+              {chunks.length > 0 ? <span className="rounded-full bg-app-accent-soft px-2.5 py-1 text-xs font-semibold text-app-accent">{chunks.length} stored</span> : null}
+            </div>
             {chunks.length > 0 ? (
-              <div className="mt-5 space-y-3">
+              <div className="mt-5 space-y-4">
                 {chunks.map((chunk) => (
-                  <article key={chunk.id} className="rounded-xl border border-app-border bg-app-elevated p-4">
+                  <article key={chunk.id} className="group relative overflow-hidden rounded-xl border border-app-border bg-app-elevated/60 p-4 transition-colors hover:border-app-border-strong hover:bg-app-elevated">
+                    <span aria-hidden="true" className="absolute inset-y-0 left-0 w-0.5 bg-app-accent opacity-70" />
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                       <div>
-                        <span className="text-xs font-semibold uppercase tracking-normal text-app-muted">
-                          Chunk {chunk.chunk_index}
+                        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-app-accent">
+                          Evidence chunk {String(chunk.chunk_index).padStart(3, "0")}
                         </span>
                         <h3 className="mt-1 text-sm font-semibold text-app-text">
                           {chunk.section_path || chunk.section_heading || "Unsectioned content"}
                         </h3>
                       </div>
-                      <span className="shrink-0 text-xs font-semibold text-app-muted">
+                      <span className="shrink-0 rounded-lg border border-app-border bg-app-surface px-2.5 py-1 font-mono text-[10px] font-semibold text-app-muted">
                         {formatPageRange(chunk.page_start, chunk.page_end)}
                       </span>
                     </div>
-                    <p className="mt-2 text-sm leading-6 text-app-muted">
+                    <p className="mt-3 border-t border-app-border pt-3 text-sm leading-6 text-app-muted">
                       {chunk.content.length > 220 ? `${chunk.content.slice(0, 220)}…` : chunk.content}
                     </p>
                   </article>
                 ))}
               </div>
-            ) : document.status === "Processed" ? (
-              <div className="mt-5 space-y-3">
-                {fallbackChunkPreviews.map((chunk) => (
-                  <article key={chunk.title} className="rounded-xl border border-app-border bg-app-elevated p-4">
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                      <h3 className="text-sm font-semibold text-app-text">{chunk.title}</h3>
-                      <span className="text-xs font-semibold text-app-muted">{chunk.page}</span>
-                    </div>
-                    <p className="mt-2 text-sm leading-6 text-app-muted">{chunk.excerpt}</p>
-                  </article>
-                ))}
-              </div>
             ) : (
-              <p className="mt-3 rounded-xl border border-app-border bg-app-elevated p-4 text-sm leading-6 text-app-muted">
-                Document sections will appear here after document reading is connected.
+              <p className="mt-4 rounded-xl border border-dashed border-app-border-strong bg-app-elevated/55 p-5 text-sm leading-6 text-app-muted">
+                {getChunkEmptyState(document.status)}
               </p>
             )}
           </div>
 
-          <div className="rounded-2xl border border-app-border bg-app-surface p-5 shadow-app-soft">
-            <h2 className="text-lg font-semibold text-app-text">Document matching status</h2>
-            <p className="mt-3 rounded-xl border border-app-border bg-app-elevated p-4 text-sm leading-6 text-app-muted">
-              Reg S-P requirement matching will run after document reading is connected.
+          <div className="app-card p-5 lg:p-6">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="app-section-title">Requirement matching</h2>
+              <span className="rounded-full border border-app-border bg-app-elevated px-2.5 py-1 text-[11px] font-semibold text-app-muted">Not connected</span>
+            </div>
+            <p className="mt-4 rounded-xl border border-dashed border-app-border-strong bg-app-elevated/55 p-4 text-sm leading-6 text-app-muted">
+              {chunks.length > 0
+                ? "Reg S-P requirement matching is not connected yet. Extracted chunks are ready for a future matching workflow."
+                : "Reg S-P requirement matching is not connected yet."}
             </p>
           </div>
         </div>

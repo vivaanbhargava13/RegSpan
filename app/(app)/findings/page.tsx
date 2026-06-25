@@ -38,13 +38,23 @@ const gaps = [
 ];
 
 export default function FindingsPage() {
+  const openGapCount = gaps.filter((gap) => gap.status !== "Complete").length;
+  const highRiskCount = gaps.filter((gap) => gap.risk === "High").length;
+  const preparedCount = gaps.filter((gap) => gap.reviewStatus === "Prepared").length;
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <PageHeader
         eyebrow="Gaps"
         title="Open documentation gaps"
         description="Review missing, weak, or unclear documentation that may need follow-up."
       />
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="app-card-subtle px-4 py-3.5"><span className="text-xs text-app-muted">Open gaps</span><strong className="mt-1 block text-xl text-app-text">{openGapCount}</strong></div>
+        <div className="app-card-subtle px-4 py-3.5"><span className="text-xs text-app-muted">High risk</span><strong className="mt-1 block text-xl text-app-danger">{highRiskCount}</strong></div>
+        <div className="app-card-subtle px-4 py-3.5"><span className="text-xs text-app-muted">Prepared</span><strong className="mt-1 block text-xl text-app-success">{preparedCount}</strong></div>
+      </div>
 
       <DataTable
         columns={["Requirement", "Status", "Document support", "Gap", "Risk", "Review status"]}

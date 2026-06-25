@@ -34,7 +34,7 @@ export function LogoutButton() {
         type="button"
         disabled={isLoggingOut}
         onClick={handleLogout}
-        className="h-9 rounded-lg border border-app-border bg-app-surface px-3 text-sm font-semibold text-app-muted transition-colors hover:border-app-border-strong hover:bg-app-elevated hover:text-app-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent disabled:cursor-not-allowed disabled:opacity-60"
+        className="h-9 rounded-xl border border-app-border bg-app-surface px-3.5 text-sm font-medium text-app-muted shadow-sm transition hover:border-app-border-strong hover:bg-app-elevated hover:text-app-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent disabled:cursor-not-allowed disabled:opacity-60"
       >
         {isLoggingOut ? "Logging out..." : "Log out"}
       </button>
