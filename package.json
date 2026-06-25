@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "lint": "eslint . --max-warnings=0",
-    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/*.test.mjs"
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/*.test.mjs",
+    "eval:retrieval": "node scripts/runRetrievalEval.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",
