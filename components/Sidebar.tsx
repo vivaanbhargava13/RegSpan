@@ -13,36 +13,94 @@ export const appNavLinks = [
   { label: "Settings", href: "/settings", icon: "settings" },
 ];
 
+const primaryNavLinks = appNavLinks.filter((link) => link.icon !== "settings");
+const administrationNavLinks = appNavLinks.filter((link) => link.icon === "settings");
+
 function NavIcon({ icon }: { icon: string }) {
-  const paths: Record<string, string> = {
-    dashboard: "M4 4h6v6H4V4Zm10 0h6v6h-6V4ZM4 14h6v6H4v-6Zm10 0h6v6h-6v-6Z",
-    documents: "M7 3h7l4 4v14H7V3Zm7 0v5h5M10 12h5M10 16h5",
-    requirements: "m7 12 3 3 7-7M5 4h14v16H5V4Z",
-    gaps: "M12 3 2.8 20h18.4L12 3Zm0 6v5m0 3v.01",
-    reports: "M5 3h14v18H5V3Zm4 13v-3m3 3V8m3 8v-5",
-    settings: "M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Zm0-5.5 1 2.2 2.4.5 1.8-1.5 2.6 2.6-1.5 1.8.5 2.4 2.2 1-1 3.6-2.4.5-1.8 1.5-2.6 2.6-1.8-1.5-2.4.5-1 2.2H9l-1-2.2-2.4-.5-1.8 1.5-2.6-2.6 1.5-1.8-.5-2.4L0 12l1-3.6 2.4-.5 1.8-1.5 2.6-2.6 1.8 1.5 2.4-.5L12 3Z",
-  };
+  const iconClass = "size-[18px]";
 
   return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" className="size-[18px]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d={paths[icon]} />
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className={iconClass}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {icon === "dashboard" ? (
+        <>
+          <rect x="4" y="4" width="6.5" height="6.5" rx="1.6" />
+          <rect x="13.5" y="4" width="6.5" height="6.5" rx="1.6" />
+          <rect x="4" y="13.5" width="6.5" height="6.5" rx="1.6" />
+          <rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.6" />
+        </>
+      ) : null}
+      {icon === "documents" ? (
+        <>
+          <path d="M7 3.75h7.25L18 7.5v12.75H7V3.75Z" />
+          <path d="M14 3.75V8h4" />
+          <path d="M9.75 12.25h4.75" />
+          <path d="M9.75 16h4.75" />
+        </>
+      ) : null}
+      {icon === "requirements" ? (
+        <>
+          <rect x="5" y="4" width="14" height="16" rx="2" />
+          <path d="m8.5 12.25 2.25 2.25 4.75-5" />
+        </>
+      ) : null}
+      {icon === "gaps" ? (
+        <>
+          <path d="M12 4 3.25 19.25h17.5L12 4Z" />
+          <path d="M12 9.25v4.25" />
+          <path d="M12 16.75h.01" />
+        </>
+      ) : null}
+      {icon === "reports" ? (
+        <>
+          <rect x="5" y="3.75" width="14" height="16.5" rx="2" />
+          <path d="M9 16.25v-3" />
+          <path d="M12 16.25v-7" />
+          <path d="M15 16.25v-4.75" />
+        </>
+      ) : null}
+      {icon === "settings" ? (
+        <>
+          <path d="M12 3.75v2.1" />
+          <path d="M12 18.15v2.1" />
+          <path d="m17.9 6.1-1.48 1.48" />
+          <path d="m7.58 16.42-1.48 1.48" />
+          <path d="M20.25 12h-2.1" />
+          <path d="M5.85 12h-2.1" />
+          <path d="m17.9 17.9-1.48-1.48" />
+          <path d="M7.58 7.58 6.1 6.1" />
+          <circle cx="12" cy="12" r="4.1" />
+          <circle cx="12" cy="12" r="1.35" />
+        </>
+      ) : null}
     </svg>
   );
 }
 
-export function Sidebar() {
+function NavGroup({
+  label,
+  links,
+}: {
+  label: string;
+  links: typeof appNavLinks;
+}) {
   const pathname = usePathname();
 
   return (
-    <aside className="sticky top-0 hidden h-screen w-[248px] shrink-0 flex-col border-r border-app-border bg-app-shell px-4 py-5 md:flex">
-      <div className="flex h-12 items-center px-2">
-        <Logo href="/dashboard" tone="dark" />
+    <div>
+      <div className="px-3 text-[11px] font-bold uppercase tracking-[0.16em] text-app-subtle">
+        {label}
       </div>
-      <div className="mt-7 px-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-app-subtle">
-        Workspace
-      </div>
-      <nav className="mt-2 space-y-1">
-        {appNavLinks.map((link) => {
+      <nav className="mt-2 space-y-1" aria-label={label}>
+        {links.map((link) => {
           const isActive = pathname === link.href || pathname.startsWith(`${link.href}/`);
 
           return (
@@ -50,26 +108,65 @@ export function Sidebar() {
               key={link.href}
               href={link.href}
               aria-current={isActive ? "page" : undefined}
-              className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
+              className={`group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold outline-none transition duration-150 focus-visible:ring-4 focus-visible:ring-app-accent-soft ${
                 isActive
-                  ? "bg-app-accent-soft text-app-accent shadow-sm ring-1 ring-app-accent/10"
+                  ? "bg-app-accent-soft text-app-accent shadow-sm ring-1 ring-app-accent/15"
                   : "text-app-muted hover:bg-app-elevated hover:text-app-text"
               }`}
             >
-              <NavIcon icon={link.icon} />
-              <span>{link.label}</span>
+              <span
+                aria-hidden="true"
+                className={`absolute left-0 top-1/2 h-6 w-0.5 -translate-y-1/2 rounded-full transition ${
+                  isActive ? "bg-app-accent opacity-100" : "bg-transparent opacity-0"
+                }`}
+              />
+              <span
+                className={`grid size-8 place-items-center rounded-lg transition ${
+                  isActive
+                    ? "bg-app-shell/80 text-app-accent"
+                    : "text-app-subtle group-hover:bg-app-shell group-hover:text-app-text"
+                }`}
+              >
+                <NavIcon icon={link.icon} />
+              </span>
+              <span className="truncate">{link.label}</span>
             </Link>
           );
         })}
       </nav>
-      <div className="mt-auto rounded-2xl border border-app-border bg-app-elevated p-4">
-        <div className="flex items-center gap-2 text-xs font-semibold text-app-text">
-          <span className="size-2 rounded-full bg-app-success shadow-[0_0_0_3px_rgb(var(--app-success-soft))]" />
-          Protected workspace
+    </div>
+  );
+}
+
+export function Sidebar() {
+  return (
+    <aside className="sticky top-0 hidden h-screen w-[268px] shrink-0 flex-col border-r border-app-border bg-app-shell px-4 py-5 shadow-[1px_0_0_rgb(var(--app-border)/0.35)] md:flex">
+      <div className="rounded-[22px] border border-app-border bg-gradient-to-br from-app-surface to-app-elevated p-3 shadow-app-card">
+        <Logo href="/dashboard" tone="dark" className="w-full px-1 py-1" showTagline />
+      </div>
+
+      <div className="mt-7 space-y-7">
+        <NavGroup label="Workspace" links={primaryNavLinks} />
+        <div className="h-px bg-app-border/70" />
+        <NavGroup label="Administration" links={administrationNavLinks} />
+      </div>
+
+      <div className="mt-auto pb-3">
+        <div className="rounded-[22px] border border-app-border bg-app-elevated/80 p-4 shadow-sm">
+          <div className="flex items-start gap-3">
+            <span className="mt-1 grid size-7 shrink-0 place-items-center rounded-full bg-app-success-soft text-app-success ring-1 ring-app-success/15">
+              <span className="size-2 rounded-full bg-app-success" />
+            </span>
+            <div className="min-w-0">
+              <div className="text-sm font-semibold tracking-[-0.01em] text-app-text">
+                Protected workspace
+              </div>
+              <p className="mt-1.5 text-xs leading-5 text-app-subtle">
+                Private storage, scoped access, and background processing stay isolated to this workspace.
+              </p>
+            </div>
+          </div>
         </div>
-        <p className="mt-2 text-xs leading-5 text-app-subtle">
-          Private storage and workspace-scoped access controls are active.
-        </p>
       </div>
     </aside>
   );
