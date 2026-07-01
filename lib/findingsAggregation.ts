@@ -4,6 +4,7 @@ import type { RegSpRequirement, RegSpRequirementId } from "./regSpRequirements";
 export type FindingStatus = "covered" | "partial" | "missing" | "conflicting" | "needs_review";
 export type FindingSeverity = "critical" | "high" | "medium" | "low" | "info";
 export type FindingConfidence = "high" | "medium" | "low";
+export type NegativeEvidenceScope = "organization_level_negative" | "document_scope_limitation";
 
 export type GeneratedFindingEvidence = {
   chunk_id: string;
@@ -60,6 +61,104 @@ function isExplicitNegativeEvidence(chunk: GradedEvidenceChunk) {
     && chunk.control_absent_or_out_of_scope;
 }
 
+function normalize(value: string | null | undefined) {
+  return (value ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function chunkInterpretationText(chunk: GradedEvidenceChunk) {
+  return normalize([
+    chunk.supporting_quote,
+    chunk.negative_evidence_reason,
+    chunk.grade_reason,
+    chunk.content_preview,
+    chunk.section_path,
+    chunk.filename,
+  ].filter(Boolean).join(" "));
+}
+
+export function classifyNegativeEvidenceScope(
+  chunk: GradedEvidenceChunk,
+): NegativeEvidenceScope {
+  const text = chunkInterpretationText(chunk);
+  const filename = normalize(chunk.filename);
+  const sectionPath = normalize(chunk.section_path);
+  const documentScopePatterns = [
+    /\bthis\s+(policy|procedure|document|standard|addendum|guide|checklist|section|runbook)\b.{0,120}\b(does not|doesn t|do not|does not fully|does not establish|does not define|does not address|does not authorize|does not require|does not replace|is not intended|not intended)\b/,
+    /\b(outside|out of)\s+the\s+scope\s+of\s+this\s+(policy|procedure|document|standard|addendum|guide|checklist|section|runbook)\b/,
+    /\b(this|the)\s+(policy|procedure|document|standard|addendum|guide|checklist|section|runbook)\b.{0,120}\b(scope|scoped|limited|limitation)\b/,
+    /\b(reserved for|handled in|addressed in)\s+(a\s+)?(separate|another|other)\s+(policy|procedure|document|standard|governance document)\b/,
+  ];
+  const organizationNegativePatterns = [
+    /\b(the\s+)?(firm|organization|company|enterprise)\s+(does not|doesn t|do not|has not|hasn t|will not|does not maintain|does not perform|does not require|has not established)\b/,
+    /\bno\s+(formal\s+)?(process|procedure|program|policy|control|standard|customer notification procedure|incident response program)\s+(exists|exist|has been established|is maintained|is required)\b/,
+    /\bthere\s+is\s+no\s+(formal\s+)?(process|procedure|program|policy|control|standard)\b/,
+    /\bmanagement\s+has\s+not\s+assigned\s+responsibility\b/,
+    /\bthe\s+control\s+is\s+not\s+required\s+by\s+the\s+(firm|organization|company|enterprise)\b/,
+  ];
+
+  if (organizationNegativePatterns.some((pattern) => pattern.test(text))) {
+    return "organization_level_negative";
+  }
+
+  if (
+    documentScopePatterns.some((pattern) => pattern.test(text)) ||
+    (filename.includes("acceptable use") && text.includes("does not")) ||
+    (filename.includes("procedure") && (text.includes("does not define") || text.includes("does not establish"))) ||
+    (sectionPath.includes("scope") && text.includes("does not"))
+  ) {
+    return "document_scope_limitation";
+  }
+
+  return "organization_level_negative";
+}
+
+function textForWeighting(chunk: GradedEvidenceChunk) {
+  return normalize([
+    chunk.filename,
+    chunk.section_path,
+    chunk.grade_reason,
+    chunk.content_preview,
+  ].filter(Boolean).join(" "));
+}
+
+function signalWeight(requirement: RegSpRequirement, chunk: GradedEvidenceChunk) {
+  const text = textForWeighting(chunk);
+  const signals = [
+    ...(requirement.directSignals ?? []),
+    ...(requirement.actionSignals ?? []),
+    ...(requirement.topicSignals ?? []),
+  ].map(normalize).filter(Boolean);
+  return signals.filter((signal) => text.includes(signal)).length;
+}
+
+function evidenceWeight(requirement: RegSpRequirement, chunk: GradedEvidenceChunk) {
+  const text = textForWeighting(chunk);
+  let weight = chunk.rerank_score ?? 0;
+  if (isDirectSupport(chunk)) weight += 120;
+  if (isPartialSupport(chunk)) weight += 70;
+  if (isBackgroundContext(chunk)) weight += 20;
+  if (isExplicitNegativeEvidence(chunk)) {
+    weight += classifyNegativeEvidenceScope(chunk) === "organization_level_negative" ? 90 : 25;
+  }
+  weight += signalWeight(requirement, chunk) * 8;
+  if (chunk.classifier_confidence === "high") weight += 10;
+  if (text.includes("incident response policy") || text.includes("response standard")) weight += 18;
+  if (text.includes("privacy policy") || text.includes("safeguards program")) weight += 12;
+  if (text.includes("acceptable use")) weight -= 25;
+  if (text.includes("scope") || text.includes("limitation")) weight -= 8;
+  return weight;
+}
+
+function sortByEvidenceWeight(requirement: RegSpRequirement, chunks: GradedEvidenceChunk[]) {
+  return [...chunks].sort(
+    (left, right) => evidenceWeight(requirement, right) - evidenceWeight(requirement, left),
+  );
+}
+
 function confidenceForStatus(status: FindingStatus, evidence: GradedEvidenceChunk[]): FindingConfidence {
   const hasHighConfidenceEvidence = evidence.some(
     (chunk) => chunk.classifier_confidence === "high",
@@ -93,7 +192,7 @@ function statusSummary(requirement: RegSpRequirement, status: FindingStatus) {
     case "missing":
       return `No organization evidence currently supports ${requirement.title}.`;
     case "conflicting":
-      return `${requirement.title} has both supporting and explicit negative organization evidence.`;
+      return `${requirement.title} has conflicting organization-level evidence.`;
     case "needs_review":
       return `${requirement.title} has ambiguous organization evidence that needs reviewer confirmation.`;
   }
@@ -122,36 +221,55 @@ function rationaleForFinding({
   direct,
   partial,
   background,
-  negative,
+  organizationNegative,
+  documentScopeLimitations,
   ignoredReferenceCount,
 }: {
   status: FindingStatus;
   direct: GradedEvidenceChunk[];
   partial: GradedEvidenceChunk[];
   background: GradedEvidenceChunk[];
-  negative: GradedEvidenceChunk[];
+  organizationNegative: GradedEvidenceChunk[];
+  documentScopeLimitations: GradedEvidenceChunk[];
   ignoredReferenceCount: number;
 }) {
   const parts = [
     `Status ${status} was assigned using organization evidence only.`,
-    `${direct.length} direct, ${partial.length} partial, ${background.length} background, and ${negative.length} explicit negative organization-evidence candidates were found.`,
+    `${direct.length} direct, ${partial.length} partial, ${background.length} background, ${organizationNegative.length} organization-level negative, and ${documentScopeLimitations.length} document-scope limitation candidates were found.`,
   ];
   if (ignoredReferenceCount > 0) {
     parts.push(`${ignoredReferenceCount} reference/supporting-context candidates were ignored for compliance status.`);
   }
-  if (negative.length > 0) {
-    parts.push("Negative evidence was counted only when the chunk explicitly stated absence, exclusion, delegation, or out-of-scope language for this requirement.");
+  if (status === "covered" && documentScopeLimitations.length > 0) {
+    parts.push("Covered by stronger organization evidence. Some other reviewed documents do not define this control, but those appear to be document-scope limitations.");
+  }
+  if (status === "partial" && documentScopeLimitations.length > 0) {
+    parts.push("Partial evidence exists, and reviewed procedure/policy language limits its own scope rather than proving the organization lacks the control.");
+  }
+  if (status === "conflicting") {
+    parts.push("Conflicting evidence exists because one organization-evidence source supports the control while another states the organization does not perform or maintain it.");
+  }
+  if (organizationNegative.length > 0) {
+    parts.push("Organization-level negative evidence was counted only when the chunk explicitly stated the firm, organization, company, enterprise, or management lacks or does not perform the control.");
+  }
+  if (documentScopeLimitations.length > 0) {
+    parts.push("Document-scope limitations were preserved as citations but did not override stronger requirement-specific support.");
   }
   return parts.join(" ");
 }
 
-function evidenceForStorage(chunks: GradedEvidenceChunk[]): GeneratedFindingEvidence[] {
+function evidenceForStorage(
+  chunks: GradedEvidenceChunk[],
+  negativeScopeByChunkId: Map<string, NegativeEvidenceScope>,
+): GeneratedFindingEvidence[] {
   return chunks.slice(0, 6).map((chunk) => ({
     chunk_id: chunk.chunk_id,
     document_id: chunk.document_id,
     relationship: chunk.evidence_relationship,
     quote: chunk.supporting_quote,
-    reason: chunk.grade_reason,
+    reason: negativeScopeByChunkId.has(chunk.chunk_id)
+      ? `${negativeScopeByChunkId.get(chunk.chunk_id) === "organization_level_negative" ? "Organization-level negative" : "Document-scope limitation"}: ${chunk.grade_reason}`
+      : chunk.grade_reason,
     confidence: chunk.classifier_confidence,
     filename: chunk.filename,
     page_start: chunk.page_start,
@@ -170,24 +288,48 @@ export function aggregateFindingForRequirement(
   const partial = organizationChunks.filter(isPartialSupport);
   const background = organizationChunks.filter(isBackgroundContext);
   const negative = organizationChunks.filter(isExplicitNegativeEvidence);
+  const negativeScopeByChunkId = new Map(
+    negative.map((chunk) => [chunk.chunk_id, classifyNegativeEvidenceScope(chunk)]),
+  );
+  const organizationNegative = negative.filter(
+    (chunk) => negativeScopeByChunkId.get(chunk.chunk_id) === "organization_level_negative",
+  );
+  const documentScopeLimitations = negative.filter(
+    (chunk) => negativeScopeByChunkId.get(chunk.chunk_id) === "document_scope_limitation",
+  );
   const ignoredReferenceCount = gradedChunks.length - organizationChunks.length;
+  const strongestDirect = sortByEvidenceWeight(requirement, direct);
+  const strongestPartial = sortByEvidenceWeight(requirement, partial);
+  const strongestOrganizationNegative = sortByEvidenceWeight(requirement, organizationNegative);
+  const strongestDocumentScopeLimitations = sortByEvidenceWeight(requirement, documentScopeLimitations);
+  const strongestBackground = sortByEvidenceWeight(requirement, background);
 
   let status: FindingStatus;
-  if (direct.length > 0 && negative.length > 0) {
+  if (strongestDirect.length > 0 && strongestOrganizationNegative.length > 0) {
     status = "conflicting";
-  } else if (direct.length > 0) {
+  } else if (strongestDirect.length > 0) {
     status = "covered";
-  } else if (partial.length > 0) {
+  } else if (strongestPartial.length > 0 && strongestOrganizationNegative.length > 0) {
+    status = "needs_review";
+  } else if (strongestPartial.length > 0) {
     status = "partial";
-  } else if (negative.length > 0) {
+  } else if (strongestOrganizationNegative.length > 0) {
     status = "missing";
-  } else if (background.length > 0) {
+  } else if (strongestDocumentScopeLimitations.length > 0) {
+    status = "needs_review";
+  } else if (strongestBackground.length > 0) {
     status = "needs_review";
   } else {
     status = "missing";
   }
 
-  const evidence = [...direct, ...partial, ...negative, ...background];
+  const evidence = [
+    ...strongestDirect,
+    ...strongestPartial,
+    ...strongestOrganizationNegative,
+    ...strongestDocumentScopeLimitations,
+    ...strongestBackground,
+  ];
   return {
     requirement_id: requirement.id,
     requirement_name: requirement.title,
@@ -201,9 +343,10 @@ export function aggregateFindingForRequirement(
       direct,
       partial,
       background,
-      negative,
+      organizationNegative,
+      documentScopeLimitations,
       ignoredReferenceCount,
     }),
-    evidence: evidenceForStorage(evidence),
+    evidence: evidenceForStorage(evidence, negativeScopeByChunkId),
   };
 }

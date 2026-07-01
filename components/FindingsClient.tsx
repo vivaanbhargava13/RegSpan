@@ -57,6 +57,8 @@ type GenerateResponse = {
   error?: string;
 };
 
+const DEFAULT_VISIBLE_EVIDENCE_COUNT = 4;
+
 const statusClasses: Record<Finding["status"], string> = {
   covered: "border-app-success/20 bg-app-success-soft text-app-success",
   partial: "border-app-warning/20 bg-app-warning-soft text-app-warning",
@@ -96,6 +98,53 @@ function formatPageRange(evidence: FindingEvidence) {
   return "Page not available";
 }
 
+function evidenceSortRank(evidence: FindingEvidence) {
+  if (evidence.relationship === "supports") return 0;
+  if (evidence.relationship === "partially_supports") return 1;
+  if (evidence.relationship === "negative_evidence" && evidence.reason?.startsWith("Organization-level negative")) {
+    return 2;
+  }
+  if (evidence.relationship === "negative_evidence") return 3;
+  if (evidence.relationship === "background_context") return 4;
+  return 5;
+}
+
+function sortedEvidence(evidence: FindingEvidence[]) {
+  return [...evidence].sort((left, right) => evidenceSortRank(left) - evidenceSortRank(right));
+}
+
+function EvidenceCard({ evidence, subdued = false }: { evidence: FindingEvidence; subdued?: boolean }) {
+  return (
+    <div className={`rounded-xl border px-4 py-3 ${
+      subdued
+        ? "border-app-border bg-app-elevated/35 opacity-80"
+        : "border-app-border bg-app-elevated/55"
+    }`}
+    >
+      <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-app-subtle">
+        <span>{evidence.filename ?? "Untitled document"}</span>
+        <span>·</span>
+        <span>{formatPageRange(evidence)}</span>
+        <span>·</span>
+        <span>Chunk {evidence.chunk_index ?? "—"}</span>
+        <span>·</span>
+        <span>{humanize(evidence.relationship)}</span>
+      </div>
+      {evidence.section_path ? (
+        <p className="mt-2 text-xs font-medium text-app-muted">{evidence.section_path}</p>
+      ) : null}
+      {evidence.quote || evidence.evidence_quote ? (
+        <blockquote className="mt-3 border-l-2 border-app-accent/50 pl-3 text-sm leading-6 text-app-text">
+          “{evidence.quote ?? evidence.evidence_quote}”
+        </blockquote>
+      ) : null}
+      {evidence.reason ? (
+        <p className="mt-3 text-xs leading-5 text-app-muted">{evidence.reason}</p>
+      ) : null}
+    </div>
+  );
+}
+
 async function getAccessToken() {
   const supabase = getBrowserSupabaseClient();
   if (!supabase) {
@@ -120,7 +169,7 @@ export function FindingsClient() {
   const metrics = useMemo(() => {
     const openCount = findings.filter((finding) => finding.status !== "covered").length;
     const highRiskCount = findings.filter((finding) =>
-      finding.severity === "critical" || finding.severity === "high"
+      finding.status !== "covered" && (finding.severity === "critical" || finding.severity === "high")
     ).length;
     const coveredCount = findings.filter((finding) => finding.status === "covered").length;
     return { openCount, highRiskCount, coveredCount };
@@ -207,7 +256,7 @@ export function FindingsClient() {
       <div className="grid gap-4 sm:grid-cols-3">
         {[
           { label: "Open findings", value: metrics.openCount, tone: "text-app-text", marker: "bg-app-accent" },
-          { label: "High risk", value: metrics.highRiskCount, tone: "text-app-danger", marker: "bg-app-danger" },
+          { label: "High risk open", value: metrics.highRiskCount, tone: "text-app-danger", marker: "bg-app-danger" },
           { label: "Covered", value: metrics.coveredCount, tone: "text-app-success", marker: "bg-app-success" },
         ].map((metric) => (
           <div key={metric.label} className="app-card-subtle relative overflow-hidden px-4 py-4 shadow-sm">
@@ -294,7 +343,7 @@ export function FindingsClient() {
                       {humanize(finding.status)}
                     </span>
                     <span className={`rounded-full border px-3 py-1.5 text-xs font-bold ${severityClasses[finding.severity]}`}>
-                      {humanize(finding.severity)}
+                      Risk if missing: {humanize(finding.severity)}
                     </span>
                     <StatusBadge>{humanize(finding.confidence)}</StatusBadge>
                   </div>
@@ -320,32 +369,7 @@ export function FindingsClient() {
                       No organization evidence citation was stored for this finding.
                     </p>
                   ) : (
-                    <div className="mt-3 space-y-3">
-                      {finding.evidence.map((evidence) => (
-                        <div key={evidence.id} className="rounded-xl border border-app-border bg-app-elevated/55 px-4 py-3">
-                          <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-app-subtle">
-                            <span>{evidence.filename ?? "Untitled document"}</span>
-                            <span>·</span>
-                            <span>{formatPageRange(evidence)}</span>
-                            <span>·</span>
-                            <span>Chunk {evidence.chunk_index ?? "—"}</span>
-                            <span>·</span>
-                            <span>{humanize(evidence.relationship)}</span>
-                          </div>
-                          {evidence.section_path ? (
-                            <p className="mt-2 text-xs font-medium text-app-muted">{evidence.section_path}</p>
-                          ) : null}
-                          {evidence.quote || evidence.evidence_quote ? (
-                            <blockquote className="mt-3 border-l-2 border-app-accent/50 pl-3 text-sm leading-6 text-app-text">
-                              “{evidence.quote ?? evidence.evidence_quote}”
-                            </blockquote>
-                          ) : null}
-                          {evidence.reason ? (
-                            <p className="mt-3 text-xs leading-5 text-app-muted">{evidence.reason}</p>
-                          ) : null}
-                        </div>
-                      ))}
-                    </div>
+                    <EvidenceList evidence={finding.evidence} />
                   )}
                 </div>
               </div>
@@ -353,6 +377,40 @@ export function FindingsClient() {
           ))}
         </section>
       )}
+    </div>
+  );
+}
+
+function EvidenceList({ evidence }: { evidence: FindingEvidence[] }) {
+  const orderedEvidence = sortedEvidence(evidence);
+  const visibleEvidence = orderedEvidence.slice(0, DEFAULT_VISIBLE_EVIDENCE_COUNT);
+  const hiddenEvidence = orderedEvidence.slice(DEFAULT_VISIBLE_EVIDENCE_COUNT);
+
+  return (
+    <div className="mt-3 space-y-3">
+      {visibleEvidence.map((item) => (
+        <EvidenceCard
+          key={item.id}
+          evidence={item}
+          subdued={item.relationship === "background_context" || item.relationship === "irrelevant"}
+        />
+      ))}
+      {hiddenEvidence.length > 0 ? (
+        <details className="rounded-xl border border-app-border bg-app-elevated/35">
+          <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-app-muted transition hover:text-app-text">
+            Show all evidence ({hiddenEvidence.length} more)
+          </summary>
+          <div className="space-y-3 border-t border-app-border p-3">
+            {hiddenEvidence.map((item) => (
+              <EvidenceCard
+                key={item.id}
+                evidence={item}
+                subdued={item.relationship === "background_context" || item.relationship === "irrelevant"}
+              />
+            ))}
+          </div>
+        </details>
+      ) : null}
     </div>
   );
 }

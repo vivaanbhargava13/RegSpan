@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
   aggregateFindingForRequirement,
+  classifyNegativeEvidenceScope,
 } from "../lib/findingsAggregation.ts";
 
 const requirement = {
@@ -49,6 +50,22 @@ function chunk(overrides = {}) {
   };
 }
 
+function negativeChunk(overrides = {}) {
+  return chunk({
+    grade: "irrelevant",
+    evidence_relationship: "negative_evidence",
+    requirement_supported: false,
+    control_absent_or_out_of_scope: true,
+    negative_evidence: true,
+    classifier_confidence: "high",
+    negative_evidence_reason: "The firm does not establish customer notification.",
+    grade_reason: "The firm does not establish customer notification.",
+    supporting_quote: "The firm does not establish customer notification.",
+    content_preview: "The firm does not establish customer notification.",
+    ...overrides,
+  });
+}
+
 test("organization evidence can produce covered and partial findings", () => {
   const covered = aggregateFindingForRequirement(requirement, [chunk()]);
   const partial = aggregateFindingForRequirement(requirement, [
@@ -75,23 +92,97 @@ test("no organization evidence produces a missing finding", () => {
   assert.match(finding.summary, /No organization evidence/);
 });
 
-test("explicit negative evidence produces conflicting or missing findings", () => {
-  const negative = chunk({
-    grade: "irrelevant",
-    evidence_relationship: "negative_evidence",
-    requirement_supported: false,
-    control_absent_or_out_of_scope: true,
-    negative_evidence: true,
-    negative_evidence_reason: "does not establish customer notification",
-    supporting_quote: "does not establish customer notification",
-  });
+test("true organization-level negative evidence produces conflicting or missing findings", () => {
+  const negative = negativeChunk();
 
   const conflicting = aggregateFindingForRequirement(requirement, [chunk(), negative]);
   const missing = aggregateFindingForRequirement(requirement, [negative]);
 
   assert.equal(conflicting.status, "conflicting");
   assert.equal(missing.status, "missing");
-  assert.match(conflicting.rationale, /Negative evidence was counted only/);
+  assert.match(conflicting.rationale, /organization-level negative/i);
+  assert.equal(conflicting.evidence[1].reason.startsWith("Organization-level negative:"), true);
+});
+
+test("strong support with weak document-scope limitation stays covered", () => {
+  const limitation = negativeChunk({
+    chunk_id: "33333333-3333-4333-8333-333333333333",
+    filename: "Acceptable Use Policy.pdf",
+    section_path: "Acceptable Use > Scope",
+    negative_evidence_reason: "This policy does not define customer notification.",
+    grade_reason: "This policy does not define customer notification.",
+    supporting_quote: "This policy does not define customer notification.",
+    content_preview: "This policy does not define customer notification after unauthorized access.",
+    rerank_score: 12,
+  });
+
+  const finding = aggregateFindingForRequirement(requirement, [chunk(), limitation]);
+
+  assert.equal(classifyNegativeEvidenceScope(limitation), "document_scope_limitation");
+  assert.equal(finding.status, "covered");
+  assert.notEqual(finding.status, "conflicting");
+  assert.equal(finding.severity, "info");
+  assert.match(finding.rationale, /document-scope limitations/i);
+  assert.equal(
+    finding.evidence.some((evidence) => evidence.reason.startsWith("Document-scope limitation:")),
+    true,
+  );
+});
+
+test("strong support with partial procedure scope limitation is not conflicting", () => {
+  const procedureLimitation = negativeChunk({
+    chunk_id: "44444444-4444-4444-8444-444444444444",
+    filename: "Information Security Procedure.pdf",
+    section_path: "Procedure Scope",
+    negative_evidence_reason: "This procedure does not establish customer notification.",
+    grade_reason: "This procedure does not establish customer notification.",
+    supporting_quote: "This procedure does not establish customer notification.",
+    content_preview: "This procedure does not establish customer notification or consumer notice timing.",
+    rerank_score: 28,
+  });
+
+  const finding = aggregateFindingForRequirement(requirement, [chunk(), procedureLimitation]);
+
+  assert.equal(classifyNegativeEvidenceScope(procedureLimitation), "document_scope_limitation");
+  assert.equal(finding.status, "covered");
+  assert.notEqual(finding.status, "conflicting");
+});
+
+test("document-scope limitation without support needs review", () => {
+  const limitation = negativeChunk({
+    filename: "Privacy Procedure.pdf",
+    section_path: "Scope and Limitations",
+    negative_evidence_reason: "Outside the scope of this procedure: customer notification is reserved for another policy.",
+    grade_reason: "Outside the scope of this procedure: customer notification is reserved for another policy.",
+    supporting_quote: "Outside the scope of this procedure",
+    content_preview: "Outside the scope of this procedure: customer notification is reserved for another policy.",
+  });
+
+  const finding = aggregateFindingForRequirement(requirement, [limitation]);
+
+  assert.equal(classifyNegativeEvidenceScope(limitation), "document_scope_limitation");
+  assert.equal(finding.status, "needs_review");
+  assert.equal(finding.severity, "medium");
+});
+
+test("negative evidence scope classifier distinguishes organization from document limitations", () => {
+  assert.equal(
+    classifyNegativeEvidenceScope(negativeChunk({
+      content_preview: "There is no customer notification procedure.",
+      grade_reason: "There is no customer notification procedure.",
+    })),
+    "organization_level_negative",
+  );
+  assert.equal(
+    classifyNegativeEvidenceScope(negativeChunk({
+      filename: "Acceptable Use Policy.pdf",
+      content_preview: "This policy does not define customer notification.",
+      grade_reason: "This policy does not define customer notification.",
+      negative_evidence_reason: "This policy does not define customer notification.",
+      supporting_quote: "This policy does not define customer notification.",
+    })),
+    "document_scope_limitation",
+  );
 });
 
 test("public or reference evidence cannot satisfy client compliance", () => {
@@ -151,5 +242,12 @@ test("findings UI shows generation and empty states", async () => {
   assert.match(client, /Evidence citations/);
   assert.match(client, /\/api\/findings\/generate/);
   assert.match(client, /\/api\/findings/);
+  assert.match(client, /High risk open/);
+  assert.match(client, /finding\.status !== "covered"/);
+  assert.match(client, /Risk if missing:/);
+  assert.match(client, /DEFAULT_VISIBLE_EVIDENCE_COUNT = 4/);
+  assert.match(client, /Show all evidence/);
+  assert.match(client, /background_context/);
+  assert.match(client, /subdued/);
   assert.doesNotMatch(client, /SUPABASE_SERVICE_ROLE_KEY|EMBEDDING_API_KEY|OPENAI_API_KEY/);
 });
