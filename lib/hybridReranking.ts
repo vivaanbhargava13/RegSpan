@@ -1,3 +1,5 @@
+import { detectNegativeEvidence } from "./negativeEvidence";
+
 export type RerankableRequirement = {
   title: string;
   description: string;
@@ -22,6 +24,8 @@ export type RerankableChunk = {
   evidence_role: string;
   rerank_score?: number | null;
   rerank_reason?: string | null;
+  negative_evidence?: boolean;
+  negative_evidence_reason?: string | null;
 };
 
 export type RequirementKeywordProfile = {
@@ -145,7 +149,12 @@ function clampScore(score: number) {
 export function rerankRequirementChunk<T extends RerankableChunk>(
   requirement: RerankableRequirement,
   chunk: T,
-): T & { rerank_score: number; rerank_reason: string } {
+): T & {
+  rerank_score: number;
+  rerank_reason: string;
+  negative_evidence: boolean;
+  negative_evidence_reason: string | null;
+} {
   const profile = buildRequirementKeywordProfile(requirement);
   const text = chunkRerankText(chunk);
   const section = sectionText(chunk);
@@ -153,6 +162,11 @@ export function rerankRequirementChunk<T extends RerankableChunk>(
   const direct = countMatches(text, profile.directSignals);
   const action = countMatches(text, profile.actionSignals);
   const topic = countMatches(text, profile.topicSignals);
+  const negativeEvidence = detectNegativeEvidence(text, [
+    ...profile.directSignals,
+    ...profile.actionSignals,
+    ...profile.topicSignals,
+  ]);
   const sectionMatches = countMatches(section, [
     ...profile.directSignals,
     ...profile.actionSignals,
@@ -162,10 +176,14 @@ export function rerankRequirementChunk<T extends RerankableChunk>(
   const evidenceReason = normalize(chunk.evidence_reason);
 
   let score = semanticScore;
-  score += Math.min(direct.count, 5) * 9;
-  score += Math.min(action.count, 4) * 6;
-  score += Math.min(topic.count, 5) * 3;
-  score += Math.min(sectionMatches.count, 3) * 5;
+  if (negativeEvidence.isNegativeEvidence) {
+    score -= 40;
+  } else {
+    score += Math.min(direct.count, 5) * 9;
+    score += Math.min(action.count, 4) * 6;
+    score += Math.min(topic.count, 5) * 3;
+    score += Math.min(sectionMatches.count, 3) * 5;
+  }
   if (chunk.evidence_role === "organization_evidence") {
     score += 4;
   } else if (chunk.evidence_role === "requirement_reference") {
@@ -193,6 +211,9 @@ export function rerankRequirementChunk<T extends RerankableChunk>(
     chunk.evidence_role ? `role ${chunk.evidence_role}` : null,
     chunk.source_type ? `source ${chunk.source_type}` : null,
     evidenceReason ? `classifier ${evidenceReason}` : null,
+    negativeEvidence.isNegativeEvidence
+      ? `negative evidence: ${negativeEvidence.matchedPhrase} ${negativeEvidence.matchedSignal}`
+      : null,
     negative.count > 0 ? `negative signals: ${negative.matched.slice(0, 2).join(", ")}` : null,
   ].filter(Boolean);
 
@@ -200,6 +221,10 @@ export function rerankRequirementChunk<T extends RerankableChunk>(
     ...chunk,
     rerank_score: clampScore(score),
     rerank_reason: reasons.join("; "),
+    negative_evidence: negativeEvidence.isNegativeEvidence,
+    negative_evidence_reason: negativeEvidence.isNegativeEvidence
+      ? `${negativeEvidence.matchedPhrase} near ${negativeEvidence.matchedSignal}`
+      : null,
   };
 }
 
@@ -236,16 +261,27 @@ export function rerankRequirementCandidates<T extends RerankableChunk>(
   candidates: T[],
   topK: number,
 ) {
-  return candidates
+  const reranked = candidates
     .map((candidate) => rerankRequirementChunk(requirement, candidate))
     .sort((left, right) => {
       const rerankDelta = right.rerank_score - left.rerank_score;
       if (rerankDelta !== 0) return rerankDelta;
       return right.similarity - left.similarity;
-    })
-    .slice(0, topK)
-    .map((candidate, index) => ({
-      ...candidate,
-      rank: index + 1,
-    }));
+    });
+
+  const topCandidates = reranked.slice(0, topK);
+  if (
+    topK > 0
+    && !topCandidates.some((candidate) => candidate.negative_evidence)
+  ) {
+    const negativeCandidate = reranked.find((candidate) => candidate.negative_evidence);
+    if (negativeCandidate) {
+      topCandidates.splice(Math.max(0, topK - 1), 1, negativeCandidate);
+    }
+  }
+
+  return topCandidates.map((candidate, index) => ({
+    ...candidate,
+    rank: index + 1,
+  }));
 }

@@ -75,6 +75,20 @@ Use semantic similarity to understand embedding retrieval behavior. Use
 `rerank_score` and `rerank_reason` to understand why a candidate was promoted
 or demoted for a specific requirement.
 
+## Negative or absence evidence
+
+The grader detects common absence phrases such as “does not define,” “does not
+establish,” “does not require,” “does not impose,” “no formal,” “lacks,”
+“missing,” and “reserved for another policy” when they occur near
+requirement-specific terms. These chunks are marked with
+`negative_evidence: true` and should not be read as positive support merely
+because they contain words like “notification,” “vendor reporting,” or
+“recovery validation.”
+
+Negative evidence is useful during review because it may indicate a real gap,
+but this debug harness still does not create final findings or compliance
+conclusions.
+
 ## What to review
 
 For each requirement, the report includes:
@@ -84,6 +98,7 @@ For each requirement, the report includes:
 - top_k used
 - candidate count
 - direct, partial, background, and irrelevant counts
+- negative evidence count
 - organization evidence, requirement reference, and supporting context counts
 - source type mix
 - top evidence chunks with filename, page range, section path, chunk index,

@@ -108,10 +108,10 @@ test("public guidance and framework documents do not become organization evidenc
   }
 });
 
-test("public documents require explicit source metadata before becoming organization evidence", async () => {
+test("public documents keep public-reference precedence over organization metadata", async () => {
   const {
     inferDocumentSourceType,
-    evidenceRoleForSourceType,
+    inferEvidenceRole,
   } = await loadTsModule("lib/documentSource.ts");
 
   const sourceType = inferDocumentSourceType({
@@ -120,8 +120,12 @@ test("public documents require explicit source metadata before becoming organiza
     notes: "User verified this uploaded file is the organization's adopted source_type: client_policy.",
   });
 
-  assert.equal(sourceType, "client_policy");
-  assert.equal(evidenceRoleForSourceType(sourceType), "organization_evidence");
+  assert.equal(sourceType, "control_framework");
+  assert.equal(inferEvidenceRole({
+    filename: "FINRA Core Cybersecurity Controls.pdf",
+    documentType: "Source type: client policy",
+    notes: "User verified this uploaded file is the organization's adopted source_type: client_policy.",
+  }), "requirement_reference");
 });
 
 test("client policy metadata is not overridden by incidental public-reference text", async () => {
@@ -139,6 +143,37 @@ test("client policy metadata is not overridden by incidental public-reference te
 
   assert.equal(sourceType, "client_policy");
   assert.equal(evidenceRoleForSourceType(sourceType), "organization_evidence");
+});
+
+test("explicit document text metadata classifies client and vendor documents", async () => {
+  const {
+    inferDocumentSourceType,
+    inferEvidenceRole,
+  } = await loadTsModule("lib/documentSource.ts");
+
+  const clientPolicy = {
+    filename: "Larkspur_Response_Limitations.pdf",
+    contentPreview:
+      "Document class Client policy. Evidence role Organization evidence. This document describes limitations.",
+  };
+  assert.equal(inferDocumentSourceType(clientPolicy), "client_policy");
+  assert.equal(inferEvidenceRole(clientPolicy), "organization_evidence");
+
+  const clientProcedure = {
+    filename: "Harborview_Procedure.pdf",
+    contentPreview:
+      "Document class Client procedure. Evidence role Organization evidence. Procedure scope and steps.",
+  };
+  assert.equal(inferDocumentSourceType(clientProcedure), "client_procedure");
+  assert.equal(inferEvidenceRole(clientProcedure), "organization_evidence");
+
+  const vendorAddendum = {
+    filename: "AtlasPay_Third_Party_Security_Incident_Addendum.pdf",
+    contentPreview:
+      "Document class Vendor contract addendum. Evidence role Organization evidence. Supplier incident notice and cooperation obligations. This is not a full internal incident response policy.",
+  };
+  assert.equal(inferDocumentSourceType(vendorAddendum), "vendor_contract");
+  assert.equal(inferEvidenceRole(vendorAddendum), "organization_evidence");
 });
 
 test("client policy, procedure, and vendor contract sources map to organization evidence", async () => {

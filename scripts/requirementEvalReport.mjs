@@ -51,6 +51,8 @@ export function shapeRequirementEvidenceChunk(chunk) {
     rerank_reason: chunk.rerank_reason ?? null,
     grade: chunk.grade,
     grade_reason: chunk.grade_reason,
+    negative_evidence: Boolean(chunk.negative_evidence),
+    negative_evidence_reason: chunk.negative_evidence_reason ?? null,
     source_type: chunk.source_type,
     evidence_role: chunk.evidence_role,
     evidence_reason: chunk.evidence_reason ?? null,
@@ -87,6 +89,9 @@ export function buildRequirementEvalReport({
         supporting_context: 0,
       };
       const sourceTypeMix = {};
+      const negativeEvidenceCount = candidates
+        .filter((candidate) => candidate.negative_evidence)
+        .length;
 
       for (const candidate of candidates) {
         incrementCount(evidenceRoleCounts, candidate.evidence_role);
@@ -105,6 +110,7 @@ export function buildRequirementEvalReport({
         partial_count: result.partial.length,
         background_count: result.background.length,
         irrelevant_count: result.irrelevant.length,
+        negative_evidence_count: negativeEvidenceCount,
         organization_evidence_count: evidenceRoleCounts.organization_evidence,
         requirement_reference_count: evidenceRoleCounts.requirement_reference,
         supporting_context_count: evidenceRoleCounts.supporting_context,
@@ -142,8 +148,8 @@ export function formatRequirementEvalMarkdown(report) {
     "",
     "### Requirement summary",
     "",
-    "| Requirement | Status | Candidates | Direct | Partial | Background | Ignored | Org evidence | Reference | Context | Source mix |",
-    "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|",
+    "| Requirement | Status | Candidates | Direct | Partial | Background | Ignored | Negative | Org evidence | Reference | Context | Source mix |",
+    "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
   ];
 
   for (const requirement of report.requirements) {
@@ -156,6 +162,7 @@ export function formatRequirementEvalMarkdown(report) {
         requirement.partial_count,
         requirement.background_count,
         requirement.irrelevant_count,
+        requirement.negative_evidence_count,
         requirement.organization_evidence_count,
         requirement.requirement_reference_count,
         requirement.supporting_context_count,
@@ -186,6 +193,7 @@ export function formatRequirementEvalMarkdown(report) {
     lines.push(`- Top K used: ${requirement.top_k}`);
     lines.push(`- Candidate count: ${requirement.candidate_count}`);
     lines.push(`- Direct / partial / background / ignored: ${requirement.direct_count} / ${requirement.partial_count} / ${requirement.background_count} / ${requirement.irrelevant_count}`);
+    lines.push(`- Negative evidence count: ${requirement.negative_evidence_count}`);
     lines.push(`- Evidence roles: organization_evidence ${requirement.organization_evidence_count}, requirement_reference ${requirement.requirement_reference_count}, supporting_context ${requirement.supporting_context_count}`);
     lines.push(`- Source type mix: ${formatCountMap(requirement.source_type_mix)}`);
     lines.push("");
@@ -219,6 +227,8 @@ export function formatRequirementEvalMarkdown(report) {
       lines.push(`- Rerank score: ${chunk.rerank_score === null ? "—" : chunk.rerank_score.toFixed(2)}`);
       lines.push(`- Rerank reason: ${chunk.rerank_reason ?? "—"}`);
       lines.push(`- Grade reason: ${chunk.grade_reason}`);
+      lines.push(`- Negative evidence: ${chunk.negative_evidence ? "yes" : "no"}`);
+      lines.push(`- Negative evidence reason: ${chunk.negative_evidence_reason ?? "—"}`);
       lines.push(`- Source type: ${chunk.source_type}`);
       lines.push(`- Evidence role: ${chunk.evidence_role}`);
       lines.push(`- Chunk classifier: ${chunk.evidence_reason ?? "—"}`);

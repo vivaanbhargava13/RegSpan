@@ -27,6 +27,8 @@ const SAMPLE_CHUNK = {
   rerank_reason: "semantic 81.2; direct signals: notify affected customers; role organization_evidence",
   grade: "direct",
   grade_reason: "Direct evidence signals matched: notify affected customers.",
+  negative_evidence: false,
+  negative_evidence_reason: null,
   source_type: "client_policy",
   evidence_role: "organization_evidence",
   evidence_reason: "substantive policy evidence",
@@ -62,6 +64,7 @@ test("requirement eval report generation captures counts and source-aware fields
   assert.equal(report.requirements[0].top_k, 15);
   assert.equal(report.requirements[0].candidate_count, 1);
   assert.equal(report.requirements[0].direct_count, 1);
+  assert.equal(report.requirements[0].negative_evidence_count, 0);
   assert.equal(report.requirements[0].organization_evidence_count, 1);
   assert.equal(report.requirements[0].requirement_reference_count, 0);
   assert.equal(report.requirements[0].source_type_mix.client_policy, 1);
@@ -94,6 +97,8 @@ test("requirement eval markdown includes manual reviewer fields", () => {
   assert.match(markdown, /Semantic similarity: 0\.8123/);
   assert.match(markdown, /Rerank score: 124\.25/);
   assert.match(markdown, /Rerank reason:/);
+  assert.match(markdown, /Negative evidence: no/);
+  assert.match(markdown, /Negative evidence count: 0/);
   assert.equal(formatPageRange(4, 5), "Pages 4–5");
 });
 
@@ -136,5 +141,7 @@ test("requirement eval shaping preserves source type and evidence role in each c
   assert.equal(shaped.evidence_role, "organization_evidence");
   assert.equal(shaped.rerank_score, 124.25);
   assert.match(shaped.rerank_reason, /semantic 81\.2/);
+  assert.equal(shaped.negative_evidence, false);
+  assert.equal(shaped.negative_evidence_reason, null);
   assert.match(shaped.content_preview, /Affected customers/);
 });

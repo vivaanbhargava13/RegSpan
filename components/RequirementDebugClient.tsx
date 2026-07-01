@@ -32,6 +32,8 @@ type GradedEvidenceChunk = {
   rerank_reason: string | null;
   grade: EvidenceGrade;
   grade_reason: string;
+  negative_evidence: boolean;
+  negative_evidence_reason: string | null;
 };
 
 type RequirementMatchResult = {
@@ -175,6 +177,11 @@ function EvidenceGroup({
                 <span className="font-semibold text-app-text">Grade reason:</span>{" "}
                 {chunk.grade_reason}
               </p>
+              {chunk.negative_evidence ? (
+                <p className="mt-2 rounded-lg border border-app-danger/20 bg-app-danger-soft px-3 py-2 text-xs font-semibold leading-5 text-app-danger">
+                  Negative evidence: {chunk.negative_evidence_reason ?? "absence or out-of-scope language detected"}
+                </p>
+              ) : null}
               {chunk.rerank_reason ? (
                 <p className="mt-2 rounded-lg border border-app-border bg-app-elevated/35 px-3 py-2 text-xs font-medium leading-5 text-app-muted">
                   <span className="font-semibold text-app-text">Rerank reason:</span>{" "}

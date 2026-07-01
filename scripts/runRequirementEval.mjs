@@ -154,13 +154,16 @@ async function loadTypeScriptModule(sourcePath, outDir) {
     fileName: sourcePath,
   });
   const outputPath = join(outDir, sourcePath.replace(/[\/:]/g, "__").replace(/\.ts$/, ".mjs"));
-  await writeFile(outputPath, transpiled.outputText, "utf8");
+  const outputText = transpiled.outputText
+    .replaceAll('from "./negativeEvidence"', 'from "./lib__negativeEvidence.mjs"');
+  await writeFile(outputPath, outputText, "utf8");
   return import(pathToFileURL(outputPath).href);
 }
 
 async function loadRequirementMatchingModules() {
   const outDir = await mkdtemp(join(tmpdir(), "regspan-requirement-eval-"));
-  const [requirements, matching, source, reranking] = await Promise.all([
+  const [, requirements, matching, source, reranking] = await Promise.all([
+    loadTypeScriptModule("lib/negativeEvidence.ts", outDir),
     loadTypeScriptModule("lib/regSpRequirements.ts", outDir),
     loadTypeScriptModule("lib/requirementMatching.ts", outDir),
     loadTypeScriptModule("lib/documentSource.ts", outDir),
@@ -172,6 +175,7 @@ async function loadRequirementMatchingModules() {
     getRegSpRequirement: requirements.getRegSpRequirement,
     buildRequirementMatchResult: matching.buildRequirementMatchResult,
     inferDocumentSourceType: source.inferDocumentSourceType,
+    inferEvidenceRole: source.inferEvidenceRole,
     evidenceRoleForSourceType: source.evidenceRoleForSourceType,
     buildRequirementKeywordProfile: reranking.buildRequirementKeywordProfile,
     mergeHybridCandidates: reranking.mergeHybridCandidates,
@@ -401,6 +405,14 @@ async function hydrateRetrievedRows({
       contentPreview,
       evidenceReason,
     });
+    const evidenceRole = sourceClassifier.inferEvidenceRole({
+      filename: document?.filename ?? row.filename,
+      documentType: document?.document_type,
+      notes: document?.notes,
+      sectionPath: row.section_path,
+      contentPreview,
+      evidenceReason,
+    });
 
     return {
       chunk_id: chunkId,
@@ -416,7 +428,7 @@ async function hydrateRetrievedRows({
       evidence_reason: evidenceReason,
       embedding_input: embeddingInput,
       source_type: sourceType,
-      evidence_role: sourceClassifier.evidenceRoleForSourceType(sourceType),
+      evidence_role: evidenceRole,
       rerank_score: null,
       rerank_reason: null,
     };
@@ -514,6 +526,7 @@ async function main() {
     getRegSpRequirement,
     buildRequirementMatchResult,
     inferDocumentSourceType,
+    inferEvidenceRole,
     evidenceRoleForSourceType,
     buildRequirementKeywordProfile,
     mergeHybridCandidates,
@@ -545,7 +558,7 @@ async function main() {
     const chunks = await retrieveRequirementCandidates({
       supabase,
       embeddingConfig,
-      sourceClassifier: { inferDocumentSourceType, evidenceRoleForSourceType },
+      sourceClassifier: { inferDocumentSourceType, inferEvidenceRole, evidenceRoleForSourceType },
       hybridReranker: {
         buildRequirementKeywordProfile,
         mergeHybridCandidates,

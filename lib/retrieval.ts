@@ -7,7 +7,7 @@ import {
   type EmbeddingProvider,
 } from "@/lib/embeddings";
 import {
-  evidenceRoleForSourceType,
+  inferEvidenceRole,
   inferDocumentSourceType,
   type DocumentSourceType,
   type EvidenceRole,
@@ -163,6 +163,14 @@ export async function retrieveRelevantChunks({
       contentPreview: result.content_preview,
       evidenceReason,
     });
+    const evidenceRole = inferEvidenceRole({
+      filename: document?.filename ?? result.filename,
+      documentType: document?.documentType,
+      notes: document?.notes,
+      sectionPath: result.section_path,
+      contentPreview: result.content_preview,
+      evidenceReason,
+    });
 
     return {
       ...result,
@@ -170,7 +178,7 @@ export async function retrieveRelevantChunks({
       evidence_reason: evidenceReason,
       embedding_input: embeddingInput,
       source_type: sourceType,
-      evidence_role: evidenceRoleForSourceType(sourceType),
+      evidence_role: evidenceRole,
       rerank_score: null,
       rerank_reason: null,
     };

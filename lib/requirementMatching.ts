@@ -1,5 +1,6 @@
 import type { RetrievedChunk } from "@/lib/retrieval";
 import type { RegSpRequirement } from "@/lib/regSpRequirements";
+import { detectNegativeEvidence } from "./negativeEvidence";
 
 export type EvidenceGrade = "direct" | "partial" | "background" | "irrelevant";
 export type RequirementDebugStatus = "strong_match" | "partial_match" | "weak_match" | "no_match";
@@ -7,6 +8,8 @@ export type RequirementDebugStatus = "strong_match" | "partial_match" | "weak_ma
 export type GradedEvidenceChunk = RetrievedChunk & {
   grade: EvidenceGrade;
   grade_reason: string;
+  negative_evidence: boolean;
+  negative_evidence_reason: string | null;
 };
 
 export type RequirementMatchResult = {
@@ -64,6 +67,12 @@ export function gradeRetrievedChunk(
   chunk: RetrievedChunk,
 ): GradedEvidenceChunk {
   const text = chunkText(chunk);
+  const negativeEvidence = detectNegativeEvidence(text, [
+    ...requirement.directSignals,
+    ...requirement.actionSignals,
+    ...requirement.topicSignals,
+    ...requirement.partialSignals,
+  ]);
   const direct = countSignalMatches(text, requirement.directSignals);
   const action = countSignalMatches(text, requirement.actionSignals);
   const partial = countSignalMatches(text, requirement.partialSignals);
@@ -88,6 +97,18 @@ export function gradeRetrievedChunk(
       ])
     );
 
+  if (negativeEvidence.isNegativeEvidence) {
+    return {
+      ...chunk,
+      grade: "irrelevant",
+      grade_reason:
+        `Negative evidence: chunk states this requirement is absent or out of scope (${negativeEvidence.matchedPhrase} ${negativeEvidence.matchedSignal}).`,
+      negative_evidence: true,
+      negative_evidence_reason:
+        `${negativeEvidence.matchedPhrase} near ${negativeEvidence.matchedSignal}`,
+    };
+  }
+
   if (hasExplicitAction && hasVendorIncidentHandlingContext && direct.count >= 2) {
     return {
       ...chunk,
@@ -96,6 +117,8 @@ export function gradeRetrievedChunk(
         ...direct.matched,
         ...action.matched.slice(0, 2),
       ].join(", ")}.`,
+      negative_evidence: false,
+      negative_evidence_reason: null,
     };
   }
 
@@ -114,6 +137,8 @@ export function gradeRetrievedChunk(
         ...partial.matched,
         ...background.matched.slice(0, 1),
       ].join(", ")}.`,
+      negative_evidence: false,
+      negative_evidence_reason: null,
     };
   }
 
@@ -125,6 +150,8 @@ export function gradeRetrievedChunk(
         ...partial.matched,
         ...background.matched,
       ].join(", ")}.`,
+      negative_evidence: false,
+      negative_evidence_reason: null,
     };
   }
 
@@ -133,6 +160,8 @@ export function gradeRetrievedChunk(
     grade: "irrelevant",
     grade_reason:
       "Candidate was retrieved semantically, but it does not contain enough requirement-specific signals for this debug grader.",
+    negative_evidence: false,
+    negative_evidence_reason: null,
   };
 }
 

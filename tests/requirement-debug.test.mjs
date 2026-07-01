@@ -18,7 +18,21 @@ async function loadTsModule(sourcePath) {
     },
     fileName: sourcePath,
   });
-  await writeFile(outPath, transpiled.outputText, "utf8");
+  const outputText = transpiled.outputText
+    .replaceAll('from "./negativeEvidence"', 'from "./lib__negativeEvidence.mjs"');
+  if (sourcePath !== "lib/negativeEvidence.ts") {
+    const negativeSource = await readFile("lib/negativeEvidence.ts", "utf8");
+    const negativeTranspiled = ts.transpileModule(negativeSource, {
+      compilerOptions: {
+        module: ts.ModuleKind.ES2022,
+        target: ts.ScriptTarget.ES2022,
+        verbatimModuleSyntax: false,
+      },
+      fileName: "lib/negativeEvidence.ts",
+    });
+    await writeFile(join(outDir, "lib__negativeEvidence.mjs"), negativeTranspiled.outputText, "utf8");
+  }
+  await writeFile(outPath, outputText, "utf8");
   return import(pathToFileURL(outPath).href);
 }
 
@@ -37,6 +51,15 @@ function retrievedChunk(contentPreview) {
     embedding_input: null,
     source_type: "regulatory_guidance",
     evidence_role: "requirement_reference",
+  };
+}
+
+function organizationChunk(contentPreview) {
+  return {
+    ...retrievedChunk(contentPreview),
+    filename: "Northstar Incident Response Policy.pdf",
+    source_type: "client_policy",
+    evidence_role: "organization_evidence",
   };
 }
 
@@ -83,7 +106,7 @@ test("requirement debug output includes source type and evidence role", async ()
   assert.match(retrieval, /source_type: DocumentSourceType/);
   assert.match(retrieval, /evidence_role: EvidenceRole/);
   assert.match(retrieval, /inferDocumentSourceType/);
-  assert.match(retrieval, /evidenceRoleForSourceType/);
+  assert.match(retrieval, /inferEvidenceRole/);
   assert.match(client, /source_type: DocumentSourceType/);
   assert.match(client, /evidence_role: EvidenceRole/);
   assert.match(client, /formatSourceType/);
@@ -265,6 +288,211 @@ test("vendor direct grading remains conservative for generic third-party assista
   ));
 
   assert.notEqual(graded.grade, "direct");
+});
+
+test("written incident response negative language is not direct evidence", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { gradeRetrievedChunk }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementMatching.ts"),
+  ]);
+  const requirement = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "written_incident_response_program",
+  );
+
+  const graded = gradeRetrievedChunk(requirement, organizationChunk(
+    "This procedure does not define a written incident response program and is reserved for another policy.",
+  ));
+
+  assert.equal(graded.grade, "irrelevant");
+  assert.equal(graded.negative_evidence, true);
+  assert.match(graded.grade_reason, /Negative evidence/);
+});
+
+test("customer notification absence language is not direct evidence", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { gradeRetrievedChunk }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementMatching.ts"),
+  ]);
+  const requirement = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "customer_notification_unauthorized_access",
+  );
+
+  const graded = gradeRetrievedChunk(requirement, organizationChunk(
+    "This policy does not establish customer notification after unauthorized access to customer information.",
+  ));
+
+  assert.equal(graded.grade, "irrelevant");
+  assert.equal(graded.negative_evidence, true);
+});
+
+test("regulator and law enforcement absence language is not direct evidence", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { gradeRetrievedChunk }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementMatching.ts"),
+  ]);
+  const requirement = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "regulator_law_enforcement_notification",
+  );
+
+  const graded = gradeRetrievedChunk(requirement, organizationChunk(
+    "This standard does not establish regulator notification or law enforcement reporting requirements.",
+  ));
+
+  assert.equal(graded.grade, "irrelevant");
+  assert.equal(graded.negative_evidence, true);
+});
+
+test("vendor absence language is not direct or positive partial evidence", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { gradeRetrievedChunk }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementMatching.ts"),
+  ]);
+  const requirement = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "vendor_incident_handling",
+  );
+
+  const graded = gradeRetrievedChunk(requirement, organizationChunk(
+    "This policy does not impose service-provider incident reporting obligations or vendor notification responsibilities.",
+  ));
+
+  assert.equal(graded.grade, "irrelevant");
+  assert.equal(graded.negative_evidence, true);
+});
+
+test("strong vendor incident handling policy language remains direct evidence", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { gradeRetrievedChunk }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementMatching.ts"),
+  ]);
+  const requirement = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "vendor_incident_handling",
+  );
+
+  const graded = gradeRetrievedChunk(requirement, organizationChunk(
+    "Vendor contracts must require prompt reporting of vendor incidents. Service providers must notify the organization of breaches and coordinate investigation and remediation.",
+  ));
+
+  assert.equal(graded.grade, "direct");
+  assert.equal(graded.negative_evidence, false);
+});
+
+test("remediation recovery validation absence language is not direct evidence", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { gradeRetrievedChunk }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementMatching.ts"),
+  ]);
+  const requirement = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "remediation_recovery_validation",
+  );
+
+  const graded = gradeRetrievedChunk(requirement, organizationChunk(
+    "This recovery checklist does not require repeated testing or formal recovery validation after remediation.",
+  ));
+
+  assert.equal(graded.grade, "irrelevant");
+  assert.equal(graded.negative_evidence, true);
+});
+
+test("multi-control limitation text is negative for written program evidence", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { gradeRetrievedChunk }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementMatching.ts"),
+  ]);
+  const requirement = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "written_incident_response_program",
+  );
+
+  const graded = gradeRetrievedChunk(requirement, organizationChunk(
+    "This appendix does not define formal evidence preservation, recovery validation, or a written incident response plan; those topics are reserved for separate governance documents.",
+  ));
+
+  assert.equal(graded.grade, "irrelevant");
+  assert.equal(graded.negative_evidence, true);
+  assert.match(graded.negative_evidence_reason, /does not define/);
+});
+
+test("multi-control limitation text is negative for preservation and recovery evidence", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { gradeRetrievedChunk }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementMatching.ts"),
+  ]);
+  const preservation = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "evidence_log_preservation",
+  );
+  const recovery = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "remediation_recovery_validation",
+  );
+  const text = "This appendix does not define formal evidence preservation, recovery validation, or a written incident response plan; those topics are reserved for separate governance documents.";
+
+  const preservationGrade = gradeRetrievedChunk(preservation, organizationChunk(text));
+  const recoveryGrade = gradeRetrievedChunk(recovery, organizationChunk(text));
+
+  assert.equal(preservationGrade.grade, "irrelevant");
+  assert.equal(preservationGrade.negative_evidence, true);
+  assert.equal(recoveryGrade.grade, "irrelevant");
+  assert.equal(recoveryGrade.negative_evidence, true);
+});
+
+test("breach notice and supplier obligation limitation text is negative evidence", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { gradeRetrievedChunk }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementMatching.ts"),
+  ]);
+  const customer = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "customer_notification_unauthorized_access",
+  );
+  const regulator = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "regulator_law_enforcement_notification",
+  );
+  const vendor = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "vendor_incident_handling",
+  );
+  const text = "This workflow does not authorize customer breach notices, regulator reports, law enforcement reports, or supplier notification obligations.";
+
+  for (const requirement of [customer, regulator, vendor]) {
+    const graded = gradeRetrievedChunk(requirement, organizationChunk(text));
+    assert.equal(graded.grade, "irrelevant");
+    assert.equal(graded.negative_evidence, true);
+  }
+});
+
+test("not-enterprise-plan and does-not-replace phrasing is negative for written program evidence", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { gradeRetrievedChunk }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementMatching.ts"),
+  ]);
+  const requirement = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "written_incident_response_program",
+  );
+
+  const graded = gradeRetrievedChunk(requirement, organizationChunk(
+    "This checklist is not the enterprise cyber incident response plan and does not replace the written incident response program.",
+  ));
+
+  assert.equal(graded.grade, "irrelevant");
+  assert.equal(graded.negative_evidence, true);
+});
+
+test("supplier contract reporting and cooperation obligations grade direct for vendor handling", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { gradeRetrievedChunk }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementMatching.ts"),
+  ]);
+  const requirement = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "vendor_incident_handling",
+  );
+
+  const meridian = gradeRetrievedChunk(requirement, organizationChunk(
+    "Covered supplier contracts must require prompt notice and reporting of supplier incidents, and the supplier shall notify security operations and cooperate with containment, investigation, evidence collection, remediation, and recovery.",
+  ));
+  const atlasPay = gradeRetrievedChunk(requirement, organizationChunk(
+    "Supplier must notify AtlasPay promptly of any security incident, provide incident reports, and cooperate with investigation, containment, evidence preservation, remediation, and recovery activities.",
+  ));
+
+  assert.equal(meridian.grade, "direct");
+  assert.equal(atlasPay.grade, "direct");
+  assert.equal(meridian.negative_evidence, false);
+  assert.equal(atlasPay.negative_evidence, false);
 });
 
 test("requirement debug route uses authenticated workspace-scoped retrieval", async () => {

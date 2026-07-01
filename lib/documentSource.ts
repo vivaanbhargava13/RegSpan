@@ -49,10 +49,12 @@ function descriptorText(input: DocumentSourceInput) {
   ].filter(Boolean).join(" "));
 }
 
-function metadataText(input: DocumentSourceInput) {
+function explicitMetadataText(input: DocumentSourceInput) {
   return normalize([
     input.documentType,
     input.notes,
+    input.sectionPath,
+    input.contentPreview,
   ].filter(Boolean).join(" "));
 }
 
@@ -70,19 +72,21 @@ function hasAny(text: string, patterns: RegExp[]) {
 
 const explicitSourceTypeSignals: Array<[DocumentSourceType, RegExp[]]> = [
   ["client_policy", [
+    /\bdocument\s+class\s+client\s+policy\b/,
     /\bsource\s*type\s*client\s*policy\b/,
     /\bsource\s*type\s*organization\s*policy\b/,
-    /\bevidence\s*role\s*organization\s*evidence\b.*\bpolicy\b/,
   ]],
   ["client_procedure", [
+    /\bdocument\s+class\s+client\s+procedure\b/,
     /\bsource\s*type\s*client\s*procedure\b/,
     /\bsource\s*type\s*organization\s*procedure\b/,
-    /\bevidence\s*role\s*organization\s*evidence\b.*\bprocedure\b/,
   ]],
   ["vendor_contract", [
+    /\bdocument\s+class\s+vendor\s+contract\b/,
+    /\bdocument\s+class\s+vendor\s+contract\s+addendum\b/,
+    /\bdocument\s+class\s+third\s+party\s+security\s+incident\s+addendum\b/,
     /\bsource\s*type\s*vendor\s*contract\b/,
     /\bsource\s*type\s*service\s*provider\s*contract\b/,
-    /\bevidence\s*role\s*organization\s*evidence\b.*\b(contract|agreement)\b/,
   ]],
   ["regulatory_guidance", [/\bsource\s*type\s*regulatory\s*guidance\b/]],
   ["control_framework", [/\bsource\s*type\s*control\s*framework\b/]],
@@ -162,8 +166,12 @@ const sampleTemplateSignals = [
 
 const vendorContractSignals = [
   /\bvendor\b.*\b(contract|agreement|msa|sla|dpa|addendum|schedule)\b/,
+  /\bsupplier\b.*\b(contract|agreement|addendum|schedule|incident notice)\b/,
   /\bservice provider\b.*\b(contract|agreement|responsibilities|addendum)\b/,
   /\bthird party\b.*\b(contract|agreement|risk management|notification)\b/,
+  /\bthird party security incident addendum\b/,
+  /\bsecurity incident addendum\b/,
+  /\bcontract addendum\b/,
   /\bmaster service agreement\b/,
   /\bdata processing agreement\b/,
   /\bvendor agreement\b/,
@@ -201,12 +209,7 @@ export function inferDocumentSourceType(input: DocumentSourceInput): DocumentSou
 
   const descriptor = descriptorText(input);
   const contentHint = contentHintText(input);
-  const explicitMetadata = metadataText(input);
-  for (const [sourceType, patterns] of explicitSourceTypeSignals) {
-    if (hasAny(explicitMetadata, patterns)) {
-      return sourceType;
-    }
-  }
+  const explicitMetadata = explicitMetadataText(input);
 
   if (hasAny(descriptor, controlFrameworkSignals)) {
     return "control_framework";
@@ -220,10 +223,15 @@ export function inferDocumentSourceType(input: DocumentSourceInput): DocumentSou
   if (hasAny(contentHint, contentRegulatoryGuidanceSignals)) {
     return "regulatory_guidance";
   }
+  for (const [sourceType, patterns] of explicitSourceTypeSignals) {
+    if (hasAny(explicitMetadata, patterns)) {
+      return sourceType;
+    }
+  }
   if (hasAny(descriptor, sampleTemplateSignals)) {
     return "sample_template";
   }
-  if (hasAny(descriptor, vendorContractSignals)) {
+  if (hasAny(descriptor, vendorContractSignals) || hasAny(contentHint, vendorContractSignals)) {
     return "vendor_contract";
   }
   if (hasAny(descriptor, clientProcedureSignals)) {
@@ -253,5 +261,15 @@ export function evidenceRoleForSourceType(sourceType: DocumentSourceType): Evide
 }
 
 export function inferEvidenceRole(input: DocumentSourceInput): EvidenceRole {
-  return evidenceRoleForSourceType(inferDocumentSourceType(input));
+  const sourceType = inferDocumentSourceType(input);
+  if (sourceType === "regulatory_guidance" || sourceType === "control_framework") {
+    return "requirement_reference";
+  }
+
+  const explicitMetadata = explicitMetadataText(input);
+  if (/\bevidence\s+role\s+organization\s+evidence\b/.test(explicitMetadata)) {
+    return "organization_evidence";
+  }
+
+  return evidenceRoleForSourceType(sourceType);
 }

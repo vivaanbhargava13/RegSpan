@@ -18,7 +18,21 @@ async function loadTsModule(sourcePath) {
     },
     fileName: sourcePath,
   });
-  await writeFile(outPath, transpiled.outputText, "utf8");
+  const outputText = transpiled.outputText
+    .replaceAll('from "./negativeEvidence"', 'from "./lib__negativeEvidence.mjs"');
+  if (sourcePath !== "lib/negativeEvidence.ts") {
+    const negativeSource = await readFile("lib/negativeEvidence.ts", "utf8");
+    const negativeTranspiled = ts.transpileModule(negativeSource, {
+      compilerOptions: {
+        module: ts.ModuleKind.ES2022,
+        target: ts.ScriptTarget.ES2022,
+        verbatimModuleSyntax: false,
+      },
+      fileName: "lib/negativeEvidence.ts",
+    });
+    await writeFile(join(outDir, "lib__negativeEvidence.mjs"), negativeTranspiled.outputText, "utf8");
+  }
+  await writeFile(outPath, outputText, "utf8");
   return import(pathToFileURL(outPath).href);
 }
 
@@ -101,6 +115,19 @@ test("reranked chunks retain source type evidence role and reason fields", async
   assert.equal(result.evidence_role, "organization_evidence");
   assert.equal(typeof result.rerank_score, "number");
   assert.match(result.rerank_reason, /role organization_evidence/);
+});
+
+test("rerank_score does not boost negated requirement language", async () => {
+  const { rerankRequirementChunk } = await loadTsModule("lib/hybridReranking.ts");
+  const positive = rerankRequirementChunk(requirement, candidate());
+  const negative = rerankRequirementChunk(requirement, candidate({
+    chunk_id: "chunk-negative",
+    content_preview:
+      "This policy does not establish customer notification after unauthorized access to customer information.",
+  }));
+
+  assert.ok(positive.rerank_score > negative.rerank_score);
+  assert.match(negative.rerank_reason, /negative evidence/);
 });
 
 test("hybrid retrieval and requirement debug do not expose server secrets to client code", async () => {

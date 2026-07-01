@@ -2,7 +2,7 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  evidenceRoleForSourceType,
+  inferEvidenceRole,
   inferDocumentSourceType,
 } from "@/lib/documentSource";
 import { EmbeddingProcessingError, type EmbeddingProvider } from "@/lib/embeddings";
@@ -174,6 +174,14 @@ async function hydrateKeywordCandidates({
       contentPreview: row.content,
       evidenceReason,
     });
+    const evidenceRole = inferEvidenceRole({
+      filename: document?.filename ?? null,
+      documentType: document?.documentType,
+      notes: document?.notes,
+      sectionPath: row.section_path,
+      contentPreview: row.content,
+      evidenceReason,
+    });
 
     return {
       chunk_id: row.id,
@@ -188,7 +196,7 @@ async function hydrateKeywordCandidates({
       evidence_reason: evidenceReason,
       embedding_input: embeddingInput,
       source_type: sourceType,
-      evidence_role: evidenceRoleForSourceType(sourceType),
+      evidence_role: evidenceRole,
       rerank_score: null,
       rerank_reason: null,
     };
