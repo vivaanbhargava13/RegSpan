@@ -53,6 +53,28 @@ The latest local run writes:
 `eval-results/` is gitignored so local evaluations are not committed
 accidentally.
 
+## Semantic score vs rerank score
+
+Requirement matching now uses hybrid retrieval:
+
+1. semantic pgvector retrieval gathers a larger pool of candidates;
+2. keyword/metadata matching adds candidates using the requirement title,
+   description, topic signals, action signals, and direct signals;
+3. candidates are merged by `chunk_id`;
+4. a lightweight reranker orders the merged pool for requirement review.
+
+The report preserves both scores:
+
+- `similarity` / semantic similarity: the original pgvector score from the
+  embedding search path.
+- `rerank_score`: a debug-only score that combines semantic similarity with
+  direct signal matches, action/topic matches, section-path matches,
+  `source_type`, `evidence_role`, and evidence-classifier hints.
+
+Use semantic similarity to understand embedding retrieval behavior. Use
+`rerank_score` and `rerank_reason` to understand why a candidate was promoted
+or demoted for a specific requirement.
+
 ## What to review
 
 For each requirement, the report includes:
@@ -65,8 +87,8 @@ For each requirement, the report includes:
 - organization evidence, requirement reference, and supporting context counts
 - source type mix
 - top evidence chunks with filename, page range, section path, chunk index,
-  score, grade, grade reason, source type, evidence role, classifier reason, and
-  content preview
+  semantic similarity, rerank score, rerank reason, grade, grade reason, source
+  type, evidence role, classifier reason, and content preview
 
 The Markdown report includes manual reviewer fields:
 

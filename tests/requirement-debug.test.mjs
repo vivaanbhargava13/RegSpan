@@ -272,8 +272,8 @@ test("requirement debug route uses authenticated workspace-scoped retrieval", as
 
   assert.match(route, /authenticateRequest/);
   assert.match(route, /getActorWorkspaceId/);
-  assert.match(route, /retrieveRelevantChunks/);
-  assert.match(route, /workspaceId,\s*\n\s*queryText: requirement\.retrievalQuery/);
+  assert.match(route, /retrieveRequirementHybridChunks/);
+  assert.match(route, /workspaceId,\s*\n\s*requirement,/);
   assert.match(route, /topK: parsed\.topK/);
 });
 

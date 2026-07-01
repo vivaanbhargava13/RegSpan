@@ -23,6 +23,8 @@ const SAMPLE_CHUNK = {
   chunk_index: 7,
   section_path: "Incident Response > Customer Notification",
   similarity: 0.8123,
+  rerank_score: 124.25,
+  rerank_reason: "semantic 81.2; direct signals: notify affected customers; role organization_evidence",
   grade: "direct",
   grade_reason: "Direct evidence signals matched: notify affected customers.",
   source_type: "client_policy",
@@ -65,6 +67,8 @@ test("requirement eval report generation captures counts and source-aware fields
   assert.equal(report.requirements[0].source_type_mix.client_policy, 1);
   assert.equal(report.requirements[0].top_evidence_chunks[0].source_type, "client_policy");
   assert.equal(report.requirements[0].top_evidence_chunks[0].evidence_role, "organization_evidence");
+  assert.equal(report.requirements[0].top_evidence_chunks[0].rerank_score, 124.25);
+  assert.match(report.requirements[0].top_evidence_chunks[0].rerank_reason, /direct signals/);
 });
 
 test("requirement eval markdown includes manual reviewer fields", () => {
@@ -87,6 +91,9 @@ test("requirement eval markdown includes manual reviewer fields", () => {
   assert.match(markdown, /notes:/);
   assert.match(markdown, /Source type: client_policy/);
   assert.match(markdown, /Evidence role: organization_evidence/);
+  assert.match(markdown, /Semantic similarity: 0\.8123/);
+  assert.match(markdown, /Rerank score: 124\.25/);
+  assert.match(markdown, /Rerank reason:/);
   assert.equal(formatPageRange(4, 5), "Pages 4–5");
 });
 
@@ -127,5 +134,7 @@ test("requirement eval shaping preserves source type and evidence role in each c
   assert.equal(shaped.grade_reason, SAMPLE_CHUNK.grade_reason);
   assert.equal(shaped.source_type, "client_policy");
   assert.equal(shaped.evidence_role, "organization_evidence");
+  assert.equal(shaped.rerank_score, 124.25);
+  assert.match(shaped.rerank_reason, /semantic 81\.2/);
   assert.match(shaped.content_preview, /Affected customers/);
 });

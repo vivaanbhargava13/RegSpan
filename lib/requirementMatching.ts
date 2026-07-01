@@ -199,6 +199,10 @@ export function buildRequirementMatchResult(
     .sort((left, right) => {
       const gradeDelta = gradeRank[left.grade] - gradeRank[right.grade];
       if (gradeDelta !== 0) return gradeDelta;
+      const leftRerank = left.rerank_score ?? 0;
+      const rightRerank = right.rerank_score ?? 0;
+      const rerankDelta = rightRerank - leftRerank;
+      if (rerankDelta !== 0) return rerankDelta;
       return right.similarity - left.similarity;
     });
   const { status, status_reason } = aggregateRequirementStatus(graded);

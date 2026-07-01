@@ -28,6 +28,8 @@ type GradedEvidenceChunk = {
   embedding_input: string | null;
   source_type: DocumentSourceType;
   evidence_role: EvidenceRole;
+  rerank_score: number | null;
+  rerank_reason: string | null;
   grade: EvidenceGrade;
   grade_reason: string;
 };
@@ -82,6 +84,10 @@ function formatPageRange(chunk: GradedEvidenceChunk) {
 
 function formatScore(score: number) {
   return Number.isFinite(score) ? score.toFixed(3) : "—";
+}
+
+function formatRerankScore(score: number | null) {
+  return typeof score === "number" && Number.isFinite(score) ? score.toFixed(2) : "—";
 }
 
 function formatStatusLabel(status: RequirementDebugStatus) {
@@ -152,7 +158,8 @@ function EvidenceGroup({
                 <div className="flex flex-wrap gap-2 text-[11px] font-semibold text-app-muted">
                   <span className="rounded-full bg-app-elevated px-2.5 py-1">{formatPageRange(chunk)}</span>
                   <span className="rounded-full bg-app-elevated px-2.5 py-1">Chunk {chunk.chunk_index}</span>
-                  <span className="rounded-full bg-app-elevated px-2.5 py-1">Score {formatScore(chunk.similarity)}</span>
+                  <span className="rounded-full bg-app-elevated px-2.5 py-1">Semantic {formatScore(chunk.similarity)}</span>
+                  <span className="rounded-full bg-app-elevated px-2.5 py-1">Rerank {formatRerankScore(chunk.rerank_score)}</span>
                   <span className="rounded-full bg-app-elevated px-2.5 py-1">Source {formatSourceType(chunk.source_type)}</span>
                   <span className="rounded-full bg-app-elevated px-2.5 py-1">Role {formatEvidenceRole(chunk.evidence_role)}</span>
                 </div>
@@ -168,6 +175,12 @@ function EvidenceGroup({
                 <span className="font-semibold text-app-text">Grade reason:</span>{" "}
                 {chunk.grade_reason}
               </p>
+              {chunk.rerank_reason ? (
+                <p className="mt-2 rounded-lg border border-app-border bg-app-elevated/35 px-3 py-2 text-xs font-medium leading-5 text-app-muted">
+                  <span className="font-semibold text-app-text">Rerank reason:</span>{" "}
+                  {chunk.rerank_reason}
+                </p>
+              ) : null}
               {chunk.evidence_reason ? (
                 <p className="mt-2 text-xs leading-5 text-app-subtle">
                   <span className="font-semibold text-app-muted">Chunk classifier:</span>{" "}

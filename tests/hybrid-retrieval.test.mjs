@@ -1,0 +1,115 @@
+import assert from "node:assert/strict";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import test from "node:test";
+import ts from "typescript";
+
+async function loadTsModule(sourcePath) {
+  const source = await readFile(sourcePath, "utf8");
+  const outDir = await mkdtemp(join(tmpdir(), "regspan-hybrid-test-"));
+  const outPath = join(outDir, sourcePath.replace(/[\/:]/g, "__").replace(/\.ts$/, ".mjs"));
+  const transpiled = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.ES2022,
+      target: ts.ScriptTarget.ES2022,
+      verbatimModuleSyntax: false,
+    },
+    fileName: sourcePath,
+  });
+  await writeFile(outPath, transpiled.outputText, "utf8");
+  return import(pathToFileURL(outPath).href);
+}
+
+function candidate(overrides = {}) {
+  return {
+    chunk_id: "chunk-a",
+    filename: "Incident Response Policy.pdf",
+    section_path: "Incident Response > Customer Notification",
+    content_preview: "Affected customers must be notified after unauthorized access.",
+    similarity: 0.55,
+    evidence_reason: "substantive policy evidence",
+    source_type: "client_policy",
+    evidence_role: "organization_evidence",
+    ...overrides,
+  };
+}
+
+const requirement = {
+  title: "Customer notification after unauthorized access",
+  description: "Notify affected customers after unauthorized access to sensitive customer information.",
+  retrievalQuery: "notify affected customers unauthorized access sensitive customer information",
+  directSignals: ["notify affected customers", "unauthorized access"],
+  actionSignals: ["notify", "notification"],
+  topicSignals: ["affected customers", "customer information"],
+  partialSignals: ["notice"],
+  backgroundSignals: ["privacy"],
+};
+
+test("semantic retrieval path remains intact beside hybrid retrieval", async () => {
+  const [retrieval, hybrid, route] = await Promise.all([
+    readFile("lib/retrieval.ts", "utf8"),
+    readFile("lib/hybridRetrieval.ts", "utf8"),
+    readFile("app/api/requirement-debug/route.ts", "utf8"),
+  ]);
+
+  assert.match(retrieval, /export async function retrieveRelevantChunks/);
+  assert.match(retrieval, /match_document_chunks_v1/);
+  assert.match(hybrid, /export async function retrieveRequirementHybridChunks/);
+  assert.match(hybrid, /retrieveRelevantChunks/);
+  assert.match(route, /retrieveRequirementHybridChunks/);
+});
+
+test("hybrid candidate merging deduplicates chunks by id and preserves semantic similarity", async () => {
+  const { mergeHybridCandidates } = await loadTsModule("lib/hybridReranking.ts");
+  const merged = mergeHybridCandidates(
+    [candidate({ chunk_id: "same", similarity: 0.72, evidence_reason: "semantic evidence" })],
+    [candidate({ chunk_id: "same", similarity: 0, evidence_reason: "keyword evidence" })],
+  );
+
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].chunk_id, "same");
+  assert.equal(merged[0].similarity, 0.72);
+  assert.equal(merged[0].evidence_reason, "semantic evidence");
+});
+
+test("rerank_score rewards direct action topic and section-path matches", async () => {
+  const { rerankRequirementChunk } = await loadTsModule("lib/hybridReranking.ts");
+  const strong = rerankRequirementChunk(requirement, candidate());
+  const weak = rerankRequirementChunk(requirement, candidate({
+    chunk_id: "chunk-b",
+    section_path: "Appendix",
+    content_preview: "General background context for privacy operations.",
+    similarity: 0.55,
+    evidence_reason: "background context",
+  }));
+
+  assert.ok(strong.rerank_score > weak.rerank_score);
+  assert.match(strong.rerank_reason, /direct signals/);
+  assert.match(strong.rerank_reason, /action signals/);
+  assert.match(strong.rerank_reason, /topic signals/);
+  assert.match(strong.rerank_reason, /section\/path signals/);
+});
+
+test("reranked chunks retain source type evidence role and reason fields", async () => {
+  const { rerankRequirementCandidates } = await loadTsModule("lib/hybridReranking.ts");
+  const [result] = rerankRequirementCandidates(requirement, [candidate()], 1);
+
+  assert.equal(result.rank, 1);
+  assert.equal(result.source_type, "client_policy");
+  assert.equal(result.evidence_role, "organization_evidence");
+  assert.equal(typeof result.rerank_score, "number");
+  assert.match(result.rerank_reason, /role organization_evidence/);
+});
+
+test("hybrid retrieval and requirement debug do not expose server secrets to client code", async () => {
+  const [client, hybrid] = await Promise.all([
+    readFile("components/RequirementDebugClient.tsx", "utf8"),
+    readFile("lib/hybridRetrieval.ts", "utf8"),
+  ]);
+
+  assert.equal(client.includes("SUPABASE_SERVICE_ROLE_KEY"), false);
+  assert.equal(client.includes("EMBEDDING_API_KEY"), false);
+  assert.match(hybrid, /server-only/);
+});

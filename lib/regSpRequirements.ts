@@ -15,8 +15,10 @@ export type RegSpRequirement = {
   retrievalQuery: string;
   directSignals: string[];
   actionSignals: string[];
+  topicSignals: string[];
   partialSignals: string[];
   backgroundSignals: string[];
+  negativeSignals?: string[];
 };
 
 export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
@@ -35,6 +37,7 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
       "incident response policy",
     ],
     actionSignals: ["maintain", "written", "plan", "program", "procedures", "policy"],
+    topicSignals: ["incident response", "cybersecurity incident", "customer information", "response team"],
     partialSignals: ["cybersecurity incident", "security incident", "response team", "incident management"],
     backgroundSignals: ["program", "policy", "procedure", "roles", "responsibilities"],
   },
@@ -54,6 +57,7 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
       "severity",
     ],
     actionSignals: ["detect", "triage", "classify", "escalate", "severity", "major incident"],
+    topicSignals: ["unauthorized access", "sensitive customer information", "incident escalation", "major incident"],
     partialSignals: ["triage", "classification", "major incident", "security event", "alert"],
     backgroundSignals: ["detect", "monitor", "analyze", "investigate", "incident"],
   },
@@ -94,6 +98,14 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
       "consumers",
       "breach notification",
     ],
+    topicSignals: [
+      "customer notification",
+      "affected customers",
+      "affected individuals",
+      "unauthorized access",
+      "personal information",
+      "sensitive customer information",
+    ],
     partialSignals: [
       "notice",
       "notification",
@@ -121,6 +133,7 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
       "reporting requirement",
     ],
     actionSignals: ["notify", "notification", "report", "reporting", "required", "law enforcement"],
+    topicSignals: ["regulator", "law enforcement", "authorities", "required by law", "external notification"],
     partialSignals: ["legal", "compliance", "external notification", "government", "agency"],
     backgroundSignals: ["notification", "reporting", "escalation", "incident"],
   },
@@ -161,6 +174,14 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
       "breach",
       "incident handling",
     ],
+    topicSignals: [
+      "vendor",
+      "service provider",
+      "third party",
+      "vendor incident",
+      "service provider notification",
+      "contract responsibilities",
+    ],
     partialSignals: ["vendor", "third party", "supplier", "contract", "oversight"],
     backgroundSignals: ["incident", "customer information", "escalation", "notification"],
   },
@@ -180,6 +201,7 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
       "authentication",
     ],
     actionSignals: ["protect", "safeguard", "control", "restrict", "encrypt", "authenticate", "monitor"],
+    topicSignals: ["safeguards", "access controls", "customer information", "least privilege", "encryption"],
     partialSignals: ["monitoring", "authorization", "protect", "controls", "security controls"],
     backgroundSignals: ["information security", "privacy", "data protection", "confidentiality"],
   },
@@ -216,6 +238,7 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
       "forensic",
       "provenance",
     ],
+    topicSignals: ["logs", "evidence", "forensic", "chain of custody", "incident records", "investigation records"],
     partialSignals: ["logs", "evidence", "records", "forensic", "retention", "investigation records"],
     backgroundSignals: ["investigation", "analysis", "documentation", "incident"],
   },
@@ -252,6 +275,14 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
       "verify",
       "corrective action",
       "corrective actions",
+    ],
+    topicSignals: [
+      "remediation",
+      "recovery",
+      "validation",
+      "vulnerability remediation",
+      "corrective actions",
+      "lessons learned",
     ],
     partialSignals: [
       "recovery",

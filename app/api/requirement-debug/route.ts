@@ -6,12 +6,12 @@ import {
   getCorrelationId,
 } from "@/lib/documentSecurity";
 import { EmbeddingProcessingError } from "@/lib/embeddings";
+import { retrieveRequirementHybridChunks } from "@/lib/hybridRetrieval";
 import { buildRequirementMatchResult } from "@/lib/requirementMatching";
 import {
   getRegSpRequirement,
   REG_SP_REQUIREMENTS,
 } from "@/lib/regSpRequirements";
-import { retrieveRelevantChunks } from "@/lib/retrieval";
 import { getServerSupabaseAdminClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -97,9 +97,9 @@ export async function POST(request: Request) {
 
     const results = [];
     for (const requirement of parsed.requirements) {
-      const chunks = await retrieveRelevantChunks({
+      const chunks = await retrieveRequirementHybridChunks({
         workspaceId,
-        queryText: requirement.retrievalQuery,
+        requirement,
         topK: parsed.topK,
         supabase,
       });

@@ -17,6 +17,7 @@ import { getServerSupabaseAdminClient } from "@/lib/supabase/server";
 
 export type RetrievedChunk = {
   chunk_id: string;
+  rank?: number | null;
   document_id: string;
   filename: string | null;
   page_start: number | null;
@@ -29,6 +30,8 @@ export type RetrievedChunk = {
   embedding_input: string | null;
   source_type: DocumentSourceType;
   evidence_role: EvidenceRole;
+  rerank_score: number | null;
+  rerank_reason: string | null;
 };
 
 type RetrieveRelevantChunksInput = {
@@ -90,7 +93,7 @@ export async function retrieveRelevantChunks({
 
   const results = (data ?? []) as Omit<
     RetrievedChunk,
-    "evidence_reason" | "embedding_input" | "source_type" | "evidence_role"
+    "evidence_reason" | "embedding_input" | "source_type" | "evidence_role" | "rerank_score" | "rerank_reason"
   >[];
   if (results.length === 0) {
     return [];
@@ -143,7 +146,7 @@ export async function retrieveRelevantChunks({
     ]),
   );
 
-  return results.map((result) => {
+  return results.map((result, index) => {
     const metadata = metadataByChunkId.get(result.chunk_id) ?? {};
     const document = documentsById.get(result.document_id);
     const evidenceReason = typeof metadata.evidence_reason === "string"
@@ -163,10 +166,13 @@ export async function retrieveRelevantChunks({
 
     return {
       ...result,
+      rank: index + 1,
       evidence_reason: evidenceReason,
       embedding_input: embeddingInput,
       source_type: sourceType,
       evidence_role: evidenceRoleForSourceType(sourceType),
+      rerank_score: null,
+      rerank_reason: null,
     };
   });
 }

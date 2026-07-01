@@ -160,10 +160,11 @@ async function loadTypeScriptModule(sourcePath, outDir) {
 
 async function loadRequirementMatchingModules() {
   const outDir = await mkdtemp(join(tmpdir(), "regspan-requirement-eval-"));
-  const [requirements, matching, source] = await Promise.all([
+  const [requirements, matching, source, reranking] = await Promise.all([
     loadTypeScriptModule("lib/regSpRequirements.ts", outDir),
     loadTypeScriptModule("lib/requirementMatching.ts", outDir),
     loadTypeScriptModule("lib/documentSource.ts", outDir),
+    loadTypeScriptModule("lib/hybridReranking.ts", outDir),
   ]);
 
   return {
@@ -172,6 +173,9 @@ async function loadRequirementMatchingModules() {
     buildRequirementMatchResult: matching.buildRequirementMatchResult,
     inferDocumentSourceType: source.inferDocumentSourceType,
     evidenceRoleForSourceType: source.evidenceRoleForSourceType,
+    buildRequirementKeywordProfile: reranking.buildRequirementKeywordProfile,
+    mergeHybridCandidates: reranking.mergeHybridCandidates,
+    rerankRequirementCandidates: reranking.rerankRequirementCandidates,
   };
 }
 
@@ -269,40 +273,94 @@ async function createQueryEmbedding(query, { provider, model, apiKey }) {
   return embedding;
 }
 
-async function retrieveRequirementCandidates({
-  supabase,
-  embeddingConfig,
-  sourceClassifier,
-  workspaceId,
-  topK,
-  requirement,
-}) {
-  const queryEmbedding = await createQueryEmbedding(requirement.retrievalQuery, embeddingConfig);
-  const { data, error } = await supabase.rpc("match_document_chunks_v1", {
-    p_workspace_id: workspaceId,
-    p_query_embedding: queryEmbedding,
-    p_top_k: topK,
-    p_document_id: null,
-    p_embedding_model: embeddingConfig.model,
-  });
+function normalizeKeywordText(value) {
+  return String(value ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
-  if (error) {
-    throw new Error(`Retrieval RPC failed for ${requirement.id}: ${error.message}`);
+function keywordRowText(row) {
+  const metadata = row.metadata ?? {};
+  return normalizeKeywordText([
+    row.content,
+    row.section_path,
+    metadata.section_path,
+    metadata.section_heading,
+    metadata.parent_heading,
+    metadata.evidence_reason,
+  ].filter(Boolean).join(" "));
+}
+
+function countKeywordMatches(text, terms) {
+  return terms.filter((term) => text.includes(normalizeKeywordText(term))).length;
+}
+
+function escapeIlikeTerm(term) {
+  return term.replace(/[,%]/g, " ").trim();
+}
+
+async function fetchKeywordRows({ supabase, workspaceId, terms, limit }) {
+  const queryTerms = terms
+    .map(escapeIlikeTerm)
+    .filter((term) => term.length >= 4)
+    .slice(0, 12);
+  const selectColumns = "id, document_id, chunk_index, content, metadata, page_start, page_end, section_path";
+
+  if (queryTerms.length > 0) {
+    const clauses = queryTerms.flatMap((term) => [
+      `content.ilike.%${term}%`,
+      `section_path.ilike.%${term}%`,
+    ]);
+    const { data, error } = await supabase
+      .from("document_chunks")
+      .select(selectColumns)
+      .eq("workspace_id", workspaceId)
+      .or(clauses.join(","))
+      .limit(Math.max(limit * 4, 80));
+
+    if (!error) {
+      return data ?? [];
+    }
   }
 
-  const rows = data ?? [];
+  const { data, error } = await supabase
+    .from("document_chunks")
+    .select(selectColumns)
+    .eq("workspace_id", workspaceId)
+    .limit(Math.max(limit * 4, 120));
+
+  if (error) {
+    throw new Error(`Keyword retrieval failed: ${error.message}`);
+  }
+
+  return data ?? [];
+}
+
+async function hydrateRetrievedRows({
+  supabase,
+  sourceClassifier,
+  workspaceId,
+  rows,
+  semanticRanked = false,
+}) {
   if (rows.length === 0) {
     return [];
   }
 
-  const chunkIds = rows.map((row) => row.chunk_id);
+  const chunkIds = rows.map((row) => row.chunk_id ?? row.id);
   const documentIds = Array.from(new Set(rows.map((row) => row.document_id)));
+  const needsMetadata = rows.some((row) => row.metadata === undefined);
+  const metadataPromise = needsMetadata
+    ? supabase
+        .from("document_chunks")
+        .select("id, metadata")
+        .eq("workspace_id", workspaceId)
+        .in("id", chunkIds)
+    : Promise.resolve({ data: rows.map((row) => ({ id: row.id, metadata: row.metadata ?? {} })), error: null });
   const [{ data: metadataRows, error: metadataError }, { data: documentRows, error: documentsError }] = await Promise.all([
-    supabase
-      .from("document_chunks")
-      .select("id, metadata")
-      .eq("workspace_id", workspaceId)
-      .in("id", chunkIds),
+    metadataPromise,
     supabase
       .from("documents")
       .select("id, filename, document_type, notes")
@@ -325,7 +383,8 @@ async function retrieveRequirementCandidates({
   );
 
   return rows.map((row, index) => {
-    const metadata = metadataById.get(row.chunk_id) ?? {};
+    const chunkId = row.chunk_id ?? row.id;
+    const metadata = row.metadata ?? metadataById.get(chunkId) ?? {};
     const document = documentsById.get(row.document_id);
     const evidenceReason = typeof metadata.evidence_reason === "string"
       ? metadata.evidence_reason
@@ -333,24 +392,91 @@ async function retrieveRequirementCandidates({
     const embeddingInput = typeof metadata.embedding_input === "string"
       ? metadata.embedding_input
       : null;
+    const contentPreview = row.content_preview ?? row.content ?? "";
     const sourceType = sourceClassifier.inferDocumentSourceType({
       filename: document?.filename ?? row.filename,
       documentType: document?.document_type,
       notes: document?.notes,
       sectionPath: row.section_path,
-      contentPreview: row.content_preview,
+      contentPreview,
       evidenceReason,
     });
 
     return {
-      ...row,
-      rank: index + 1,
+      chunk_id: chunkId,
+      document_id: row.document_id,
+      filename: document?.filename ?? row.filename ?? null,
+      page_start: row.page_start ?? null,
+      page_end: row.page_end ?? null,
+      chunk_index: row.chunk_index,
+      section_path: row.section_path ?? null,
+      content_preview: contentPreview,
+      similarity: typeof row.similarity === "number" ? row.similarity : 0,
+      rank: semanticRanked ? index + 1 : null,
       evidence_reason: evidenceReason,
       embedding_input: embeddingInput,
       source_type: sourceType,
       evidence_role: sourceClassifier.evidenceRoleForSourceType(sourceType),
+      rerank_score: null,
+      rerank_reason: null,
     };
   });
+}
+
+async function retrieveRequirementCandidates({
+  supabase,
+  embeddingConfig,
+  sourceClassifier,
+  hybridReranker,
+  workspaceId,
+  topK,
+  requirement,
+}) {
+  const queryEmbedding = await createQueryEmbedding(requirement.retrievalQuery, embeddingConfig);
+  const { data, error } = await supabase.rpc("match_document_chunks_v1", {
+    p_workspace_id: workspaceId,
+    p_query_embedding: queryEmbedding,
+    p_top_k: Math.max(topK, 30),
+    p_document_id: null,
+    p_embedding_model: embeddingConfig.model,
+  });
+
+  if (error) {
+    throw new Error(`Retrieval RPC failed for ${requirement.id}: ${error.message}`);
+  }
+
+  const semanticCandidates = await hydrateRetrievedRows({
+    supabase,
+    sourceClassifier,
+    workspaceId,
+    rows: data ?? [],
+    semanticRanked: true,
+  });
+  const profile = hybridReranker.buildRequirementKeywordProfile(requirement);
+  const keywordRows = await fetchKeywordRows({
+    supabase,
+    workspaceId,
+    terms: profile.keywordTerms,
+    limit: 40,
+  });
+  const rankedKeywordRows = keywordRows
+    .map((row) => ({
+      row,
+      matchCount: countKeywordMatches(keywordRowText(row), profile.keywordTerms),
+    }))
+    .filter((item) => item.matchCount > 0)
+    .sort((left, right) => right.matchCount - left.matchCount)
+    .slice(0, 40)
+    .map((item) => item.row);
+  const keywordCandidates = await hydrateRetrievedRows({
+    supabase,
+    sourceClassifier,
+    workspaceId,
+    rows: rankedKeywordRows,
+  });
+  const mergedCandidates = hybridReranker.mergeHybridCandidates(semanticCandidates, keywordCandidates);
+
+  return hybridReranker.rerankRequirementCandidates(requirement, mergedCandidates, topK);
 }
 
 function selectRequirements({ requirementId, REG_SP_REQUIREMENTS, getRegSpRequirement }) {
@@ -389,6 +515,9 @@ async function main() {
     buildRequirementMatchResult,
     inferDocumentSourceType,
     evidenceRoleForSourceType,
+    buildRequirementKeywordProfile,
+    mergeHybridCandidates,
+    rerankRequirementCandidates,
   } = await loadRequirementMatchingModules();
   const requirements = selectRequirements({
     requirementId: args.requirementId,
@@ -417,6 +546,11 @@ async function main() {
       supabase,
       embeddingConfig,
       sourceClassifier: { inferDocumentSourceType, evidenceRoleForSourceType },
+      hybridReranker: {
+        buildRequirementKeywordProfile,
+        mergeHybridCandidates,
+        rerankRequirementCandidates,
+      },
       workspaceId: workspace.id,
       topK,
       requirement,

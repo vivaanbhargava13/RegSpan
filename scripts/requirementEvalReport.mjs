@@ -47,6 +47,8 @@ export function shapeRequirementEvidenceChunk(chunk) {
     chunk_index: chunk.chunk_index,
     section_path: chunk.section_path ?? null,
     similarity: typeof chunk.similarity === "number" ? chunk.similarity : null,
+    rerank_score: typeof chunk.rerank_score === "number" ? chunk.rerank_score : null,
+    rerank_reason: chunk.rerank_reason ?? null,
     grade: chunk.grade,
     grade_reason: chunk.grade_reason,
     source_type: chunk.source_type,
@@ -213,7 +215,9 @@ export function formatRequirementEvalMarkdown(report) {
       lines.push(`- Page range: ${formatPageRange(chunk.page_start, chunk.page_end)}`);
       lines.push(`- Chunk index: ${chunk.chunk_index}`);
       lines.push(`- Section path: ${chunk.section_path ?? "—"}`);
-      lines.push(`- Similarity: ${chunk.similarity === null ? "—" : chunk.similarity.toFixed(4)}`);
+      lines.push(`- Semantic similarity: ${chunk.similarity === null ? "—" : chunk.similarity.toFixed(4)}`);
+      lines.push(`- Rerank score: ${chunk.rerank_score === null ? "—" : chunk.rerank_score.toFixed(2)}`);
+      lines.push(`- Rerank reason: ${chunk.rerank_reason ?? "—"}`);
       lines.push(`- Grade reason: ${chunk.grade_reason}`);
       lines.push(`- Source type: ${chunk.source_type}`);
       lines.push(`- Evidence role: ${chunk.evidence_role}`);
