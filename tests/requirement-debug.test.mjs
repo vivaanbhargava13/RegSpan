@@ -308,6 +308,23 @@ test("written incident response negative language is not direct evidence", async
   assert.match(graded.grade_reason, /Negative evidence/);
 });
 
+test("equivalent written cyber event response standard grades direct when maintained and governed", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { gradeRetrievedChunk }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementMatching.ts"),
+  ]);
+  const requirement = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "written_incident_response_program",
+  );
+
+  const graded = gradeRetrievedChunk(requirement, organizationChunk(
+    "Meridian maintains a written cyber event response standard approved by the Risk Committee and reviewed annually. The standard assigns decision authority, describes escalation, notice decisions, supplier coordination, evidence custody, corrective action tracking, restoration assurance, and final review.",
+  ));
+
+  assert.equal(graded.grade, "direct");
+  assert.equal(graded.negative_evidence, false);
+});
+
 test("customer notification absence language is not direct evidence", async () => {
   const [{ REG_SP_REQUIREMENTS }, { gradeRetrievedChunk }] = await Promise.all([
     loadTsModule("lib/regSpRequirements.ts"),
@@ -467,6 +484,23 @@ test("not-enterprise-plan and does-not-replace phrasing is negative for written 
 
   const graded = gradeRetrievedChunk(requirement, organizationChunk(
     "This checklist is not the enterprise cyber incident response plan and does not replace the written incident response program.",
+  ));
+
+  assert.equal(graded.grade, "irrelevant");
+  assert.equal(graded.negative_evidence, true);
+});
+
+test("negated cyber event response standard names do not become direct evidence", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { gradeRetrievedChunk }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementMatching.ts"),
+  ]);
+  const requirement = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "written_incident_response_program",
+  );
+
+  const graded = gradeRetrievedChunk(requirement, organizationChunk(
+    "This job aid is not a cyber incident response program and does not define a cyber event response standard or breach response standard.",
   ));
 
   assert.equal(graded.grade, "irrelevant");
