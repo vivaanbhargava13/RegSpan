@@ -186,37 +186,47 @@ function severityForStatus(requirement: RegSpRequirement, status: FindingStatus)
 function statusSummary(requirement: RegSpRequirement, status: FindingStatus) {
   switch (status) {
     case "covered":
-      return `${requirement.title} appears covered by organization evidence.`;
+      return "Appears covered based on reviewed documents.";
     case "partial":
-      return `${requirement.title} is only partially supported by organization evidence.`;
+      return "Partially covered based on reviewed documents.";
     case "missing":
-      return `No organization evidence currently supports ${requirement.title}.`;
+      return "RegSpan did not find clear evidence that this control is defined.";
     case "conflicting":
-      return `${requirement.title} has conflicting organization-level evidence.`;
+      return "Reviewed documents appear to conflict on whether this control is defined.";
     case "needs_review":
-      return `${requirement.title} has ambiguous organization evidence that needs reviewer confirmation.`;
+      return "The evidence is unclear and should be reviewed by a person.";
   }
 }
 
 export function remediationForFinding(requirement: RegSpRequirement, status: FindingStatus) {
   if (status === "covered") {
-    return "Retain the cited policy evidence and confirm it remains current during the next review cycle.";
+    return "Keep the cited policy or procedure current. Consider cross-referencing it from related security and compliance documents so users know where this control is defined.";
   }
 
-  const base = `Update the organization’s documentation to explicitly address: ${requirement.description}`;
+  const base = `Update the organization’s documentation to clearly address this requirement: ${requirement.description}`;
   if (status === "conflicting") {
-    return `${base} Resolve conflicting language that states the control is absent, delegated, excluded, or out of scope.`;
+    return `${base} Resolve the contradiction between the documents and identify which policy or procedure is authoritative.`;
   }
   if (status === "partial") {
-    return `${base} Clarify ownership, required actions, timing, escalation paths, and evidence retention where applicable.`;
+    return `${base} Add the missing owner, timing, approval, escalation, handoff, or follow-up details where applicable.`;
   }
   if (status === "needs_review") {
-    return `${base} Have a reviewer confirm whether the cited context is intended to satisfy this requirement.`;
+    return `${base} Have a compliance or security owner confirm whether the cited document is intended to satisfy this requirement.`;
   }
-  return `${base} Add policy or procedure language and cite the governing document section.`;
+  return `${base} Create or update a written policy or procedure that defines responsibility, timing, required steps, and records to retain.`;
 }
 
-function rationaleForFinding({
+function reviewedDocumentLabel(chunk: GradedEvidenceChunk | undefined) {
+  return chunk?.filename ? `The reviewed document ${chunk.filename}` : "A reviewed document";
+}
+
+function quoteSummary(chunk: GradedEvidenceChunk | undefined) {
+  const quote = chunk?.supporting_quote?.trim();
+  if (!quote) return null;
+  return quote.length > 180 ? `${quote.slice(0, 177).trim()}…` : quote;
+}
+
+function whatWeFoundForFinding({
   status,
   direct,
   partial,
@@ -233,29 +243,110 @@ function rationaleForFinding({
   documentScopeLimitations: GradedEvidenceChunk[];
   ignoredReferenceCount: number;
 }) {
-  const parts = [
-    `Status ${status} was assigned using organization evidence only.`,
-    `${direct.length} direct, ${partial.length} partial, ${background.length} background, ${organizationNegative.length} organization-level negative, and ${documentScopeLimitations.length} document-scope limitation candidates were found.`,
-  ];
-  if (ignoredReferenceCount > 0) {
-    parts.push(`${ignoredReferenceCount} reference/supporting-context candidates were ignored for compliance status.`);
+  const strongestSupport = direct[0] ?? partial[0];
+  const strongestLimitation = documentScopeLimitations[0];
+  const strongestOrganizationNegative = organizationNegative[0];
+  const supportQuote = quoteSummary(strongestSupport);
+  const limitationQuote = quoteSummary(strongestLimitation);
+  const organizationNegativeQuote = quoteSummary(strongestOrganizationNegative);
+  const supportDocument = reviewedDocumentLabel(strongestSupport);
+  const limitationDocument = reviewedDocumentLabel(strongestLimitation);
+  const negativeDocument = reviewedDocumentLabel(strongestOrganizationNegative);
+  const parts: string[] = [];
+
+  if (status === "covered") {
+    if (supportQuote) {
+      parts.push(`${supportDocument} states: “${supportQuote}”`);
+    } else {
+      parts.push(`${supportDocument} includes policy or procedure language that appears to define this control.`);
+    }
+    if (documentScopeLimitations.length > 0) {
+      parts.push("Related documents say they do not cover this control, which appears to be a scope limitation for those documents rather than a contradiction.");
+    }
   }
-  if (status === "covered" && documentScopeLimitations.length > 0) {
-    parts.push("Covered by stronger organization evidence. Some other reviewed documents do not define this control, but those appear to be document-scope limitations.");
+
+  if (status === "partial") {
+    if (supportQuote) {
+      parts.push(`${supportDocument} mentions this area: “${supportQuote}”`);
+    } else {
+      parts.push(`${supportDocument} mentions this area, but the reviewed evidence does not clearly define the full process.`);
+    }
+    parts.push("Important details such as ownership, timing, approvals, escalation, or follow-up may still need to be documented.");
+    if (documentScopeLimitations.length > 0) {
+      parts.push("Some related documents limit their own scope, so they should not be treated as organization-wide contradictions by themselves.");
+    }
   }
-  if (status === "partial" && documentScopeLimitations.length > 0) {
-    parts.push("Partial evidence exists, and reviewed procedure/policy language limits its own scope rather than proving the organization lacks the control.");
-  }
+
   if (status === "conflicting") {
-    parts.push("Conflicting evidence exists because one organization-evidence source supports the control while another states the organization does not perform or maintain it.");
+    if (supportQuote) {
+      parts.push(`${supportDocument} appears to support this control: “${supportQuote}”`);
+    } else {
+      parts.push(`${supportDocument} appears to support this control.`);
+    }
+    if (organizationNegativeQuote) {
+      parts.push(`${negativeDocument} appears to contradict that support: “${organizationNegativeQuote}”`);
+    } else {
+      parts.push(`${negativeDocument} appears to say the firm does not maintain or perform this control.`);
+    }
+    parts.push("A reviewer should confirm which document is authoritative.");
   }
-  if (organizationNegative.length > 0) {
-    parts.push("Organization-level negative evidence was counted only when the chunk explicitly stated the firm, organization, company, enterprise, or management lacks or does not perform the control.");
+
+  if (status === "missing") {
+    if (organizationNegativeQuote) {
+      parts.push(`${negativeDocument} states: “${organizationNegativeQuote}”`);
+      parts.push("RegSpan did not find stronger reviewed policy evidence showing this control is defined.");
+    } else {
+      parts.push("RegSpan did not find clear policy or procedure language in the reviewed documents that defines this control.");
+    }
   }
-  if (documentScopeLimitations.length > 0) {
-    parts.push("Document-scope limitations were preserved as citations but did not override stronger requirement-specific support.");
+
+  if (status === "needs_review") {
+    if (documentScopeLimitations.length > 0 && !strongestSupport) {
+      if (limitationQuote) {
+        parts.push(`${limitationDocument} says it does not cover this control: “${limitationQuote}”`);
+      } else {
+        parts.push(`${limitationDocument} says it does not cover this control.`);
+      }
+      parts.push("That may describe the limits of that document rather than proof that the firm lacks the control.");
+    } else if (background.length > 0) {
+      parts.push("RegSpan found related context, but it was not specific enough to show whether this control is defined.");
+    } else {
+      parts.push("The reviewed evidence was not clear enough to determine whether this control is defined.");
+    }
   }
+
+  if (ignoredReferenceCount > 0) {
+    parts.push("Public guidance or other reference material was not treated as proof that the firm has this control.");
+  }
+
   return parts.join(" ");
+}
+
+function evidenceReasonForStorage(
+  chunk: GradedEvidenceChunk,
+  negativeScopeByChunkId: Map<string, NegativeEvidenceScope>,
+) {
+  const reason = chunk.grade_reason
+    .replace(/\bthe chunk\b/gi, "the cited text")
+    .replace(/\bchunk\b/gi, "cited text")
+    .trim();
+  const negativeScope = negativeScopeByChunkId.get(chunk.chunk_id);
+  if (negativeScope === "organization_level_negative") {
+    return `The firm appears not to have this control: ${reason}`;
+  }
+  if (negativeScope === "document_scope_limitation") {
+    return `This document says it does not cover this control: ${reason}`;
+  }
+  if (chunk.evidence_relationship === "supports") {
+    return `Supports this finding: ${reason}`;
+  }
+  if (chunk.evidence_relationship === "partially_supports") {
+    return `Partially supports this finding: ${reason}`;
+  }
+  if (chunk.evidence_relationship === "background_context") {
+    return `Background: ${reason}`;
+  }
+  return reason;
 }
 
 function evidenceForStorage(
@@ -267,9 +358,7 @@ function evidenceForStorage(
     document_id: chunk.document_id,
     relationship: chunk.evidence_relationship,
     quote: chunk.supporting_quote,
-    reason: negativeScopeByChunkId.has(chunk.chunk_id)
-      ? `${negativeScopeByChunkId.get(chunk.chunk_id) === "organization_level_negative" ? "Organization-level negative" : "Document-scope limitation"}: ${chunk.grade_reason}`
-      : chunk.grade_reason,
+    reason: evidenceReasonForStorage(chunk, negativeScopeByChunkId),
     confidence: chunk.classifier_confidence,
     filename: chunk.filename,
     page_start: chunk.page_start,
@@ -338,7 +427,7 @@ export function aggregateFindingForRequirement(
     confidence: confidenceForStatus(status, evidence),
     summary: statusSummary(requirement, status),
     remediation: remediationForFinding(requirement, status),
-    rationale: rationaleForFinding({
+    rationale: whatWeFoundForFinding({
       status,
       direct,
       partial,

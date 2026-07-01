@@ -50,6 +50,7 @@ type FindingsResponse = {
   latestRun?: AnalysisRun | null;
   findings?: Finding[];
   hasProcessedEvidence?: boolean;
+  processedDocumentCount?: number | null;
 };
 
 type GenerateResponse = {
@@ -101,7 +102,7 @@ function formatPageRange(evidence: FindingEvidence) {
 function evidenceSortRank(evidence: FindingEvidence) {
   if (evidence.relationship === "supports") return 0;
   if (evidence.relationship === "partially_supports") return 1;
-  if (evidence.relationship === "negative_evidence" && evidence.reason?.startsWith("Organization-level negative")) {
+  if (evidence.relationship === "negative_evidence" && evidence.reason?.startsWith("The firm appears not to have")) {
     return 2;
   }
   if (evidence.relationship === "negative_evidence") return 3;
@@ -111,6 +112,44 @@ function evidenceSortRank(evidence: FindingEvidence) {
 
 function sortedEvidence(evidence: FindingEvidence[]) {
   return [...evidence].sort((left, right) => evidenceSortRank(left) - evidenceSortRank(right));
+}
+
+function evidenceRelationshipLabel(relationship: string | null) {
+  switch (relationship) {
+    case "supports":
+      return "Supports this finding";
+    case "partially_supports":
+      return "Partially supports this finding";
+    case "negative_evidence":
+      return "Limitation or gap";
+    case "background_context":
+      return "Background";
+    default:
+      return "Evidence";
+  }
+}
+
+function whyItMattersForFinding(finding: Finding) {
+  switch (finding.requirement_id) {
+    case "written_incident_response_program":
+      return "Reg S-P expects firms to maintain written procedures for responding to incidents involving customer information. A clear program helps teams act consistently when an event occurs.";
+    case "unauthorized_access_detection_escalation":
+      return "Unauthorized access can become a customer-information incident quickly. Clear detection, triage, and escalation steps help the firm make timely decisions.";
+    case "customer_notification_unauthorized_access":
+      return "Reg S-P expects firms to be prepared to notify affected customers when unauthorized access involves sensitive customer information and notice is required.";
+    case "regulator_law_enforcement_notification":
+      return "Some incidents may require regulator, law enforcement, contractual, or other external reporting. Documented decision rules reduce delay and confusion during an incident.";
+    case "vendor_incident_handling":
+      return "Service providers may handle customer information or support critical systems. Clear vendor incident obligations help the firm get timely notice, cooperation, and remediation.";
+    case "customer_information_safeguards":
+      return "Safeguards and access controls help prevent unauthorized access to customer information and support the firm’s written information-security program.";
+    case "evidence_log_preservation":
+      return "Preserving logs, records, and forensic evidence helps the firm investigate incidents, support notification decisions, and demonstrate what happened.";
+    case "remediation_recovery_validation":
+      return "Tracking remediation and validating recovery helps ensure incidents and vulnerabilities are actually resolved, not just closed administratively.";
+    default:
+      return "This requirement is part of the Reg S-P review baseline. Clear written evidence helps the firm show how the control is handled in practice.";
+  }
 }
 
 function EvidenceCard({ evidence, subdued = false }: { evidence: FindingEvidence; subdued?: boolean }) {
@@ -126,9 +165,7 @@ function EvidenceCard({ evidence, subdued = false }: { evidence: FindingEvidence
         <span>·</span>
         <span>{formatPageRange(evidence)}</span>
         <span>·</span>
-        <span>Chunk {evidence.chunk_index ?? "—"}</span>
-        <span>·</span>
-        <span>{humanize(evidence.relationship)}</span>
+        <span>{evidenceRelationshipLabel(evidence.relationship)}</span>
       </div>
       {evidence.section_path ? (
         <p className="mt-2 text-xs font-medium text-app-muted">{evidence.section_path}</p>
@@ -161,6 +198,7 @@ export function FindingsClient() {
   const [latestRun, setLatestRun] = useState<AnalysisRun | null>(null);
   const [findings, setFindings] = useState<Finding[]>([]);
   const [hasProcessedEvidence, setHasProcessedEvidence] = useState(false);
+  const [processedDocumentCount, setProcessedDocumentCount] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState("");
@@ -172,7 +210,8 @@ export function FindingsClient() {
       finding.status !== "covered" && (finding.severity === "critical" || finding.severity === "high")
     ).length;
     const coveredCount = findings.filter((finding) => finding.status === "covered").length;
-    return { openCount, highRiskCount, coveredCount };
+    const needsReviewCount = findings.filter((finding) => finding.status === "needs_review").length;
+    return { openCount, highRiskCount, coveredCount, needsReviewCount };
   }, [findings]);
 
   useEffect(() => {
@@ -195,6 +234,7 @@ export function FindingsClient() {
       setLatestRun(body.latestRun ?? null);
       setFindings(body.findings ?? []);
       setHasProcessedEvidence(Boolean(body.hasProcessedEvidence));
+      setProcessedDocumentCount(body.processedDocumentCount ?? null);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Unable to load findings.");
     } finally {
@@ -240,7 +280,7 @@ export function FindingsClient() {
       <PageHeader
         eyebrow="Findings"
         title="Reg S-P findings"
-        description="Generate durable requirement-level findings from classified organization evidence and citations."
+        description="Review what RegSpan found in your processed documents and the next steps for each Reg S-P requirement."
         actions={(
           <Button
             type="button"
@@ -253,11 +293,36 @@ export function FindingsClient() {
         )}
       />
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <section className="app-card-subtle p-5">
+        <p className="text-sm leading-6 text-app-muted">
+          RegSpan reviewed{" "}
+          <span className="font-semibold text-app-text">
+            {processedDocumentCount ?? "processed"}
+          </span>{" "}
+          {processedDocumentCount === 1 ? "document" : "documents"} against{" "}
+          <span className="font-semibold text-app-text">
+            {latestRun?.requirement_count ?? 8}
+          </span>{" "}
+          Reg S-P requirements.
+          {latestRun ? (
+            <>
+              {" "}
+              {metrics.coveredCount} appear covered, {metrics.highRiskCount} open high-risk{" "}
+              {metrics.highRiskCount === 1 ? "gap" : "gaps"}, and {metrics.needsReviewCount} need{" "}
+              reviewer confirmation.
+            </>
+          ) : (
+            " Run analysis to generate requirement-level findings."
+          )}
+        </p>
+      </section>
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[
           { label: "Open findings", value: metrics.openCount, tone: "text-app-text", marker: "bg-app-accent" },
           { label: "High risk open", value: metrics.highRiskCount, tone: "text-app-danger", marker: "bg-app-danger" },
           { label: "Covered", value: metrics.coveredCount, tone: "text-app-success", marker: "bg-app-success" },
+          { label: "Needs review", value: metrics.needsReviewCount, tone: "text-app-review", marker: "bg-app-review" },
         ].map((metric) => (
           <div key={metric.label} className="app-card-subtle relative overflow-hidden px-4 py-4 shadow-sm">
             <span aria-hidden="true" className={`absolute inset-y-4 left-0 w-0.5 rounded-r-full ${metric.marker}`} />
@@ -334,7 +399,7 @@ export function FindingsClient() {
                     <h2 className="text-lg font-semibold tracking-[-0.02em] text-app-text">
                       {finding.requirement_name ?? "Untitled requirement"}
                     </h2>
-                    <p className="mt-2 max-w-4xl text-sm leading-6 text-app-muted">
+                    <p className="mt-2 max-w-4xl text-sm font-medium leading-6 text-app-muted">
                       {finding.summary}
                     </p>
                   </div>
@@ -351,13 +416,17 @@ export function FindingsClient() {
               </div>
 
               <div className="space-y-4 p-5 lg:p-6">
-                <div className="grid gap-4 lg:grid-cols-2">
+                <div className="grid gap-4 lg:grid-cols-3">
                   <div className="rounded-xl border border-app-border bg-app-surface px-4 py-3">
-                    <h3 className="text-sm font-semibold text-app-text">Rationale</h3>
+                    <h3 className="text-sm font-semibold text-app-text">What we found</h3>
                     <p className="mt-2 text-sm leading-6 text-app-muted">{finding.rationale}</p>
                   </div>
                   <div className="rounded-xl border border-app-border bg-app-surface px-4 py-3">
-                    <h3 className="text-sm font-semibold text-app-text">Remediation</h3>
+                    <h3 className="text-sm font-semibold text-app-text">Why it matters</h3>
+                    <p className="mt-2 text-sm leading-6 text-app-muted">{whyItMattersForFinding(finding)}</p>
+                  </div>
+                  <div className="rounded-xl border border-app-border bg-app-surface px-4 py-3">
+                    <h3 className="text-sm font-semibold text-app-text">Recommended next step</h3>
                     <p className="mt-2 text-sm leading-6 text-app-muted">{finding.remediation}</p>
                   </div>
                 </div>

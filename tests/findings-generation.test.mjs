@@ -80,8 +80,12 @@ test("organization evidence can produce covered and partial findings", () => {
   assert.equal(covered.status, "covered");
   assert.equal(covered.severity, "info");
   assert.equal(covered.confidence, "high");
+  assert.equal(covered.summary, "Appears covered based on reviewed documents.");
+  assert.match(covered.rationale, /states: “notify affected customers/);
   assert.equal(partial.status, "partial");
-  assert.match(partial.remediation, /Clarify ownership/);
+  assert.equal(partial.summary, "Partially covered based on reviewed documents.");
+  assert.match(partial.rationale, /mentions this area/);
+  assert.match(partial.remediation, /missing owner, timing, approval, escalation/);
 });
 
 test("no organization evidence produces a missing finding", () => {
@@ -89,7 +93,9 @@ test("no organization evidence produces a missing finding", () => {
 
   assert.equal(finding.status, "missing");
   assert.equal(finding.evidence.length, 0);
-  assert.match(finding.summary, /No organization evidence/);
+  assert.match(finding.summary, /did not find clear evidence/);
+  assert.match(finding.rationale, /did not find clear policy or procedure language/);
+  assert.doesNotMatch(finding.summary, /noncompliant/i);
 });
 
 test("true organization-level negative evidence produces conflicting or missing findings", () => {
@@ -100,8 +106,9 @@ test("true organization-level negative evidence produces conflicting or missing 
 
   assert.equal(conflicting.status, "conflicting");
   assert.equal(missing.status, "missing");
-  assert.match(conflicting.rationale, /organization-level negative/i);
-  assert.equal(conflicting.evidence[1].reason.startsWith("Organization-level negative:"), true);
+  assert.match(conflicting.summary, /conflict/);
+  assert.match(conflicting.rationale, /appears to contradict/);
+  assert.equal(conflicting.evidence[1].reason.startsWith("The firm appears not to have this control:"), true);
 });
 
 test("strong support with weak document-scope limitation stays covered", () => {
@@ -122,9 +129,9 @@ test("strong support with weak document-scope limitation stays covered", () => {
   assert.equal(finding.status, "covered");
   assert.notEqual(finding.status, "conflicting");
   assert.equal(finding.severity, "info");
-  assert.match(finding.rationale, /document-scope limitations/i);
+  assert.match(finding.rationale, /scope limitation/);
   assert.equal(
-    finding.evidence.some((evidence) => evidence.reason.startsWith("Document-scope limitation:")),
+    finding.evidence.some((evidence) => evidence.reason.startsWith("This document says it does not cover this control:")),
     true,
   );
 });
@@ -163,6 +170,8 @@ test("document-scope limitation without support needs review", () => {
   assert.equal(classifyNegativeEvidenceScope(limitation), "document_scope_limitation");
   assert.equal(finding.status, "needs_review");
   assert.equal(finding.severity, "medium");
+  assert.match(finding.summary, /reviewed by a person/);
+  assert.match(finding.rationale, /limits of that document/);
 });
 
 test("negative evidence scope classifier distinguishes organization from document limitations", () => {
@@ -195,7 +204,25 @@ test("public or reference evidence cannot satisfy client compliance", () => {
 
   assert.equal(finding.status, "missing");
   assert.equal(finding.evidence.length, 0);
-  assert.match(finding.rationale, /reference\/supporting-context candidates were ignored/);
+  assert.match(finding.rationale, /Public guidance or other reference material was not treated as proof/);
+});
+
+test("primary finding text avoids internal classifier terminology", () => {
+  const finding = aggregateFindingForRequirement(requirement, [
+    chunk(),
+    negativeChunk({
+      chunk_id: "55555555-5555-4555-8555-555555555555",
+      filename: "Acceptable Use Policy.pdf",
+      negative_evidence_reason: "This policy does not define customer notification.",
+      grade_reason: "This policy does not define customer notification.",
+      supporting_quote: "This policy does not define customer notification.",
+      content_preview: "This policy does not define customer notification.",
+    }),
+  ]);
+  const primaryText = [finding.summary, finding.rationale, finding.remediation].join(" ");
+
+  assert.doesNotMatch(primaryText, /candidate|heuristic|classifier|retrieval|chunk|status was assigned|document-scope/i);
+  assert.match(finding.rationale, /Related documents say they do not cover this control/);
 });
 
 test("finding evidence preserves citation metadata", () => {

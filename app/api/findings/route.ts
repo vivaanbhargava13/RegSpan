@@ -23,6 +23,20 @@ async function hasProcessedEvidence(supabase: ReturnType<typeof getServerSupabas
   return (data ?? []).length > 0;
 }
 
+async function processedDocumentCount(supabase: ReturnType<typeof getServerSupabaseAdminClient>, workspaceId: string) {
+  const { count, error } = await supabase
+    .from("documents")
+    .select("id", { count: "exact", head: true })
+    .eq("workspace_id", workspaceId)
+    .eq("status", "Processed");
+
+  if (error) {
+    throw new Error("processed_document_count_failed");
+  }
+
+  return count ?? 0;
+}
+
 export async function GET(request: Request) {
   const correlationId = getCorrelationId(request);
 
@@ -31,6 +45,7 @@ export async function GET(request: Request) {
     const actor = await authenticateRequest(supabase, request);
     const workspaceId = await getActorWorkspaceId(supabase, actor.user.id);
     const processedEvidenceAvailable = await hasProcessedEvidence(supabase, workspaceId);
+    const reviewedDocumentCount = await processedDocumentCount(supabase, workspaceId);
 
     const { data: latestRun, error: runError } = await supabase
       .from("analysis_runs")
@@ -50,6 +65,7 @@ export async function GET(request: Request) {
         latestRun: null,
         findings: [],
         hasProcessedEvidence: processedEvidenceAvailable,
+        processedDocumentCount: reviewedDocumentCount,
       });
     }
 
@@ -93,6 +109,7 @@ export async function GET(request: Request) {
         evidence: evidenceByFindingId[finding.id as string] ?? [],
       })),
       hasProcessedEvidence: processedEvidenceAvailable,
+      processedDocumentCount: reviewedDocumentCount,
     });
   } catch (error) {
     console.error("[RegSpan findings] Findings lookup failed", {
