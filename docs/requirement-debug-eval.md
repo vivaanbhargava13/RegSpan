@@ -5,6 +5,9 @@ for signed-in users. It is an internal prototype for evaluating whether
 retrieved chunks look useful for a small Reg S-P baseline. It does not create
 final findings, scores, reports, PDFs, or compliance conclusions.
 
+For repeatable, screenshot-free evaluation runs, use the automated harness in
+`docs/requirement-matching-eval.md`.
+
 ## What it does
 
 1. The browser sends a selected requirement, or `all`, to
