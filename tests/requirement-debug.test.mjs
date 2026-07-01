@@ -36,6 +36,22 @@ test("requirement debug grading schema exposes expected grades and statuses", as
   assert.match(matching, /isValidRequirementStatus/);
 });
 
+test("requirement debug output includes source type and evidence role", async () => {
+  const [client, retrieval] = await Promise.all([
+    readFile("components/RequirementDebugClient.tsx", "utf8"),
+    readFile("lib/retrieval.ts", "utf8"),
+  ]);
+
+  assert.match(retrieval, /source_type: DocumentSourceType/);
+  assert.match(retrieval, /evidence_role: EvidenceRole/);
+  assert.match(retrieval, /inferDocumentSourceType/);
+  assert.match(retrieval, /evidenceRoleForSourceType/);
+  assert.match(client, /source_type: DocumentSourceType/);
+  assert.match(client, /evidence_role: EvidenceRole/);
+  assert.match(client, /formatSourceType/);
+  assert.match(client, /formatEvidenceRole/);
+});
+
 test("requirement debug has no old satisfied display/status text", async () => {
   const [matching, client, docs] = await Promise.all([
     readFile("lib/requirementMatching.ts", "utf8"),
@@ -88,12 +104,22 @@ test("strong_match requires direct evidence", async () => {
   );
 
   const strongOccurrences = aggregateBlock.match(/status: "strong_match"/g) ?? [];
-  assert.equal(strongOccurrences.length, 1);
+  assert.equal(strongOccurrences.length, 2);
   const strongReturnIndex = aggregateBlock.indexOf('status: "strong_match"');
   const beforeStrongReturn = aggregateBlock.slice(0, strongReturnIndex);
   assert.match(beforeStrongReturn, /if \(directCount >= 1\) \{/);
   assert.doesNotMatch(beforeStrongReturn, /partialCount >=/);
   assert.doesNotMatch(beforeStrongReturn, /backgroundCount >=/);
+});
+
+test("guidance-only direct evidence is strong debug match but not client compliance proof", async () => {
+  const matching = await readFile("lib/requirementMatching.ts", "utf8");
+
+  assert.match(matching, /directOrganizationEvidenceCount/);
+  assert.match(matching, /directReferenceEvidenceCount/);
+  assert.match(matching, /guidance\/reference evidence/);
+  assert.match(matching, /not proof of client compliance/);
+  assert.match(matching, /direct organization evidence/);
 });
 
 test("vendor direct grading requires explicit incident handling language", async () => {

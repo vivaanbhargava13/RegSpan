@@ -1,0 +1,166 @@
+export type DocumentSourceType =
+  | "client_policy"
+  | "client_procedure"
+  | "vendor_contract"
+  | "regulatory_guidance"
+  | "control_framework"
+  | "sample_template"
+  | "unknown";
+
+export type EvidenceRole =
+  | "organization_evidence"
+  | "requirement_reference"
+  | "supporting_context";
+
+type DocumentSourceInput = {
+  filename?: string | null;
+  documentType?: string | null;
+  notes?: string | null;
+  sectionPath?: string | null;
+  contentPreview?: string | null;
+  evidenceReason?: string | null;
+};
+
+function normalize(value: string | null | undefined) {
+  return (value ?? "")
+    .toLowerCase()
+    .replace(/[_./()[\]{}:-]/g, " ")
+    .replace(/[^a-z0-9&\s-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function sourceText(input: DocumentSourceInput) {
+  return normalize([
+    input.filename,
+    input.documentType,
+    input.notes,
+    input.sectionPath,
+    input.contentPreview,
+    input.evidenceReason,
+  ].filter(Boolean).join(" "));
+}
+
+function hasAny(text: string, patterns: RegExp[]) {
+  return patterns.some((pattern) => pattern.test(text));
+}
+
+const controlFrameworkSignals = [
+  /\bnist\b/,
+  /\bsp\s*800\b/,
+  /\bcybersecurity framework\b/,
+  /\bcsf\b/,
+  /\biso\s*2700[12]\b/,
+  /\bcis\s+controls?\b/,
+  /\bcobit\b/,
+  /\bcontrol framework\b/,
+  /\bframework profile\b/,
+  /\bffiec\b.*\b(cybersecurity|assessment|maturity|control|baseline)\b/,
+];
+
+const regulatoryGuidanceSignals = [
+  /\bregulation\s+s\s*p\b/,
+  /\breg\s+s\s*p\b/,
+  /\bsec\b.*\b(safeguards|privacy|cybersecurity|rule|regulation|guidance)\b/,
+  /\bftc\b/,
+  /\bfederal trade commission\b/,
+  /\bcisa\b/,
+  /\bffiec\b/,
+  /\bagency guidance\b/,
+  /\bregulatory guidance\b/,
+  /\bsupervisory guidance\b/,
+  /\bexamination manual\b/,
+  /\badvisory\b/,
+  /\bcompliance guide\b/,
+  /\bplaybook\b.*\b(government|agency|federal|cisa|nist)\b/,
+];
+
+const sampleTemplateSignals = [
+  /\bsample\b/,
+  /\btemplate\b/,
+  /\bexample\b/,
+  /\bmodel policy\b/,
+  /\bstarter\b/,
+  /\bdraft\b/,
+];
+
+const vendorContractSignals = [
+  /\bvendor\b.*\b(contract|agreement|msa|sla|dpa|addendum|schedule)\b/,
+  /\bservice provider\b.*\b(contract|agreement|responsibilities|addendum)\b/,
+  /\bthird party\b.*\b(contract|agreement|risk management|notification)\b/,
+  /\bmaster service agreement\b/,
+  /\bdata processing agreement\b/,
+  /\bvendor agreement\b/,
+  /\bsecurity addendum\b/,
+];
+
+const clientProcedureSignals = [
+  /\bprocedure\b/,
+  /\bprocedures\b/,
+  /\brunbook\b/,
+  /\bsop\b/,
+  /\bstandard operating procedure\b/,
+  /\bresponse procedure\b/,
+  /\bescalation procedure\b/,
+  /\bincident response playbook\b/,
+];
+
+const clientPolicySignals = [
+  /\bpolicy\b/,
+  /\bpolicies\b/,
+  /\bprogram\b/,
+  /\bplan\b/,
+  /\bstandard\b/,
+  /\binformation security program\b/,
+  /\bincident response plan\b/,
+  /\bprivacy program\b/,
+  /\bsafeguards program\b/,
+];
+
+export function inferDocumentSourceType(input: DocumentSourceInput): DocumentSourceType {
+  const text = sourceText(input);
+  if (!text) {
+    return "unknown";
+  }
+
+  if (hasAny(text, controlFrameworkSignals)) {
+    return "control_framework";
+  }
+  if (hasAny(text, regulatoryGuidanceSignals)) {
+    return "regulatory_guidance";
+  }
+  if (hasAny(text, sampleTemplateSignals)) {
+    return "sample_template";
+  }
+  if (hasAny(text, vendorContractSignals)) {
+    return "vendor_contract";
+  }
+  if (hasAny(text, clientProcedureSignals)) {
+    return "client_procedure";
+  }
+  if (hasAny(text, clientPolicySignals)) {
+    return "client_policy";
+  }
+
+  return "unknown";
+}
+
+export function evidenceRoleForSourceType(sourceType: DocumentSourceType): EvidenceRole {
+  if (
+    sourceType === "client_policy"
+    || sourceType === "client_procedure"
+    || sourceType === "vendor_contract"
+  ) {
+    return "organization_evidence";
+  }
+
+  if (sourceType === "regulatory_guidance" || sourceType === "control_framework") {
+    return "requirement_reference";
+  }
+
+  return "supporting_context";
+}
+
+export function inferEvidenceRole(input: DocumentSourceInput): EvidenceRole {
+  return evidenceRoleForSourceType(inferDocumentSourceType(input));
+}

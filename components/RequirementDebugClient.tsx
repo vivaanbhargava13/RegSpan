@@ -12,6 +12,7 @@ import type {
   EvidenceGrade,
   RequirementDebugStatus,
 } from "@/lib/requirementMatching";
+import type { DocumentSourceType, EvidenceRole } from "@/lib/documentSource";
 
 type GradedEvidenceChunk = {
   chunk_id: string;
@@ -25,6 +26,8 @@ type GradedEvidenceChunk = {
   similarity: number;
   evidence_reason: string | null;
   embedding_input: string | null;
+  source_type: DocumentSourceType;
+  evidence_role: EvidenceRole;
   grade: EvidenceGrade;
   grade_reason: string;
 };
@@ -85,6 +88,24 @@ function formatStatusLabel(status: RequirementDebugStatus) {
   return statusLabels[status];
 }
 
+function formatSourceType(sourceType: DocumentSourceType) {
+  return sourceType
+    .split("_")
+    .map((part) => part[0]?.toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function formatEvidenceRole(role: EvidenceRole) {
+  switch (role) {
+    case "organization_evidence":
+      return "Organization evidence";
+    case "requirement_reference":
+      return "Requirement reference";
+    case "supporting_context":
+      return "Supporting context";
+  }
+}
+
 function evidenceCount(result: RequirementMatchResult) {
   return result.direct.length + result.partial.length + result.background.length + result.irrelevant.length;
 }
@@ -132,8 +153,16 @@ function EvidenceGroup({
                   <span className="rounded-full bg-app-elevated px-2.5 py-1">{formatPageRange(chunk)}</span>
                   <span className="rounded-full bg-app-elevated px-2.5 py-1">Chunk {chunk.chunk_index}</span>
                   <span className="rounded-full bg-app-elevated px-2.5 py-1">Score {formatScore(chunk.similarity)}</span>
+                  <span className="rounded-full bg-app-elevated px-2.5 py-1">Source {formatSourceType(chunk.source_type)}</span>
+                  <span className="rounded-full bg-app-elevated px-2.5 py-1">Role {formatEvidenceRole(chunk.evidence_role)}</span>
                 </div>
               </div>
+
+              {chunk.evidence_role !== "organization_evidence" ? (
+                <p className="mt-3 rounded-lg border border-app-warning/20 bg-app-warning-soft px-3 py-2 text-xs font-semibold leading-5 text-app-warning">
+                  Reference/context only — useful for interpreting the requirement, not proof of client compliance.
+                </p>
+              ) : null}
 
               <p className="mt-3 rounded-lg border border-app-border bg-app-elevated/55 px-3 py-2 text-xs font-medium leading-5 text-app-muted">
                 <span className="font-semibold text-app-text">Grade reason:</span>{" "}

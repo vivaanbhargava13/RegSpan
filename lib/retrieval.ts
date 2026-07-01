@@ -6,6 +6,12 @@ import {
   EmbeddingProcessingError,
   type EmbeddingProvider,
 } from "@/lib/embeddings";
+import {
+  evidenceRoleForSourceType,
+  inferDocumentSourceType,
+  type DocumentSourceType,
+  type EvidenceRole,
+} from "@/lib/documentSource";
 import { isUuid } from "@/lib/documentSecurity";
 import { getServerSupabaseAdminClient } from "@/lib/supabase/server";
 
@@ -21,6 +27,8 @@ export type RetrievedChunk = {
   similarity: number;
   evidence_reason: string | null;
   embedding_input: string | null;
+  source_type: DocumentSourceType;
+  evidence_role: EvidenceRole;
 };
 
 type RetrieveRelevantChunksInput = {
@@ -80,12 +88,16 @@ export async function retrieveRelevantChunks({
     );
   }
 
-  const results = (data ?? []) as Omit<RetrievedChunk, "evidence_reason" | "embedding_input">[];
+  const results = (data ?? []) as Omit<
+    RetrievedChunk,
+    "evidence_reason" | "embedding_input" | "source_type" | "evidence_role"
+  >[];
   if (results.length === 0) {
     return [];
   }
 
   const chunkIds = results.map((result) => result.chunk_id);
+  const documentIds = Array.from(new Set(results.map((result) => result.document_id)));
   const { data: chunkMetadata, error: metadataError } = await supabase
     .from("document_chunks")
     .select("id, metadata")
@@ -100,26 +112,61 @@ export async function retrieveRelevantChunks({
     );
   }
 
+  const { data: documents, error: documentsError } = await supabase
+    .from("documents")
+    .select("id, filename, document_type, notes")
+    .eq("workspace_id", workspaceId)
+    .in("id", documentIds);
+
+  if (documentsError) {
+    throw new EmbeddingProcessingError(
+      "retrieval_document_metadata_failed",
+      "Retrieved document metadata could not be loaded.",
+      500,
+    );
+  }
+
   const metadataByChunkId = new Map(
     (chunkMetadata ?? []).map((chunk) => [
       chunk.id as string,
       (chunk.metadata ?? {}) as Record<string, unknown>,
     ]),
   );
+  const documentsById = new Map(
+    (documents ?? []).map((document) => [
+      document.id as string,
+      {
+        filename: document.filename as string | null,
+        documentType: document.document_type as string | null,
+        notes: document.notes as string | null,
+      },
+    ]),
+  );
 
   return results.map((result) => {
     const metadata = metadataByChunkId.get(result.chunk_id) ?? {};
+    const document = documentsById.get(result.document_id);
     const evidenceReason = typeof metadata.evidence_reason === "string"
       ? metadata.evidence_reason
       : null;
     const embeddingInput = typeof metadata.embedding_input === "string"
       ? metadata.embedding_input
       : null;
+    const sourceType = inferDocumentSourceType({
+      filename: document?.filename ?? result.filename,
+      documentType: document?.documentType,
+      notes: document?.notes,
+      sectionPath: result.section_path,
+      contentPreview: result.content_preview,
+      evidenceReason,
+    });
 
     return {
       ...result,
       evidence_reason: evidenceReason,
       embedding_input: embeddingInput,
+      source_type: sourceType,
+      evidence_role: evidenceRoleForSourceType(sourceType),
     };
   });
 }

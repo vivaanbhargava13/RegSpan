@@ -25,12 +25,35 @@ final findings, scores, reports, PDFs, or compliance conclusions.
 
 Status is based on graded evidence, not similarity alone.
 
+## Source-aware interpretation
+
+Requirement debug now labels each candidate with a `source_type` and
+`evidence_role`:
+
+- `organization_evidence`: client policy, client procedure, or vendor contract
+  evidence. These are the only sources that should later support customer-facing
+  compliance findings.
+- `requirement_reference`: regulatory guidance or control-framework material
+  such as NIST, FFIEC, FTC, SEC, or CISA guidance. These chunks can explain what
+  good evidence should look like, but they are not proof that the client has that
+  control in place.
+- `supporting_context`: unknown, sample, or template-like documents. Treat these
+  as context until the document source is verified.
+
+A `strong_match` can be guidance-only. When that happens, the debug page should
+be read as “the requirement concept was found in candidate evidence,” not as a
+client compliance conclusion.
+
 ## Manual review checklist
 
 For each requirement:
 
 - Confirm direct evidence really addresses the requirement, not just a related
   phrase.
+- Confirm direct evidence comes from `organization_evidence` before treating it
+  as proof for a future finding.
+- Treat `requirement_reference` and `supporting_context` chunks as guidance or
+  context even when their grade is direct.
 - Confirm partial evidence is not being over-promoted to strong match.
 - Confirm background evidence is useful context but not treated as support.
 - Confirm ignored candidates are genuinely irrelevant or too generic.

@@ -140,14 +140,30 @@ export function aggregateRequirementStatus(
   gradedChunks: GradedEvidenceChunk[],
 ): Pick<RequirementMatchResult, "status" | "status_reason"> {
   const directCount = gradedChunks.filter((chunk) => chunk.grade === "direct").length;
+  const directOrganizationEvidenceCount = gradedChunks.filter(
+    (chunk) => chunk.grade === "direct" && chunk.evidence_role === "organization_evidence",
+  ).length;
+  const directReferenceEvidenceCount = gradedChunks.filter(
+    (chunk) => chunk.grade === "direct" && chunk.evidence_role === "requirement_reference",
+  ).length;
   const partialCount = gradedChunks.filter((chunk) => chunk.grade === "partial").length;
   const backgroundCount = gradedChunks.filter((chunk) => chunk.grade === "background").length;
 
   if (directCount >= 1) {
+    if (directOrganizationEvidenceCount === 0) {
+      return {
+        status: "strong_match",
+        status_reason:
+          `Direct candidate evidence was found, but it is ${
+            directReferenceEvidenceCount > 0 ? "guidance/reference evidence" : "supporting context"
+          } only. Treat this as a strong debug match, not proof of client compliance.`,
+      };
+    }
+
     return {
       status: "strong_match",
       status_reason:
-        "At least one retrieved candidate was graded as direct candidate evidence for this debug requirement.",
+        "At least one retrieved candidate was graded as direct organization evidence for this debug requirement.",
     };
   }
 
