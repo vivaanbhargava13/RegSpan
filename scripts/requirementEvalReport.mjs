@@ -53,6 +53,12 @@ export function shapeRequirementEvidenceChunk(chunk) {
     grade_reason: chunk.grade_reason,
     negative_evidence: Boolean(chunk.negative_evidence),
     negative_evidence_reason: chunk.negative_evidence_reason ?? null,
+    evidence_relationship: chunk.evidence_relationship ?? null,
+    classifier_confidence: chunk.classifier_confidence ?? null,
+    requirement_supported: Boolean(chunk.requirement_supported),
+    control_absent_or_out_of_scope: Boolean(chunk.control_absent_or_out_of_scope),
+    supporting_quote: chunk.supporting_quote ?? null,
+    classifier_provider: chunk.classifier_provider ?? "heuristic",
     source_type: chunk.source_type,
     evidence_role: chunk.evidence_role,
     evidence_reason: chunk.evidence_reason ?? null,
@@ -89,6 +95,7 @@ export function buildRequirementEvalReport({
         supporting_context: 0,
       };
       const sourceTypeMix = {};
+      const classifierProviderMix = {};
       const negativeEvidenceCount = candidates
         .filter((candidate) => candidate.negative_evidence)
         .length;
@@ -96,6 +103,7 @@ export function buildRequirementEvalReport({
       for (const candidate of candidates) {
         incrementCount(evidenceRoleCounts, candidate.evidence_role);
         incrementCount(sourceTypeMix, candidate.source_type);
+        incrementCount(classifierProviderMix, candidate.classifier_provider);
       }
 
       return {
@@ -115,6 +123,7 @@ export function buildRequirementEvalReport({
         requirement_reference_count: evidenceRoleCounts.requirement_reference,
         supporting_context_count: evidenceRoleCounts.supporting_context,
         source_type_mix: sourceTypeMix,
+        classifier_provider_mix: classifierProviderMix,
         top_evidence_chunks: candidates.map(shapeRequirementEvidenceChunk),
       };
     }),
@@ -148,8 +157,8 @@ export function formatRequirementEvalMarkdown(report) {
     "",
     "### Requirement summary",
     "",
-    "| Requirement | Status | Candidates | Direct | Partial | Background | Ignored | Negative | Org evidence | Reference | Context | Source mix |",
-    "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
+    "| Requirement | Status | Candidates | Direct | Partial | Background | Ignored | Negative | Org evidence | Reference | Context | Classifier | Source mix |",
+    "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|",
   ];
 
   for (const requirement of report.requirements) {
@@ -166,6 +175,7 @@ export function formatRequirementEvalMarkdown(report) {
         requirement.organization_evidence_count,
         requirement.requirement_reference_count,
         requirement.supporting_context_count,
+        escapeMarkdownTableCell(formatCountMap(requirement.classifier_provider_mix)),
         escapeMarkdownTableCell(formatCountMap(requirement.source_type_mix)),
       ].join(" | ").replace(/^/, "| ").replace(/$/, " |"),
     );
@@ -195,6 +205,7 @@ export function formatRequirementEvalMarkdown(report) {
     lines.push(`- Direct / partial / background / ignored: ${requirement.direct_count} / ${requirement.partial_count} / ${requirement.background_count} / ${requirement.irrelevant_count}`);
     lines.push(`- Negative evidence count: ${requirement.negative_evidence_count}`);
     lines.push(`- Evidence roles: organization_evidence ${requirement.organization_evidence_count}, requirement_reference ${requirement.requirement_reference_count}, supporting_context ${requirement.supporting_context_count}`);
+    lines.push(`- Classifier provider mix: ${formatCountMap(requirement.classifier_provider_mix)}`);
     lines.push(`- Source type mix: ${formatCountMap(requirement.source_type_mix)}`);
     lines.push("");
     lines.push("### Manual reviewer fields");
@@ -227,6 +238,12 @@ export function formatRequirementEvalMarkdown(report) {
       lines.push(`- Rerank score: ${chunk.rerank_score === null ? "—" : chunk.rerank_score.toFixed(2)}`);
       lines.push(`- Rerank reason: ${chunk.rerank_reason ?? "—"}`);
       lines.push(`- Grade reason: ${chunk.grade_reason}`);
+      lines.push(`- Evidence relationship: ${chunk.evidence_relationship ?? "—"}`);
+      lines.push(`- Classifier provider: ${chunk.classifier_provider ?? "—"}`);
+      lines.push(`- Classifier confidence: ${chunk.classifier_confidence ?? "—"}`);
+      lines.push(`- Requirement supported: ${chunk.requirement_supported ? "yes" : "no"}`);
+      lines.push(`- Control absent/out of scope: ${chunk.control_absent_or_out_of_scope ? "yes" : "no"}`);
+      lines.push(`- Supporting quote: ${chunk.supporting_quote ?? "—"}`);
       lines.push(`- Negative evidence: ${chunk.negative_evidence ? "yes" : "no"}`);
       lines.push(`- Negative evidence reason: ${chunk.negative_evidence_reason ?? "—"}`);
       lines.push(`- Source type: ${chunk.source_type}`);

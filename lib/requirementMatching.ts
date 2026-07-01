@@ -1,6 +1,15 @@
 import type { RetrievedChunk } from "@/lib/retrieval";
 import type { RegSpRequirement } from "@/lib/regSpRequirements";
-import { detectNegativeEvidence } from "./negativeEvidence";
+import {
+  classifierInputForChunk,
+  classifyRequirementEvidenceHeuristically,
+  createRequirementEvidenceClassifier,
+  type RequirementEvidenceClassification,
+  type RequirementEvidenceClassifier,
+  type RequirementEvidenceClassifierProvider,
+  type RequirementEvidenceConfidence,
+  type RequirementEvidenceRelationship,
+} from "./requirementEvidenceClassifier";
 
 export type EvidenceGrade = "direct" | "partial" | "background" | "irrelevant";
 export type RequirementDebugStatus = "strong_match" | "partial_match" | "weak_match" | "no_match";
@@ -10,6 +19,12 @@ export type GradedEvidenceChunk = RetrievedChunk & {
   grade_reason: string;
   negative_evidence: boolean;
   negative_evidence_reason: string | null;
+  evidence_relationship: RequirementEvidenceRelationship;
+  classifier_confidence: RequirementEvidenceConfidence;
+  requirement_supported: boolean;
+  control_absent_or_out_of_scope: boolean;
+  supporting_quote: string | null;
+  classifier_provider: RequirementEvidenceClassifierProvider;
 };
 
 export type RequirementMatchResult = {
@@ -29,140 +44,52 @@ const gradeRank: Record<EvidenceGrade, number> = {
   irrelevant: 3,
 };
 
-function normalize(value: string | null | undefined) {
-  return (value ?? "")
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+function gradeFromRelationship(relationship: RequirementEvidenceRelationship): EvidenceGrade {
+  switch (relationship) {
+    case "supports":
+      return "direct";
+    case "partially_supports":
+      return "partial";
+    case "background_context":
+      return "background";
+    case "negative_evidence":
+    case "irrelevant":
+      return "irrelevant";
+  }
 }
 
-function countSignalMatches(text: string, signals: string[]) {
-  const matched = signals.filter((signal) => {
-    const normalizedSignal = normalize(signal);
-    return normalizedSignal && text.includes(normalizedSignal);
-  });
+function chunkWithClassification(
+  chunk: RetrievedChunk,
+  classification: RequirementEvidenceClassification,
+): GradedEvidenceChunk {
+  const grade = gradeFromRelationship(classification.relationship);
+  const negativeEvidence = classification.relationship === "negative_evidence"
+    || classification.control_absent_or_out_of_scope;
 
   return {
-    count: matched.length,
-    matched,
+    ...chunk,
+    grade,
+    grade_reason: classification.reason,
+    negative_evidence: negativeEvidence,
+    negative_evidence_reason: negativeEvidence ? classification.reason : null,
+    evidence_relationship: classification.relationship,
+    classifier_confidence: classification.confidence,
+    requirement_supported: classification.requirement_supported,
+    control_absent_or_out_of_scope: classification.control_absent_or_out_of_scope,
+    supporting_quote: classification.supporting_quote,
+    classifier_provider: classification.classifier_provider,
   };
-}
-
-function hasAnySignal(text: string, signals: string[]) {
-  return countSignalMatches(text, signals).count > 0;
-}
-
-function chunkText(chunk: RetrievedChunk) {
-  return normalize([
-    chunk.filename,
-    chunk.section_path,
-    chunk.evidence_reason,
-    chunk.content_preview,
-  ].filter(Boolean).join(" "));
 }
 
 export function gradeRetrievedChunk(
   requirement: RegSpRequirement,
   chunk: RetrievedChunk,
 ): GradedEvidenceChunk {
-  const text = chunkText(chunk);
-  const negativeEvidence = detectNegativeEvidence(text, [
-    ...requirement.directSignals,
-    ...requirement.actionSignals,
-    ...requirement.topicSignals,
-    ...requirement.partialSignals,
-  ]);
-  const direct = countSignalMatches(text, requirement.directSignals);
-  const action = countSignalMatches(text, requirement.actionSignals);
-  const partial = countSignalMatches(text, requirement.partialSignals);
-  const background = countSignalMatches(text, requirement.backgroundSignals);
-  const hasExplicitAction = action.count > 0;
-  const hasVendorIncidentHandlingContext = requirement.id !== "vendor_incident_handling"
-    || (
-      hasAnySignal(text, ["vendor", "service provider", "third party", "supplier"])
-      && hasAnySignal(text, [
-        "incident",
-        "breach",
-        "notification",
-        "notify",
-        "report",
-        "reporting",
-        "escalation",
-        "escalate",
-        "coordinate",
-        "coordination",
-        "contract",
-        "responsibilities",
-      ])
-    );
-
-  if (negativeEvidence.isNegativeEvidence) {
-    return {
-      ...chunk,
-      grade: "irrelevant",
-      grade_reason:
-        `Negative evidence: chunk states this requirement is absent or out of scope (${negativeEvidence.matchedPhrase} ${negativeEvidence.matchedSignal}).`,
-      negative_evidence: true,
-      negative_evidence_reason:
-        `${negativeEvidence.matchedPhrase} near ${negativeEvidence.matchedSignal}`,
-    };
-  }
-
-  if (hasExplicitAction && hasVendorIncidentHandlingContext && direct.count >= 2) {
-    return {
-      ...chunk,
-      grade: "direct",
-      grade_reason: `Direct evidence signals matched: ${[
-        ...direct.matched,
-        ...action.matched.slice(0, 2),
-      ].join(", ")}.`,
-      negative_evidence: false,
-      negative_evidence_reason: null,
-    };
-  }
-
-  if (
-    direct.count >= 1 ||
-    (hasExplicitAction && partial.count >= 1) ||
-    partial.count >= 2 ||
-    (partial.count >= 1 && background.count >= 1)
-  ) {
-    return {
-      ...chunk,
-      grade: "partial",
-      grade_reason: `Partial evidence signals matched: ${[
-        ...direct.matched,
-        ...action.matched.slice(0, 2),
-        ...partial.matched,
-        ...background.matched.slice(0, 1),
-      ].join(", ")}.`,
-      negative_evidence: false,
-      negative_evidence_reason: null,
-    };
-  }
-
-  if (partial.count === 1 || background.count >= 2) {
-    return {
-      ...chunk,
-      grade: "background",
-      grade_reason: `Background context signals matched: ${[
-        ...partial.matched,
-        ...background.matched,
-      ].join(", ")}.`,
-      negative_evidence: false,
-      negative_evidence_reason: null,
-    };
-  }
-
-  return {
-    ...chunk,
-    grade: "irrelevant",
-    grade_reason:
-      "Candidate was retrieved semantically, but it does not contain enough requirement-specific signals for this debug grader.",
-    negative_evidence: false,
-    negative_evidence_reason: null,
-  };
+  const classification = classifyRequirementEvidenceHeuristically(
+    classifierInputForChunk(requirement, chunk),
+    "heuristic",
+  );
+  return chunkWithClassification(chunk, classification);
 }
 
 export function aggregateRequirementStatus(
@@ -234,6 +161,36 @@ export function buildRequirementMatchResult(
       if (rerankDelta !== 0) return rerankDelta;
       return right.similarity - left.similarity;
     });
+  const { status, status_reason } = aggregateRequirementStatus(graded);
+
+  return {
+    requirement,
+    status,
+    status_reason,
+    direct: graded.filter((chunk) => chunk.grade === "direct"),
+    partial: graded.filter((chunk) => chunk.grade === "partial"),
+    background: graded.filter((chunk) => chunk.grade === "background"),
+    irrelevant: graded.filter((chunk) => chunk.grade === "irrelevant"),
+  };
+}
+
+export async function buildRequirementMatchResultWithClassifier(
+  requirement: RegSpRequirement,
+  chunks: RetrievedChunk[],
+  classifier: RequirementEvidenceClassifier = createRequirementEvidenceClassifier(),
+): Promise<RequirementMatchResult> {
+  const graded = (await Promise.all(chunks.map(async (chunk) => {
+    const classification = await classifier.classify(classifierInputForChunk(requirement, chunk));
+    return chunkWithClassification(chunk, classification);
+  }))).sort((left, right) => {
+    const gradeDelta = gradeRank[left.grade] - gradeRank[right.grade];
+    if (gradeDelta !== 0) return gradeDelta;
+    const leftRerank = left.rerank_score ?? 0;
+    const rightRerank = right.rerank_score ?? 0;
+    const rerankDelta = rightRerank - leftRerank;
+    if (rerankDelta !== 0) return rerankDelta;
+    return right.similarity - left.similarity;
+  });
   const { status, status_reason } = aggregateRequirementStatus(graded);
 
   return {

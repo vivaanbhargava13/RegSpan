@@ -19,7 +19,8 @@ async function loadTsModule(sourcePath) {
     fileName: sourcePath,
   });
   const outputText = transpiled.outputText
-    .replaceAll('from "./negativeEvidence"', 'from "./lib__negativeEvidence.mjs"');
+    .replaceAll('from "./negativeEvidence"', 'from "./lib__negativeEvidence.mjs"')
+    .replaceAll('from "./requirementEvidenceClassifier"', 'from "./lib__requirementEvidenceClassifier.mjs"');
   if (sourcePath !== "lib/negativeEvidence.ts") {
     const negativeSource = await readFile("lib/negativeEvidence.ts", "utf8");
     const negativeTranspiled = ts.transpileModule(negativeSource, {
@@ -31,6 +32,20 @@ async function loadTsModule(sourcePath) {
       fileName: "lib/negativeEvidence.ts",
     });
     await writeFile(join(outDir, "lib__negativeEvidence.mjs"), negativeTranspiled.outputText, "utf8");
+  }
+  if (sourcePath !== "lib/requirementEvidenceClassifier.ts") {
+    const classifierSource = await readFile("lib/requirementEvidenceClassifier.ts", "utf8");
+    const classifierTranspiled = ts.transpileModule(classifierSource, {
+      compilerOptions: {
+        module: ts.ModuleKind.ES2022,
+        target: ts.ScriptTarget.ES2022,
+        verbatimModuleSyntax: false,
+      },
+      fileName: "lib/requirementEvidenceClassifier.ts",
+    });
+    const classifierOutput = classifierTranspiled.outputText
+      .replaceAll('from "./negativeEvidence"', 'from "./lib__negativeEvidence.mjs"');
+    await writeFile(join(outDir, "lib__requirementEvidenceClassifier.mjs"), classifierOutput, "utf8");
   }
   await writeFile(outPath, outputText, "utf8");
   return import(pathToFileURL(outPath).href);
@@ -89,12 +104,21 @@ test("requirement debug defines the canonical Reg S-P baseline", async () => {
 });
 
 test("requirement debug grading schema exposes expected grades and statuses", async () => {
-  const matching = await readFile("lib/requirementMatching.ts", "utf8");
+  const [matching, classifier] = await Promise.all([
+    readFile("lib/requirementMatching.ts", "utf8"),
+    readFile("lib/requirementEvidenceClassifier.ts", "utf8"),
+  ]);
 
   assert.match(matching, /export type EvidenceGrade = "direct" \| "partial" \| "background" \| "irrelevant"/);
   assert.match(matching, /export type RequirementDebugStatus = "strong_match" \| "partial_match" \| "weak_match" \| "no_match"/);
   assert.match(matching, /isValidEvidenceGrade/);
   assert.match(matching, /isValidRequirementStatus/);
+  assert.match(classifier, /supports/);
+  assert.match(classifier, /partially_supports/);
+  assert.match(classifier, /negative_evidence/);
+  assert.match(classifier, /background_context/);
+  assert.match(classifier, /requirement_supported/);
+  assert.match(classifier, /control_absent_or_out_of_scope/);
 });
 
 test("requirement debug output includes source type and evidence role", async () => {
@@ -111,6 +135,33 @@ test("requirement debug output includes source type and evidence role", async ()
   assert.match(client, /evidence_role: EvidenceRole/);
   assert.match(client, /formatSourceType/);
   assert.match(client, /formatEvidenceRole/);
+});
+
+test("requirement evidence classifier exposes prompt and provider abstraction", async () => {
+  const classifier = await readFile("lib/requirementEvidenceClassifier.ts", "utf8");
+  const envExample = await readFile(".env.example", "utf8");
+
+  assert.match(classifier, /createRequirementEvidenceClassifier/);
+  assert.match(classifier, /buildRequirementEvidenceClassifierPrompt/);
+  assert.match(classifier, /REQUIREMENT_CLASSIFIER_PROVIDER/);
+  assert.match(classifier, /REQUIREMENT_CLASSIFIER_MODEL/);
+  assert.match(classifier, /REQUIREMENT_CLASSIFIER_API_KEY/);
+  assert.match(classifier, /Do not treat keyword mentions as proof/);
+  assert.match(classifier, /does not fully define customer notification/);
+  assert.match(classifier, /customer notification is handled in a separate policy/);
+  assert.match(classifier, /vendor incident reporting is outside the scope/);
+  assert.match(envExample, /REQUIREMENT_CLASSIFIER_PROVIDER=heuristic/);
+  assert.match(envExample, /REQUIREMENT_CLASSIFIER_MODEL=/);
+  assert.match(envExample, /REQUIREMENT_CLASSIFIER_API_KEY=/);
+});
+
+test("LLM classifier falls back to deterministic heuristic when requested but not configured", async () => {
+  const { createRequirementEvidenceClassifier } = await loadTsModule("lib/requirementEvidenceClassifier.ts");
+  const classifier = createRequirementEvidenceClassifier({
+    REQUIREMENT_CLASSIFIER_PROVIDER: "openai",
+  });
+
+  assert.equal(classifier.provider, "fallback");
 });
 
 test("requirement debug has no old satisfied display/status text", async () => {
@@ -201,12 +252,12 @@ test("vendor direct grading requires explicit incident handling language", async
 });
 
 test("third-party role background alone is not enough for direct grading", async () => {
-  const matching = await readFile("lib/requirementMatching.ts", "utf8");
+  const classifier = await readFile("lib/requirementEvidenceClassifier.ts", "utf8");
 
-  assert.match(matching, /const hasExplicitAction = action\.count > 0/);
-  assert.match(matching, /hasVendorIncidentHandlingContext/);
-  assert.match(matching, /hasExplicitAction && hasVendorIncidentHandlingContext && direct\.count >= 2/);
-  assert.match(matching, /direct\.count >= 1[\s\S]*grade: "partial"/);
+  assert.match(classifier, /const hasExplicitAction = action\.count > 0/);
+  assert.match(classifier, /hasVendorIncidentHandlingContext/);
+  assert.match(classifier, /hasExplicitAction && hasVendorIncidentHandlingContext && direct\.count >= 2/);
+  assert.match(classifier, /direct\.count >= 1[\s\S]*relationship: "partially_supports"/);
 });
 
 test("customer notification explicit language remains direct-capable", async () => {
@@ -340,6 +391,53 @@ test("customer notification absence language is not direct evidence", async () =
 
   assert.equal(graded.grade, "irrelevant");
   assert.equal(graded.negative_evidence, true);
+});
+
+test("unseen absence language is classified as negative evidence without exact phrase rules", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { gradeRetrievedChunk }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementMatching.ts"),
+  ]);
+  const customer = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "customer_notification_unauthorized_access",
+  );
+  const regulator = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "regulator_law_enforcement_notification",
+  );
+  const vendor = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "vendor_incident_handling",
+  );
+  const replacement = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "written_incident_response_program",
+  );
+
+  const cases = [
+    [
+      customer,
+      "This procedure does not fully define customer notification after unauthorized access; customer notification is handled in a separate policy.",
+    ],
+    [
+      regulator,
+      "This document excludes law enforcement reporting and regulator notification from its workflow.",
+    ],
+    [
+      vendor,
+      "Vendor incident reporting is outside the scope of this procedure and delegated to a separate supplier governance document.",
+    ],
+    [
+      replacement,
+      "This addendum does not replace internal incident response procedures or the enterprise cyber event response standard.",
+    ],
+  ];
+
+  for (const [requirement, text] of cases) {
+    const graded = gradeRetrievedChunk(requirement, organizationChunk(text));
+    assert.equal(graded.grade, "irrelevant");
+    assert.equal(graded.negative_evidence, true);
+    assert.equal(graded.evidence_relationship, "negative_evidence");
+    assert.equal(graded.control_absent_or_out_of_scope, true);
+    assert.equal(graded.requirement_supported, false);
+  }
 });
 
 test("regulator and law enforcement absence language is not direct evidence", async () => {

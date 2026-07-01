@@ -13,6 +13,11 @@ import type {
   RequirementDebugStatus,
 } from "@/lib/requirementMatching";
 import type { DocumentSourceType, EvidenceRole } from "@/lib/documentSource";
+import type {
+  RequirementEvidenceClassifierProvider,
+  RequirementEvidenceConfidence,
+  RequirementEvidenceRelationship,
+} from "@/lib/requirementEvidenceClassifier";
 
 type GradedEvidenceChunk = {
   chunk_id: string;
@@ -34,6 +39,12 @@ type GradedEvidenceChunk = {
   grade_reason: string;
   negative_evidence: boolean;
   negative_evidence_reason: string | null;
+  evidence_relationship: RequirementEvidenceRelationship;
+  classifier_confidence: RequirementEvidenceConfidence;
+  requirement_supported: boolean;
+  control_absent_or_out_of_scope: boolean;
+  supporting_quote: string | null;
+  classifier_provider: RequirementEvidenceClassifierProvider;
 };
 
 type RequirementMatchResult = {
@@ -50,6 +61,7 @@ type RequirementDebugResponse = {
   ok?: boolean;
   error?: string;
   topK?: number;
+  classifierProvider?: RequirementEvidenceClassifierProvider;
   results?: RequirementMatchResult[];
 };
 
@@ -114,6 +126,17 @@ function formatEvidenceRole(role: EvidenceRole) {
   }
 }
 
+function formatClassifierProvider(provider: RequirementEvidenceClassifierProvider) {
+  switch (provider) {
+    case "heuristic":
+      return "Heuristic";
+    case "openai":
+      return "LLM";
+    case "fallback":
+      return "Fallback";
+  }
+}
+
 function evidenceCount(result: RequirementMatchResult) {
   return result.direct.length + result.partial.length + result.background.length + result.irrelevant.length;
 }
@@ -164,6 +187,8 @@ function EvidenceGroup({
                   <span className="rounded-full bg-app-elevated px-2.5 py-1">Rerank {formatRerankScore(chunk.rerank_score)}</span>
                   <span className="rounded-full bg-app-elevated px-2.5 py-1">Source {formatSourceType(chunk.source_type)}</span>
                   <span className="rounded-full bg-app-elevated px-2.5 py-1">Role {formatEvidenceRole(chunk.evidence_role)}</span>
+                  <span className="rounded-full bg-app-elevated px-2.5 py-1">Classifier {formatClassifierProvider(chunk.classifier_provider)}</span>
+                  <span className="rounded-full bg-app-elevated px-2.5 py-1">Confidence {chunk.classifier_confidence}</span>
                 </div>
               </div>
 
@@ -177,6 +202,12 @@ function EvidenceGroup({
                 <span className="font-semibold text-app-text">Grade reason:</span>{" "}
                 {chunk.grade_reason}
               </p>
+              {chunk.supporting_quote ? (
+                <p className="mt-2 rounded-lg border border-app-border bg-app-elevated/35 px-3 py-2 text-xs font-medium leading-5 text-app-muted">
+                  <span className="font-semibold text-app-text">Supporting quote:</span>{" "}
+                  “{chunk.supporting_quote}”
+                </p>
+              ) : null}
               {chunk.negative_evidence ? (
                 <p className="mt-2 rounded-lg border border-app-danger/20 bg-app-danger-soft px-3 py-2 text-xs font-semibold leading-5 text-app-danger">
                   Negative evidence: {chunk.negative_evidence_reason ?? "absence or out-of-scope language detected"}
@@ -281,7 +312,7 @@ export function RequirementDebugClient() {
             Run candidate evidence matching
           </h2>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-app-muted">
-            This debug prototype uses existing retrieval, then applies a deterministic evidence grader.
+            This debug prototype uses existing retrieval, then applies a server-side evidence classifier.
             Status is based on candidate evidence grades, not similarity alone.
           </p>
         </div>

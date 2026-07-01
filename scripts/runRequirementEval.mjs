@@ -40,6 +40,11 @@ Required existing server env:
   EMBEDDING_PROVIDER=openai
   EMBEDDING_MODEL
   EMBEDDING_API_KEY
+
+Optional classifier env:
+  REQUIREMENT_CLASSIFIER_PROVIDER=heuristic | openai
+  REQUIREMENT_CLASSIFIER_MODEL
+  REQUIREMENT_CLASSIFIER_API_KEY
 `);
 }
 
@@ -155,25 +160,31 @@ async function loadTypeScriptModule(sourcePath, outDir) {
   });
   const outputPath = join(outDir, sourcePath.replace(/[\/:]/g, "__").replace(/\.ts$/, ".mjs"));
   const outputText = transpiled.outputText
-    .replaceAll('from "./negativeEvidence"', 'from "./lib__negativeEvidence.mjs"');
+    .replaceAll('from "./negativeEvidence"', 'from "./lib__negativeEvidence.mjs"')
+    .replaceAll('from "./requirementEvidenceClassifier"', 'from "./lib__requirementEvidenceClassifier.mjs"')
+    .replaceAll('from "./documentSource"', 'from "./lib__documentSource.mjs"');
   await writeFile(outputPath, outputText, "utf8");
   return import(pathToFileURL(outputPath).href);
 }
 
 async function loadRequirementMatchingModules() {
   const outDir = await mkdtemp(join(tmpdir(), "regspan-requirement-eval-"));
-  const [, requirements, matching, source, reranking] = await Promise.all([
-    loadTypeScriptModule("lib/negativeEvidence.ts", outDir),
+  await loadTypeScriptModule("lib/negativeEvidence.ts", outDir);
+  const [requirements, source] = await Promise.all([
     loadTypeScriptModule("lib/regSpRequirements.ts", outDir),
-    loadTypeScriptModule("lib/requirementMatching.ts", outDir),
     loadTypeScriptModule("lib/documentSource.ts", outDir),
+  ]);
+  const classifier = await loadTypeScriptModule("lib/requirementEvidenceClassifier.ts", outDir);
+  const [matching, reranking] = await Promise.all([
+    loadTypeScriptModule("lib/requirementMatching.ts", outDir),
     loadTypeScriptModule("lib/hybridReranking.ts", outDir),
   ]);
 
   return {
     REG_SP_REQUIREMENTS: requirements.REG_SP_REQUIREMENTS,
     getRegSpRequirement: requirements.getRegSpRequirement,
-    buildRequirementMatchResult: matching.buildRequirementMatchResult,
+    buildRequirementMatchResultWithClassifier: matching.buildRequirementMatchResultWithClassifier,
+    createRequirementEvidenceClassifier: classifier.createRequirementEvidenceClassifier,
     inferDocumentSourceType: source.inferDocumentSourceType,
     inferEvidenceRole: source.inferEvidenceRole,
     evidenceRoleForSourceType: source.evidenceRoleForSourceType,
@@ -524,7 +535,8 @@ async function main() {
   const {
     REG_SP_REQUIREMENTS,
     getRegSpRequirement,
-    buildRequirementMatchResult,
+    buildRequirementMatchResultWithClassifier,
+    createRequirementEvidenceClassifier,
     inferDocumentSourceType,
     inferEvidenceRole,
     evidenceRoleForSourceType,
@@ -543,6 +555,7 @@ async function main() {
   });
   const workspace = await resolveWorkspace(supabase, args.workspaceId, args.workspaceName);
   const generatedAt = new Date().toISOString();
+  const classifier = createRequirementEvidenceClassifier();
 
   console.info("[RegSpan eval] Starting requirement matching evaluation", {
     workspaceId: workspace.id,
@@ -550,6 +563,7 @@ async function main() {
     topK,
     requirementCount: requirements.length,
     requirementId: args.requirementId ?? "all",
+    classifierProvider: classifier.provider,
   });
 
   const results = [];
@@ -568,7 +582,11 @@ async function main() {
       topK,
       requirement,
     });
-    results.push(buildRequirementMatchResult(requirement, chunks));
+    results.push(await buildRequirementMatchResultWithClassifier(
+      requirement,
+      chunks,
+      classifier,
+    ));
   }
 
   const report = buildRequirementEvalReport({

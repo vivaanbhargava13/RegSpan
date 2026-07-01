@@ -35,6 +35,34 @@ const absencePhrases = [
   "outside the scope",
 ];
 
+const absencePatterns = [
+  {
+    label: "does not define requirement",
+    pattern:
+      /\bdoes not\s+(?:fully\s+|completely\s+|adequately\s+|formally\s+)?(?:define|establish|authorize|require|impose|maintain|create|replace|address|include|satisfy|cover|document|specify)\b/g,
+  },
+  {
+    label: "not responsible for requirement",
+    pattern:
+      /\b(?:is|are|was|were)\s+not\s+(?:intended\s+to\s+|designed\s+to\s+|responsible\s+for\s+)?(?:define|establish|authorize|require|replace|satisfy|cover|address)\b/g,
+  },
+  {
+    label: "handled in separate document",
+    pattern:
+      /\b(?:handled|covered|defined|established|addressed)\s+(?:in|by)\s+(?:a\s+|another\s+|separate\s+|the\s+separate\s+)?(?:policy|procedure|standard|program|plan|document|governance\s+document)\b/g,
+  },
+  {
+    label: "excluded or out of scope",
+    pattern:
+      /\b(?:excludes?|outside\s+the\s+scope|out\s+of\s+scope|reserved\s+for\s+(?:another|separate)|delegated\s+to\s+(?:another|separate))\b/g,
+  },
+  {
+    label: "no formal requirement",
+    pattern:
+      /\b(?:no|without)\s+(?:formal\s+|documented\s+|written\s+)?(?:program|plan|procedure|policy|standard|requirement|notification|reporting|validation|preservation|process)\b/g,
+  },
+];
+
 function normalize(value: string | null | undefined) {
   return (value ?? "")
     .toLowerCase()
@@ -55,6 +83,13 @@ function uniqueSignals(signals: string[]) {
     unique.push(normalized);
   }
   return unique;
+}
+
+function negativeEvidenceWindow(text: string, phraseIndex: number, phraseLength: number) {
+  return text.slice(
+    Math.max(0, phraseIndex - Math.floor(NEGATION_WINDOW / 2)),
+    phraseIndex + phraseLength + NEGATION_WINDOW,
+  );
 }
 
 export function detectNegativeEvidence(
@@ -80,10 +115,7 @@ export function detectNegativeEvidence(
         break;
       }
 
-      const window = normalizedText.slice(
-        phraseIndex,
-        phraseIndex + phrase.length + NEGATION_WINDOW,
-      );
+      const window = negativeEvidenceWindow(normalizedText, phraseIndex, phrase.length);
       const matchedSignal = signals.find((signal) => window.includes(signal));
       if (matchedSignal) {
         return {
@@ -94,6 +126,25 @@ export function detectNegativeEvidence(
       }
 
       searchFrom = phraseIndex + phrase.length;
+    }
+  }
+
+  for (const { label, pattern } of absencePatterns) {
+    pattern.lastIndex = 0;
+    let match = pattern.exec(normalizedText);
+    while (match) {
+      const phraseIndex = match.index;
+      const phrase = match[0] || label;
+      const window = negativeEvidenceWindow(normalizedText, phraseIndex, phrase.length);
+      const matchedSignal = signals.find((signal) => window.includes(signal));
+      if (matchedSignal) {
+        return {
+          isNegativeEvidence: true,
+          matchedPhrase: phrase,
+          matchedSignal,
+        };
+      }
+      match = pattern.exec(normalizedText);
     }
   }
 

@@ -7,7 +7,8 @@ import {
 } from "@/lib/documentSecurity";
 import { EmbeddingProcessingError } from "@/lib/embeddings";
 import { retrieveRequirementHybridChunks } from "@/lib/hybridRetrieval";
-import { buildRequirementMatchResult } from "@/lib/requirementMatching";
+import { createRequirementEvidenceClassifier } from "@/lib/requirementEvidenceClassifier";
+import { buildRequirementMatchResultWithClassifier } from "@/lib/requirementMatching";
 import {
   getRegSpRequirement,
   REG_SP_REQUIREMENTS,
@@ -94,6 +95,7 @@ export async function POST(request: Request) {
     const actor = await authenticateRequest(supabase, request);
     const workspaceId = await getActorWorkspaceId(supabase, actor.user.id);
     const parsed = parseRequirementDebugRequest(await request.json());
+    const classifier = createRequirementEvidenceClassifier();
 
     const results = [];
     for (const requirement of parsed.requirements) {
@@ -103,7 +105,11 @@ export async function POST(request: Request) {
         topK: parsed.topK,
         supabase,
       });
-      results.push(buildRequirementMatchResult(requirement, chunks));
+      results.push(await buildRequirementMatchResultWithClassifier(
+        requirement,
+        chunks,
+        classifier,
+      ));
     }
 
     console.info("[RegSpan requirements] Debug matching completed", {
@@ -112,12 +118,14 @@ export async function POST(request: Request) {
       requirementId: parsed.requirementId,
       topK: parsed.topK,
       requirementCount: results.length,
+      classifierProvider: classifier.provider,
     });
 
     return NextResponse.json({
       ok: true,
       topK: parsed.topK,
       requirementId: parsed.requirementId,
+      classifierProvider: classifier.provider,
       results,
     });
   } catch (error) {
