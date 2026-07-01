@@ -13,6 +13,7 @@ import {
   getRegSpRequirement,
   REG_SP_REQUIREMENTS,
 } from "@/lib/regSpRequirements";
+import { areInternalDebugRoutesEnabled } from "@/lib/securityFeatureFlags";
 import { getServerSupabaseAdminClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -87,10 +88,39 @@ function requirementDebugErrorResponse(error: unknown) {
   return documentErrorResponse(error);
 }
 
+function omitEmbeddingInput<T extends { embedding_input?: unknown }>(value: T) {
+  const { embedding_input: omittedEmbeddingInput, ...safeValue } = value;
+  void omittedEmbeddingInput;
+  return safeValue;
+}
+
+function sanitizeRequirementDebugResults(
+  results: Awaited<ReturnType<typeof buildRequirementMatchResultWithClassifier>>[],
+) {
+  return results.map((result) => ({
+    ...result,
+    direct: result.direct.map(omitEmbeddingInput),
+    partial: result.partial.map(omitEmbeddingInput),
+    background: result.background.map(omitEmbeddingInput),
+    irrelevant: result.irrelevant.map(omitEmbeddingInput),
+  }));
+}
+
 export async function POST(request: Request) {
   const correlationId = getCorrelationId(request);
 
   try {
+    if (!areInternalDebugRoutesEnabled()) {
+      console.warn("[RegSpan requirements] Debug route blocked", {
+        correlationId,
+        enabled: false,
+      });
+      return NextResponse.json(
+        { ok: false, error: "Not found.", code: "not_found" },
+        { status: 404 },
+      );
+    }
+
     const supabase = getServerSupabaseAdminClient();
     const actor = await authenticateRequest(supabase, request);
     const workspaceId = await getActorWorkspaceId(supabase, actor.user.id);
@@ -126,7 +156,7 @@ export async function POST(request: Request) {
       topK: parsed.topK,
       requirementId: parsed.requirementId,
       classifierProvider: classifier.provider,
-      results,
+      results: sanitizeRequirementDebugResults(results),
     });
   } catch (error) {
     console.error("[RegSpan requirements] Debug matching failed", {

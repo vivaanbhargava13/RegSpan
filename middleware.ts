@@ -13,6 +13,8 @@ export const config = {
     "/controls/:path*",
     "/findings/:path*",
     "/reports/:path*",
+    "/requirement-debug/:path*",
+    "/retrieval-debug/:path*",
     "/settings/:path*",
   ],
 };

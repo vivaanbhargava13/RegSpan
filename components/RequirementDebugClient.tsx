@@ -30,7 +30,6 @@ type GradedEvidenceChunk = {
   content_preview: string;
   similarity: number;
   evidence_reason: string | null;
-  embedding_input: string | null;
   source_type: DocumentSourceType;
   evidence_role: EvidenceRole;
   rerank_score: number | null;

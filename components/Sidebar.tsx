@@ -17,6 +17,7 @@ export const appNavLinks = [
 
 const primaryNavLinks = appNavLinks.filter((link) => link.icon !== "settings");
 const administrationNavLinks = appNavLinks.filter((link) => link.icon === "settings");
+const internalDebugHrefs = new Set(["/retrieval-debug", "/requirement-debug"]);
 
 function NavIcon({ icon }: { icon: string }) {
   const iconClass = "size-[18px]";
@@ -158,7 +159,15 @@ function NavGroup({
   );
 }
 
-export function Sidebar() {
+export function Sidebar({
+  showInternalDebugLinks = false,
+}: {
+  showInternalDebugLinks?: boolean;
+}) {
+  const visiblePrimaryNavLinks = showInternalDebugLinks
+    ? primaryNavLinks
+    : primaryNavLinks.filter((link) => !internalDebugHrefs.has(link.href));
+
   return (
     <aside className="sticky top-0 hidden h-screen w-[268px] shrink-0 flex-col border-r border-app-border bg-app-shell px-4 py-5 shadow-[1px_0_0_rgb(var(--app-border)/0.35)] md:flex">
       <div className="rounded-[22px] border border-app-border bg-gradient-to-br from-app-surface to-app-elevated p-3 shadow-app-card">
@@ -166,7 +175,7 @@ export function Sidebar() {
       </div>
 
       <div className="mt-7 space-y-7">
-        <NavGroup label="Workspace" links={primaryNavLinks} />
+        <NavGroup label="Workspace" links={visiblePrimaryNavLinks} />
         <div className="h-px bg-app-border/70" />
         <NavGroup label="Administration" links={administrationNavLinks} />
       </div>

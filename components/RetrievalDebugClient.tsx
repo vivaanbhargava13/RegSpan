@@ -26,7 +26,6 @@ type RetrievalDebugResult = {
   content_preview: string;
   similarity: number;
   evidence_reason: string | null;
-  embedding_input: string | null;
 };
 
 type RetrievalDebugResponse = {
@@ -338,16 +337,6 @@ export function RetrievalDebugClient() {
                   {result.content_preview}
                 </p>
 
-                {result.embedding_input ? (
-                  <details className="rounded-xl border border-app-border bg-app-elevated/50">
-                    <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-app-muted transition hover:text-app-text">
-                      Debug embedding input
-                    </summary>
-                    <pre className="max-h-64 overflow-auto border-t border-app-border bg-app-shell px-4 py-3 font-mono text-[11px] leading-5 text-app-muted">
-                      {result.embedding_input}
-                    </pre>
-                  </details>
-                ) : null}
               </div>
             </article>
           ))}

@@ -11,9 +11,10 @@ import { getCurrentWorkspace, type CurrentWorkspace } from "@/lib/workspaces";
 
 type AppShellProps = {
   children: ReactNode;
+  showInternalDebugLinks?: boolean;
 };
 
-export function AppShell({ children }: AppShellProps) {
+export function AppShell({ children, showInternalDebugLinks = false }: AppShellProps) {
   const { theme } = useThemePreference();
   const [session, setSession] = useState<Session | null>(null);
   const [workspace, setWorkspace] = useState<CurrentWorkspace | null>(null);
@@ -136,7 +137,7 @@ export function AppShell({ children }: AppShellProps) {
       className="min-h-screen bg-app-bg text-app-text [background-image:radial-gradient(circle_at_top_right,rgb(var(--app-accent-soft)/0.55),transparent_34rem)]"
     >
       <div className="flex min-h-screen">
-        <Sidebar />
+        <Sidebar showInternalDebugLinks={showInternalDebugLinks} />
         <div className="min-w-0 flex-1">
           <Topbar session={session} workspaceName={workspace.name} />
           <main className="mx-auto w-full max-w-[1600px] px-4 py-7 sm:px-6 lg:px-10 lg:py-10">

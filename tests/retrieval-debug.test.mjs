@@ -39,15 +39,19 @@ test("retrieval debug route enforces workspace-scoped retrieval", async () => {
   assert.match(retrieval, /\.eq\("workspace_id", workspaceId\)/);
 });
 
-test("retrieval debug exposes citation and embedding-input metadata", async () => {
-  const [client, retrieval] = await Promise.all([
+test("retrieval debug exposes citation metadata without embedding input", async () => {
+  const [client, route, retrieval] = await Promise.all([
     readFile("components/RetrievalDebugClient.tsx", "utf8"),
+    readFile("app/api/retrieval-debug/route.ts", "utf8"),
     readFile("lib/retrieval.ts", "utf8"),
   ]);
 
   assert.match(retrieval, /evidence_reason/);
   assert.match(retrieval, /embedding_input/);
+  assert.match(route, /sanitizeRetrievalDebugResults/);
+  assert.match(route, /omitEmbeddingInput/);
   assert.match(client, /Evidence reason:/);
-  assert.match(client, /Debug embedding input/);
+  assert.doesNotMatch(client, /Debug embedding input/);
+  assert.doesNotMatch(client, /embedding_input/);
   assert.match(client, /Similarity/);
 });

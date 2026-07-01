@@ -12,6 +12,7 @@ import {
   parseRetrievalDebugRequest,
   RetrievalDebugValidationError,
 } from "@/lib/retrievalDebug";
+import { areInternalDebugRoutesEnabled } from "@/lib/securityFeatureFlags";
 import { getServerSupabaseAdminClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -34,11 +35,32 @@ function retrievalDebugErrorResponse(error: unknown) {
   return documentErrorResponse(error);
 }
 
+function omitEmbeddingInput<T extends { embedding_input?: unknown }>(value: T) {
+  const { embedding_input: omittedEmbeddingInput, ...safeValue } = value;
+  void omittedEmbeddingInput;
+  return safeValue;
+}
+
+function sanitizeRetrievalDebugResults(results: Awaited<ReturnType<typeof retrieveRelevantChunks>>) {
+  return results.map(omitEmbeddingInput);
+}
+
 export async function POST(request: Request) {
   const correlationId = getCorrelationId(request);
   let documentId: string | null = null;
 
   try {
+    if (!areInternalDebugRoutesEnabled()) {
+      console.warn("[RegSpan retrieval] Debug route blocked", {
+        correlationId,
+        enabled: false,
+      });
+      return NextResponse.json(
+        { ok: false, error: "Not found.", code: "not_found" },
+        { status: 404 },
+      );
+    }
+
     const supabase = getServerSupabaseAdminClient();
     const actor = await authenticateRequest(supabase, request);
     const workspaceId = await getActorWorkspaceId(supabase, actor.user.id);
@@ -97,7 +119,7 @@ export async function POST(request: Request) {
       query: parsed.query,
       topK: parsed.topK,
       documentId: parsed.documentId,
-      results,
+      results: sanitizeRetrievalDebugResults(results),
     });
   } catch (error) {
     console.error("[RegSpan retrieval] Debug query failed", {

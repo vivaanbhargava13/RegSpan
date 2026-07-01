@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
+import { areInternalDebugRoutesEnabled } from "@/lib/securityFeatureFlags";
 import { getServerSupabaseAuthClient } from "@/lib/supabase/authServer";
 
 export default async function ProtectedAppLayout({ children }: { children: ReactNode }) {
@@ -11,5 +12,9 @@ export default async function ProtectedAppLayout({ children }: { children: React
     redirect("/auth");
   }
 
-  return <AppShell>{children}</AppShell>;
+  return (
+    <AppShell showInternalDebugLinks={areInternalDebugRoutesEnabled()}>
+      {children}
+    </AppShell>
+  );
 }

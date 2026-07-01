@@ -7,6 +7,7 @@ import {
   isUuid,
 } from "@/lib/documentSecurity";
 import { recordSecurityAuditEvent } from "@/lib/securityAudit";
+import { isMockProcessingRouteEnabled } from "@/lib/securityFeatureFlags";
 import { getServerSupabaseAdminClient } from "@/lib/supabase/server";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -33,6 +34,18 @@ export async function POST(request: Request, { params }: RouteContext) {
   let authorized: Awaited<ReturnType<typeof authorizeDocumentRequest>> | null = null;
 
   try {
+    if (!isMockProcessingRouteEnabled()) {
+      console.warn("[RegSpan ingestion] Mock processing route blocked", {
+        correlationId,
+        documentId: isUuid(id) ? id : null,
+        enabled: false,
+      });
+      return NextResponse.json(
+        { ok: false, error: "Not found.", code: "not_found" },
+        { status: 404 },
+      );
+    }
+
     supabase = getServerSupabaseAdminClient();
     authorized = await authorizeDocumentRequest(supabase, request, id);
     const { actor, document } = authorized;
