@@ -108,6 +108,8 @@ test("retrieval eval runner writes gitignored latest JSON and Markdown paths", a
   assert.match(runner, /retrieval-eval-latest\.md/);
   assert.match(runner, /match_document_chunks_v1/);
   assert.match(runner, /SUPABASE_SERVICE_ROLE_KEY/);
+  assert.match(runner, /requireExternalAiProcessingEnabled/);
+  assert.match(runner, /ENABLE_EXTERNAL_AI_PROCESSING=true/);
   assert.match(runner, /--workspace-name/);
   assert.match(gitignore, /eval-results\//);
   assert.match(packageJson, /"eval:retrieval": "node scripts\/runRetrievalEval\.mjs"/);

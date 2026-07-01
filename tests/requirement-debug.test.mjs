@@ -19,8 +19,21 @@ async function loadTsModule(sourcePath) {
     fileName: sourcePath,
   });
   const outputText = transpiled.outputText
+    .replaceAll('from "./aiProcessingPolicy"', 'from "./lib__aiProcessingPolicy.mjs"')
     .replaceAll('from "./negativeEvidence"', 'from "./lib__negativeEvidence.mjs"')
     .replaceAll('from "./requirementEvidenceClassifier"', 'from "./lib__requirementEvidenceClassifier.mjs"');
+  if (sourcePath !== "lib/aiProcessingPolicy.ts") {
+    const policySource = await readFile("lib/aiProcessingPolicy.ts", "utf8");
+    const policyTranspiled = ts.transpileModule(policySource, {
+      compilerOptions: {
+        module: ts.ModuleKind.ES2022,
+        target: ts.ScriptTarget.ES2022,
+        verbatimModuleSyntax: false,
+      },
+      fileName: "lib/aiProcessingPolicy.ts",
+    });
+    await writeFile(join(outDir, "lib__aiProcessingPolicy.mjs"), policyTranspiled.outputText, "utf8");
+  }
   if (sourcePath !== "lib/negativeEvidence.ts") {
     const negativeSource = await readFile("lib/negativeEvidence.ts", "utf8");
     const negativeTranspiled = ts.transpileModule(negativeSource, {
@@ -44,6 +57,7 @@ async function loadTsModule(sourcePath) {
       fileName: "lib/requirementEvidenceClassifier.ts",
     });
     const classifierOutput = classifierTranspiled.outputText
+      .replaceAll('from "./aiProcessingPolicy"', 'from "./lib__aiProcessingPolicy.mjs"')
       .replaceAll('from "./negativeEvidence"', 'from "./lib__negativeEvidence.mjs"');
     await writeFile(join(outDir, "lib__requirementEvidenceClassifier.mjs"), classifierOutput, "utf8");
   }
@@ -153,15 +167,68 @@ test("requirement evidence classifier exposes prompt and provider abstraction", 
   assert.match(envExample, /REQUIREMENT_CLASSIFIER_PROVIDER=heuristic/);
   assert.match(envExample, /REQUIREMENT_CLASSIFIER_MODEL=/);
   assert.match(envExample, /REQUIREMENT_CLASSIFIER_API_KEY=/);
+  assert.match(envExample, /ENABLE_EXTERNAL_AI_PROCESSING=/);
+  assert.match(envExample, /ENABLE_EXTERNAL_AI_CLASSIFIER=/);
 });
 
 test("LLM classifier falls back to deterministic heuristic when requested but not configured", async () => {
   const { createRequirementEvidenceClassifier } = await loadTsModule("lib/requirementEvidenceClassifier.ts");
   const classifier = createRequirementEvidenceClassifier({
+    ENABLE_EXTERNAL_AI_PROCESSING: "true",
+    ENABLE_EXTERNAL_AI_CLASSIFIER: "true",
     REQUIREMENT_CLASSIFIER_PROVIDER: "openai",
   });
 
   assert.equal(classifier.provider, "fallback");
+});
+
+test("OpenAI classifier is blocked by server policy unless both AI flags are enabled", async () => {
+  const { createRequirementEvidenceClassifier } = await loadTsModule("lib/requirementEvidenceClassifier.ts");
+  let fetchCalled = false;
+  const classifier = createRequirementEvidenceClassifier(
+    {
+      ENABLE_EXTERNAL_AI_PROCESSING: "true",
+      ENABLE_EXTERNAL_AI_CLASSIFIER: "",
+      REQUIREMENT_CLASSIFIER_PROVIDER: "openai",
+      REQUIREMENT_CLASSIFIER_MODEL: "gpt-test",
+      REQUIREMENT_CLASSIFIER_API_KEY: "test-key",
+    },
+    async () => {
+      fetchCalled = true;
+      return Response.json({});
+    },
+  );
+
+  assert.equal(classifier.provider, "fallback");
+  const result = await classifier.classify({
+    requirement: {
+      id: "customer_notification_unauthorized_access",
+      title: "Customer notification",
+      description: "Notify affected customers after unauthorized access.",
+      retrievalQuery: "customer notification unauthorized access",
+      directSignals: ["customer notification"],
+      actionSignals: ["notify"],
+      topicSignals: ["customer"],
+      partialSignals: [],
+      backgroundSignals: [],
+    },
+    evaluationGuidance: "Classify customer notification evidence.",
+    chunkContent: "The policy requires customer notification after unauthorized access.",
+    chunkMetadata: {
+      filename: "policy.pdf",
+      sectionPath: "Incident Response > Notification",
+      pageStart: 1,
+      pageEnd: 1,
+      chunkIndex: 0,
+      sourceType: "client_policy",
+      evidenceRole: "organization_evidence",
+      evidenceReason: "substantive policy evidence",
+    },
+  });
+
+  assert.equal(fetchCalled, false);
+  assert.equal(result.classifier_provider, "fallback");
+  assert.match(result.reason, /external AI classification is disabled by server policy/);
 });
 
 test("OpenAI classifier downgrades silence-only negative evidence", async () => {
@@ -177,6 +244,8 @@ test("OpenAI classifier downgrades silence-only negative evidence", async () => 
   );
   const classifier = createRequirementEvidenceClassifier(
     {
+      ENABLE_EXTERNAL_AI_PROCESSING: "true",
+      ENABLE_EXTERNAL_AI_CLASSIFIER: "true",
       REQUIREMENT_CLASSIFIER_PROVIDER: "openai",
       REQUIREMENT_CLASSIFIER_MODEL: "gpt-test",
       REQUIREMENT_CLASSIFIER_API_KEY: "test-key",

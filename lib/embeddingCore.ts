@@ -1,3 +1,5 @@
+import { isExternalAiProcessingEnabled } from "./aiProcessingPolicy";
+
 export const EMBEDDING_DIMENSIONS = 1536;
 export const MAX_EMBEDDING_BATCH_SIZE = 32;
 const EMBEDDING_REQUEST_TIMEOUT_MS = 30_000;
@@ -76,6 +78,14 @@ export function createEmbeddingProvider(
   environment: EmbeddingEnvironment = process.env,
   fetchImplementation: typeof fetch = fetch,
 ): EmbeddingProvider {
+  if (!isExternalAiProcessingEnabled(environment)) {
+    throw new EmbeddingProcessingError(
+      "external_ai_processing_disabled",
+      "External AI processing is disabled by server policy.",
+      403,
+    );
+  }
+
   const provider = requireEnvironmentValue(environment, "EMBEDDING_PROVIDER").toLowerCase();
   const model = requireEnvironmentValue(environment, "EMBEDDING_MODEL");
   const apiKey = requireEnvironmentValue(environment, "EMBEDDING_API_KEY");

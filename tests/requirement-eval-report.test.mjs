@@ -144,6 +144,8 @@ test("requirement eval output paths and npm command are configured and gitignore
   assert.match(runner, /requirement-eval-latest\.json/);
   assert.match(runner, /requirement-eval-latest\.md/);
   assert.match(runner, /eval-results/);
+  assert.match(runner, /requireExternalAiProcessingEnabled/);
+  assert.match(runner, /ENABLE_EXTERNAL_AI_PROCESSING=true/);
   assert.match(gitignore, /eval-results\//);
   assert.match(packageJson, /"eval:requirements": "node scripts\/runRequirementEval\.mjs"/);
 });

@@ -1,4 +1,8 @@
 import type { DocumentSourceType, EvidenceRole } from "./documentSource";
+import {
+  isExternalAiClassifierEnabled,
+  isExternalAiProcessingEnabled,
+} from "./aiProcessingPolicy";
 import { detectNegativeEvidence } from "./negativeEvidence";
 import type { RegSpRequirement } from "./regSpRequirements";
 import type { RetrievedChunk } from "./retrieval";
@@ -434,6 +438,21 @@ export function createRequirementEvidenceClassifier(
       provider: "heuristic",
       async classify(input) {
         return classifyRequirementEvidenceHeuristically(input, "heuristic");
+      },
+    };
+  }
+
+  if (!isExternalAiProcessingEnabled(environment) || !isExternalAiClassifierEnabled(environment)) {
+    return {
+      provider: "fallback",
+      async classify(input) {
+        const fallback = classifyRequirementEvidenceHeuristically(input, "fallback");
+        return {
+          ...fallback,
+          reason:
+            "LLM classifier was requested but external AI classification is disabled by server policy. " +
+            fallback.reason,
+        };
       },
     };
   }

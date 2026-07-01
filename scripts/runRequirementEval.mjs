@@ -135,6 +135,14 @@ function requireEnv(name) {
   return value;
 }
 
+function requireExternalAiProcessingEnabled() {
+  if (process.env.ENABLE_EXTERNAL_AI_PROCESSING?.trim().toLowerCase() !== "true") {
+    throw new Error(
+      "External AI processing is disabled by server policy. Set ENABLE_EXTERNAL_AI_PROCESSING=true to run requirement evaluation embeddings.",
+    );
+  }
+}
+
 function assertUuid(value, label) {
   if (!UUID_PATTERN.test(value)) {
     throw new Error(`${label} must be a valid UUID.`);
@@ -527,6 +535,7 @@ async function main() {
   const topK = validateTopK(args.topK);
   const supabaseUrl = requireEnv("NEXT_PUBLIC_SUPABASE_URL");
   const serviceRoleKey = requireEnv("SUPABASE_SERVICE_ROLE_KEY");
+  requireExternalAiProcessingEnabled();
   const embeddingConfig = {
     provider: requireEnv("EMBEDDING_PROVIDER").toLowerCase(),
     model: requireEnv("EMBEDDING_MODEL"),
