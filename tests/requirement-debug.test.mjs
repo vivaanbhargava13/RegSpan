@@ -1,6 +1,44 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import test from "node:test";
+import ts from "typescript";
+
+async function loadTsModule(sourcePath) {
+  const source = await readFile(sourcePath, "utf8");
+  const outDir = await mkdtemp(join(tmpdir(), "regspan-requirement-test-"));
+  const outPath = join(outDir, sourcePath.replace(/[\/:]/g, "__").replace(/\.ts$/, ".mjs"));
+  const transpiled = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.ES2022,
+      target: ts.ScriptTarget.ES2022,
+      verbatimModuleSyntax: false,
+    },
+    fileName: sourcePath,
+  });
+  await writeFile(outPath, transpiled.outputText, "utf8");
+  return import(pathToFileURL(outPath).href);
+}
+
+function retrievedChunk(contentPreview) {
+  return {
+    chunk_id: "11111111-1111-4111-8111-111111111111",
+    document_id: "22222222-2222-4222-8222-222222222222",
+    filename: "Public guidance.pdf",
+    page_start: 1,
+    page_end: 1,
+    chunk_index: 0,
+    section_path: "Guidance",
+    content_preview: contentPreview,
+    similarity: 0.9,
+    evidence_reason: "substantive guidance evidence",
+    embedding_input: null,
+    source_type: "regulatory_guidance",
+    evidence_role: "requirement_reference",
+  };
+}
 
 test("requirement debug defines the canonical Reg S-P baseline", async () => {
   const requirements = await readFile("lib/regSpRequirements.ts", "utf8");
@@ -156,10 +194,77 @@ test("customer notification explicit language remains direct-capable", async () 
   );
 
   assert.match(customerNotificationBlock, /notify affected customers/);
+  assert.match(customerNotificationBlock, /notify affected individuals/);
+  assert.match(customerNotificationBlock, /notify consumers/);
   assert.match(customerNotificationBlock, /customer notification/);
   assert.match(customerNotificationBlock, /sensitive customer information/);
+  assert.match(customerNotificationBlock, /personal information/);
   assert.match(customerNotificationBlock, /unauthorized access/);
-  assert.match(customerNotificationBlock, /actionSignals: \["notify", "notification", "notice", "affected customers", "breach notification"\]/);
+  assert.match(customerNotificationBlock, /breach notification/);
+});
+
+test("customer notification reference language can grade direct when explicit", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { gradeRetrievedChunk }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementMatching.ts"),
+  ]);
+  const requirement = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "customer_notification_unauthorized_access",
+  );
+
+  const graded = gradeRetrievedChunk(requirement, retrievedChunk(
+    "The organization should provide notice to affected individuals and consumers after unauthorized access to sensitive information or personal information.",
+  ));
+
+  assert.equal(graded.grade, "direct");
+});
+
+test("evidence and log preservation reference language can grade direct when explicit", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { gradeRetrievedChunk }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementMatching.ts"),
+  ]);
+  const requirement = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "evidence_log_preservation",
+  );
+
+  const graded = gradeRetrievedChunk(requirement, retrievedChunk(
+    "Responders must collect and preserve data, preserve evidence, maintain chain of custody, and retain forensic evidence and incident records for investigations.",
+  ));
+
+  assert.equal(graded.grade, "direct");
+});
+
+test("remediation and recovery validation reference language can grade direct when explicit", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { gradeRetrievedChunk }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementMatching.ts"),
+  ]);
+  const requirement = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "remediation_recovery_validation",
+  );
+
+  const graded = gradeRetrievedChunk(requirement, retrievedChunk(
+    "Teams should confirm remediation with a follow-up vulnerability scan, repeated testing, recovery capabilities validation, verify restored assets, corrective actions, lessons learned, and remediation tracking.",
+  ));
+
+  assert.equal(graded.grade, "direct");
+});
+
+test("vendor direct grading remains conservative for generic third-party assistance", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { gradeRetrievedChunk }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementMatching.ts"),
+  ]);
+  const requirement = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "vendor_incident_handling",
+  );
+
+  const graded = gradeRetrievedChunk(requirement, retrievedChunk(
+    "Third parties may assist the incident response team during analysis and recovery activities.",
+  ));
+
+  assert.notEqual(graded.grade, "direct");
 });
 
 test("requirement debug route uses authenticated workspace-scoped retrieval", async () => {

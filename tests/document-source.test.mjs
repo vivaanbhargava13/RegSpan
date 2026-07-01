@@ -1,6 +1,26 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import test from "node:test";
+import ts from "typescript";
+
+async function loadTsModule(sourcePath) {
+  const source = await readFile(sourcePath, "utf8");
+  const outDir = await mkdtemp(join(tmpdir(), "regspan-source-test-"));
+  const outPath = join(outDir, sourcePath.replace(/[\/:]/g, "__").replace(/\.ts$/, ".mjs"));
+  const transpiled = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.ES2022,
+      target: ts.ScriptTarget.ES2022,
+      verbatimModuleSyntax: false,
+    },
+    fileName: sourcePath,
+  });
+  await writeFile(outPath, transpiled.outputText, "utf8");
+  return import(pathToFileURL(outPath).href);
+}
 
 test("document source model exposes required source types and evidence roles", async () => {
   const source = await readFile("lib/documentSource.ts", "utf8");
@@ -33,6 +53,8 @@ test("guidance and framework publishers are classified away from client policy e
   assert.match(source, /ffiec/);
   assert.match(source, /ftc/);
   assert.match(source, /cisa/);
+  assert.match(source, /finra/);
+  assert.match(source, /federal government/);
   assert.match(source, /return "control_framework"/);
   assert.match(source, /return "regulatory_guidance"/);
 
@@ -41,6 +63,82 @@ test("guidance and framework publishers are classified away from client policy e
     source.indexOf("const sampleTemplateSignals"),
   );
   assert.doesNotMatch(frameworkBlock, /return "client_policy"/);
+});
+
+test("public guidance and framework documents do not become organization evidence", async () => {
+  const {
+    inferDocumentSourceType,
+    evidenceRoleForSourceType,
+  } = await loadTsModule("lib/documentSource.ts");
+
+  const cases = [
+    {
+      filename: "NIST SP 800-61 Computer Security Incident Handling Guide.pdf",
+      documentType: "Policy",
+      expected: "control_framework",
+    },
+    {
+      filename: "FFIEC Cybersecurity Assessment Tool.pdf",
+      documentType: "Procedure",
+      expected: "control_framework",
+    },
+    {
+      filename: "FTC Safeguards Rule compliance guide.pdf",
+      documentType: "Policy",
+      expected: "regulatory_guidance",
+    },
+    {
+      filename: "FINRA Core Cybersecurity Controls.pdf",
+      documentType: "Procedure",
+      expected: "control_framework",
+    },
+    {
+      filename: "CISA Federal Government Cybersecurity Incident and Vulnerability Response Playbooks.pdf",
+      documentType: "Incident Response Plan",
+      expected: "regulatory_guidance",
+    },
+  ];
+
+  for (const item of cases) {
+    const sourceType = inferDocumentSourceType(item);
+    assert.equal(sourceType, item.expected);
+    assert.equal(evidenceRoleForSourceType(sourceType), "requirement_reference");
+    assert.notEqual(sourceType, "client_policy");
+    assert.notEqual(sourceType, "client_procedure");
+  }
+});
+
+test("public documents require explicit source metadata before becoming organization evidence", async () => {
+  const {
+    inferDocumentSourceType,
+    evidenceRoleForSourceType,
+  } = await loadTsModule("lib/documentSource.ts");
+
+  const sourceType = inferDocumentSourceType({
+    filename: "FINRA Core Cybersecurity Controls.pdf",
+    documentType: "Source type: client policy",
+    notes: "User verified this uploaded file is the organization's adopted source_type: client_policy.",
+  });
+
+  assert.equal(sourceType, "client_policy");
+  assert.equal(evidenceRoleForSourceType(sourceType), "organization_evidence");
+});
+
+test("client policy metadata is not overridden by incidental public-reference text", async () => {
+  const {
+    inferDocumentSourceType,
+    evidenceRoleForSourceType,
+  } = await loadTsModule("lib/documentSource.ts");
+
+  const sourceType = inferDocumentSourceType({
+    filename: "Customer Incident Response Policy.pdf",
+    documentType: "Policy",
+    contentPreview:
+      "The privacy team may notify regulators, law enforcement, or the federal government when required by law.",
+  });
+
+  assert.equal(sourceType, "client_policy");
+  assert.equal(evidenceRoleForSourceType(sourceType), "organization_evidence");
 });
 
 test("client policy, procedure, and vendor contract sources map to organization evidence", async () => {

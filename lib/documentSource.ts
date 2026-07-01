@@ -41,9 +41,54 @@ function sourceText(input: DocumentSourceInput) {
   ].filter(Boolean).join(" "));
 }
 
+function descriptorText(input: DocumentSourceInput) {
+  return normalize([
+    input.filename,
+    input.documentType,
+    input.notes,
+  ].filter(Boolean).join(" "));
+}
+
+function metadataText(input: DocumentSourceInput) {
+  return normalize([
+    input.documentType,
+    input.notes,
+  ].filter(Boolean).join(" "));
+}
+
+function contentHintText(input: DocumentSourceInput) {
+  return normalize([
+    input.sectionPath,
+    input.contentPreview,
+    input.evidenceReason,
+  ].filter(Boolean).join(" "));
+}
+
 function hasAny(text: string, patterns: RegExp[]) {
   return patterns.some((pattern) => pattern.test(text));
 }
+
+const explicitSourceTypeSignals: Array<[DocumentSourceType, RegExp[]]> = [
+  ["client_policy", [
+    /\bsource\s*type\s*client\s*policy\b/,
+    /\bsource\s*type\s*organization\s*policy\b/,
+    /\bevidence\s*role\s*organization\s*evidence\b.*\bpolicy\b/,
+  ]],
+  ["client_procedure", [
+    /\bsource\s*type\s*client\s*procedure\b/,
+    /\bsource\s*type\s*organization\s*procedure\b/,
+    /\bevidence\s*role\s*organization\s*evidence\b.*\bprocedure\b/,
+  ]],
+  ["vendor_contract", [
+    /\bsource\s*type\s*vendor\s*contract\b/,
+    /\bsource\s*type\s*service\s*provider\s*contract\b/,
+    /\bevidence\s*role\s*organization\s*evidence\b.*\b(contract|agreement)\b/,
+  ]],
+  ["regulatory_guidance", [/\bsource\s*type\s*regulatory\s*guidance\b/]],
+  ["control_framework", [/\bsource\s*type\s*control\s*framework\b/]],
+  ["sample_template", [/\bsource\s*type\s*sample\s*template\b/]],
+  ["unknown", [/\bsource\s*type\s*unknown\b/]],
+];
 
 const controlFrameworkSignals = [
   /\bnist\b/,
@@ -55,7 +100,10 @@ const controlFrameworkSignals = [
   /\bcobit\b/,
   /\bcontrol framework\b/,
   /\bframework profile\b/,
+  /\bcore cybersecurity controls?\b/,
+  /\bcybersecurity controls?\b.*\bchecklist\b/,
   /\bffiec\b.*\b(cybersecurity|assessment|maturity|control|baseline)\b/,
+  /\bfinra\b.*\b(cybersecurity|controls?|report|checklist|framework)\b/,
 ];
 
 const regulatoryGuidanceSignals = [
@@ -66,6 +114,12 @@ const regulatoryGuidanceSignals = [
   /\bfederal trade commission\b/,
   /\bcisa\b/,
   /\bffiec\b/,
+  /\bfinra\b/,
+  /\bfederal government\b/,
+  /\bus government\b/,
+  /\bgovernment\s+(cybersecurity\s+)?(incident|vulnerability)\s+response\s+playbooks?\b/,
+  /\b(cybersecurity|incident|vulnerability)\s+response\s+playbooks?\b.*\bfederal\b/,
+  /\bfederal\b.*\b(cybersecurity|incident|vulnerability)\s+response\s+playbooks?\b/,
   /\bagency guidance\b/,
   /\bregulatory guidance\b/,
   /\bsupervisory guidance\b/,
@@ -73,6 +127,28 @@ const regulatoryGuidanceSignals = [
   /\badvisory\b/,
   /\bcompliance guide\b/,
   /\bplaybook\b.*\b(government|agency|federal|cisa|nist)\b/,
+];
+
+const contentControlFrameworkSignals = [
+  /\bnist\b/,
+  /\bsp\s*800\b/,
+  /\bcybersecurity framework\b/,
+  /\bffiec\b/,
+  /\bfinra\b.*\b(cybersecurity|controls?|report|checklist|framework)\b/,
+  /\bcore cybersecurity controls?\b/,
+];
+
+const contentRegulatoryGuidanceSignals = [
+  /\bregulation\s+s\s*p\b/,
+  /\breg\s+s\s*p\b/,
+  /\bfederal trade commission\b/,
+  /\bftc\b/,
+  /\bcisa\b/,
+  /\bffiec\b/,
+  /\bfinra\b/,
+  /\bgovernment\s+(cybersecurity\s+)?(incident|vulnerability)\s+response\s+playbooks?\b/,
+  /\b(cybersecurity|incident|vulnerability)\s+response\s+playbooks?\b.*\bfederal\b/,
+  /\bfederal\b.*\b(cybersecurity|incident|vulnerability)\s+response\s+playbooks?\b/,
 ];
 
 const sampleTemplateSignals = [
@@ -123,22 +199,37 @@ export function inferDocumentSourceType(input: DocumentSourceInput): DocumentSou
     return "unknown";
   }
 
-  if (hasAny(text, controlFrameworkSignals)) {
+  const descriptor = descriptorText(input);
+  const contentHint = contentHintText(input);
+  const explicitMetadata = metadataText(input);
+  for (const [sourceType, patterns] of explicitSourceTypeSignals) {
+    if (hasAny(explicitMetadata, patterns)) {
+      return sourceType;
+    }
+  }
+
+  if (hasAny(descriptor, controlFrameworkSignals)) {
     return "control_framework";
   }
-  if (hasAny(text, regulatoryGuidanceSignals)) {
+  if (hasAny(descriptor, regulatoryGuidanceSignals)) {
     return "regulatory_guidance";
   }
-  if (hasAny(text, sampleTemplateSignals)) {
+  if (hasAny(contentHint, contentControlFrameworkSignals)) {
+    return "control_framework";
+  }
+  if (hasAny(contentHint, contentRegulatoryGuidanceSignals)) {
+    return "regulatory_guidance";
+  }
+  if (hasAny(descriptor, sampleTemplateSignals)) {
     return "sample_template";
   }
-  if (hasAny(text, vendorContractSignals)) {
+  if (hasAny(descriptor, vendorContractSignals)) {
     return "vendor_contract";
   }
-  if (hasAny(text, clientProcedureSignals)) {
+  if (hasAny(descriptor, clientProcedureSignals)) {
     return "client_procedure";
   }
-  if (hasAny(text, clientPolicySignals)) {
+  if (hasAny(descriptor, clientPolicySignals)) {
     return "client_policy";
   }
 
