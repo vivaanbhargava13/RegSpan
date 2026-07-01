@@ -164,6 +164,146 @@ test("LLM classifier falls back to deterministic heuristic when requested but no
   assert.equal(classifier.provider, "fallback");
 });
 
+test("OpenAI classifier downgrades silence-only negative evidence", async () => {
+  const [{ REG_SP_REQUIREMENTS }, {
+    classifierInputForChunk,
+    createRequirementEvidenceClassifier,
+  }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementEvidenceClassifier.ts"),
+  ]);
+  const requirement = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "customer_notification_unauthorized_access",
+  );
+  const classifier = createRequirementEvidenceClassifier(
+    {
+      REQUIREMENT_CLASSIFIER_PROVIDER: "openai",
+      REQUIREMENT_CLASSIFIER_MODEL: "gpt-test",
+      REQUIREMENT_CLASSIFIER_API_KEY: "test-key",
+    },
+    async () => ({
+      ok: true,
+      async json() {
+        return {
+          choices: [{
+            message: {
+              content: JSON.stringify({
+                relationship: "negative_evidence",
+                confidence: "high",
+                requirement_supported: false,
+                control_absent_or_out_of_scope: true,
+                reason: "The chunk does not mention customer notification.",
+                supporting_quote: "does not mention customer notification",
+              }),
+            },
+          }],
+        };
+      },
+    }),
+  );
+
+  const result = await classifier.classify(classifierInputForChunk(
+    requirement,
+    organizationChunk("Safeguards and Access Controls Customer information is protected through encryption, MFA, logging, and least privilege access."),
+  ));
+
+  assert.equal(result.classifier_provider, "openai");
+  assert.equal(result.relationship, "irrelevant");
+  assert.equal(result.requirement_supported, false);
+  assert.equal(result.control_absent_or_out_of_scope, false);
+  assert.equal(result.supporting_quote, null);
+  assert.match(result.reason, /cannot be inferred from silence/);
+});
+
+test("OpenAI classifier preserves explicit absence and out-of-scope negative evidence", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { postProcessOpenAiClassification, classifierInputForChunk }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementEvidenceClassifier.ts"),
+  ]);
+  const customer = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "customer_notification_unauthorized_access",
+  );
+  const vendor = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "vendor_incident_handling",
+  );
+
+  const customerText = "This procedure does not define customer notification after unauthorized access.";
+  const vendorText = "Vendor incident reporting is outside the scope of this procedure.";
+  const customerResult = postProcessOpenAiClassification({
+    relationship: "negative_evidence",
+    confidence: "high",
+    requirement_supported: false,
+    control_absent_or_out_of_scope: true,
+    reason: "The chunk explicitly states it does not define customer notification.",
+    supporting_quote: customerText,
+  }, classifierInputForChunk(customer, organizationChunk(customerText)));
+  const vendorResult = postProcessOpenAiClassification({
+    relationship: "negative_evidence",
+    confidence: "high",
+    requirement_supported: false,
+    control_absent_or_out_of_scope: true,
+    reason: "The chunk states vendor incident reporting is outside the scope.",
+    supporting_quote: vendorText,
+  }, classifierInputForChunk(vendor, organizationChunk(vendorText)));
+
+  assert.equal(customerResult.relationship, "negative_evidence");
+  assert.equal(customerResult.control_absent_or_out_of_scope, true);
+  assert.equal(customerResult.supporting_quote, customerText);
+  assert.equal(vendorResult.relationship, "negative_evidence");
+  assert.equal(vendorResult.control_absent_or_out_of_scope, true);
+  assert.equal(vendorResult.supporting_quote, vendorText);
+});
+
+test("OpenAI classifier downgrades adjacent-control absence that is not about the requirement", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { postProcessOpenAiClassification, classifierInputForChunk }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementEvidenceClassifier.ts"),
+  ]);
+  const requirement = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "customer_information_safeguards",
+  );
+  const text = "This policy does not define customer notification or law enforcement reporting. Employees must protect business records from unauthorized disclosure.";
+
+  const result = postProcessOpenAiClassification({
+    relationship: "negative_evidence",
+    confidence: "high",
+    requirement_supported: false,
+    control_absent_or_out_of_scope: true,
+    reason: "The chunk explicitly states that the policy does not define customer notification, which implies safeguards are not established.",
+    supporting_quote: "This policy does not define customer notification or law enforcement reporting.",
+  }, classifierInputForChunk(requirement, organizationChunk(text)));
+
+  assert.equal(result.relationship, "irrelevant");
+  assert.equal(result.requirement_supported, false);
+  assert.equal(result.control_absent_or_out_of_scope, false);
+  assert.equal(result.supporting_quote, null);
+  assert.match(result.reason, /adjacent controls/);
+});
+
+test("OpenAI classifier rejects invented supporting quotes", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { postProcessOpenAiClassification, classifierInputForChunk }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementEvidenceClassifier.ts"),
+  ]);
+  const requirement = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "customer_notification_unauthorized_access",
+  );
+  const chunk = organizationChunk("Affected customers must be notified after unauthorized access to sensitive customer information.");
+
+  const result = postProcessOpenAiClassification({
+    relationship: "supports",
+    confidence: "high",
+    requirement_supported: true,
+    control_absent_or_out_of_scope: false,
+    reason: "The chunk supports customer notification.",
+    supporting_quote: "The organization has a robust customer notice workflow.",
+  }, classifierInputForChunk(requirement, chunk));
+
+  assert.equal(result.relationship, "supports");
+  assert.equal(result.requirement_supported, true);
+  assert.equal(result.supporting_quote, null);
+});
+
 test("requirement debug has no old satisfied display/status text", async () => {
   const [matching, client, docs] = await Promise.all([
     readFile("lib/requirementMatching.ts", "utf8"),
