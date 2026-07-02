@@ -84,3 +84,26 @@ test("dashboard UI exposes real-data empty states and linked metric cards", asyn
   assert.match(client, /High-risk open/);
   assert.match(client, /Needs review/);
 });
+
+test("dashboard metric tooltips are locally anchored above metric cards", async () => {
+  const tooltip = await readFile("components/InfoTooltip.tsx", "utf8");
+  const metricCard = await readFile("components/MetricCard.tsx", "utf8");
+  const dashboard = await readFile("components/DashboardClient.tsx", "utf8");
+
+  assert.match(tooltip, /relative z-30 inline-flex/);
+  assert.match(tooltip, /relative z-20 inline-grid/);
+  assert.match(tooltip, /absolute z-\[9999\]/);
+  assert.match(tooltip, /pointer-events-none/);
+  assert.match(tooltip, /aria-describedby/);
+  assert.match(tooltip, /onFocus/);
+  assert.match(tooltip, /onMouseEnter/);
+
+  assert.match(metricCard, /overflow-visible/);
+  assert.doesNotMatch(metricCard, /overflow-hidden p-5/);
+  assert.match(metricCard, /hover:z-50/);
+  assert.match(metricCard, /focus-within:z-50/);
+
+  assert.match(dashboard, /overflow-visible/);
+  assert.match(dashboard, /hover:z-50/);
+  assert.match(dashboard, /focus-within:z-50/);
+});

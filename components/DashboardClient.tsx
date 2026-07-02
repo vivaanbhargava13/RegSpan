@@ -113,7 +113,7 @@ function DashboardMetricLink({
   return (
     <Link
       href={href}
-      className="block rounded-2xl transition hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent"
+      className="relative z-0 block overflow-visible rounded-2xl transition hover:z-50 hover:-translate-y-0.5 focus-within:z-50 focus-visible:z-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent"
     >
       {children}
     </Link>
