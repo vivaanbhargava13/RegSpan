@@ -28,7 +28,6 @@ type FindingEvidence = {
   page_start: number | null;
   page_end: number | null;
   section_path: string | null;
-  chunk_index: number | null;
 };
 
 type Finding = {
@@ -76,12 +75,6 @@ const severityClasses: Record<Finding["severity"], string> = {
   info: "border-app-success/20 bg-app-success-soft text-app-success",
 };
 
-const coveredRiskClass = "border-app-border bg-app-elevated text-app-muted";
-
-function riskBadgeClass(finding: Finding) {
-  return finding.status === "covered" ? coveredRiskClass : severityClasses[finding.severity];
-}
-
 function humanize(value: string | null | undefined) {
   return (value ?? "unknown")
     .split("_")
@@ -123,15 +116,15 @@ function sortedEvidence(evidence: FindingEvidence[]) {
 function evidenceRelationshipLabel(relationship: string | null) {
   switch (relationship) {
     case "supports":
-      return "Supports this finding";
+      return "Supports this conclusion";
     case "partially_supports":
-      return "Partially supports this finding";
+      return "Partially supports this conclusion";
     case "negative_evidence":
-      return "Limitation or gap";
+      return "Document limitation";
     case "background_context":
-      return "Background";
+      return "Related context";
     default:
-      return "Evidence";
+      return "Document excerpt";
   }
 }
 
@@ -160,8 +153,38 @@ function whyItMattersForFinding(finding: Finding) {
     case "remediation_recovery_validation":
       return "Tracking remediation and validating recovery helps ensure incidents and vulnerabilities are actually resolved, not just closed administratively.";
     default:
-      return "This requirement is part of the Reg S-P review baseline. Clear written evidence helps the firm show how the control is handled in practice.";
+      return "This requirement is part of the Reg S-P review baseline. Clear written evidence helps the firm show how the requirement is handled in practice.";
   }
+}
+
+function findingBadges(finding: Finding) {
+  const statusBadge = (
+    <span className={`rounded-full border px-3 py-1.5 text-xs font-bold ${statusClasses[finding.status]}`}>
+      {humanize(finding.status)}
+    </span>
+  );
+
+  if (finding.status === "covered") {
+    return statusBadge;
+  }
+
+  return (
+    <>
+      {statusBadge}
+      <span className={`rounded-full border px-3 py-1.5 text-xs font-bold ${severityClasses[finding.severity]}`}>
+        Risk if unresolved: {humanize(finding.severity)}
+      </span>
+    </>
+  );
+}
+
+function evidenceSummary(evidence: FindingEvidence[]) {
+  const documentCount = new Set(evidence.map((item) => item.filename).filter(Boolean)).size;
+  const sectionCount = evidence.length;
+  if (sectionCount === 0) return "No source excerpts stored for this finding";
+  const documentLabel = `${documentCount || 1} ${documentCount === 1 ? "document" : "documents"}`;
+  const sectionLabel = `${sectionCount} cited ${sectionCount === 1 ? "section" : "sections"}`;
+  return `Evidence from ${documentLabel}, ${sectionLabel}`;
 }
 
 function EvidenceCard({ evidence, subdued = false }: { evidence: FindingEvidence; subdued?: boolean }) {
@@ -416,13 +439,7 @@ export function FindingsClient() {
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <span className={`rounded-full border px-3 py-1.5 text-xs font-bold ${statusClasses[finding.status]}`}>
-                      {humanize(finding.status)}
-                    </span>
-                    <span className={`rounded-full border px-3 py-1.5 text-xs font-bold ${riskBadgeClass(finding)}`}>
-                      Risk if missing: {humanize(finding.severity)}
-                    </span>
-                    <StatusBadge>{humanize(finding.confidence)}</StatusBadge>
+                    {findingBadges(finding)}
                   </div>
                 </div>
               </div>
@@ -444,10 +461,10 @@ export function FindingsClient() {
                 </div>
 
                 <div>
-                  <h3 className="text-sm font-semibold text-app-text">Evidence citations</h3>
+                  <h3 className="sr-only">Source excerpts</h3>
                   {finding.evidence.length === 0 ? (
                     <p className="mt-2 rounded-xl border border-app-border bg-app-elevated/60 px-4 py-3 text-sm text-app-muted">
-                      No organization evidence citation was stored for this finding.
+                      No source excerpts were stored for this finding.
                     </p>
                   ) : (
                     <EvidenceList evidence={finding.evidence} />
@@ -464,34 +481,40 @@ export function FindingsClient() {
 
 function EvidenceList({ evidence }: { evidence: FindingEvidence[] }) {
   const orderedEvidence = sortedEvidence(evidence);
-  const visibleEvidence = orderedEvidence.slice(0, DEFAULT_VISIBLE_EVIDENCE_COUNT);
-  const hiddenEvidence = orderedEvidence.slice(DEFAULT_VISIBLE_EVIDENCE_COUNT);
 
   return (
-    <div className="mt-3 space-y-3">
-      {visibleEvidence.map((item) => (
-        <EvidenceCard
-          key={item.id}
-          evidence={item}
-          subdued={item.relationship === "background_context" || item.relationship === "irrelevant"}
-        />
-      ))}
-      {hiddenEvidence.length > 0 ? (
-        <details className="rounded-xl border border-app-border bg-app-elevated/35">
-          <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-app-muted transition hover:text-app-text">
-            Show all evidence ({hiddenEvidence.length} more)
-          </summary>
-          <div className="space-y-3 border-t border-app-border p-3">
-            {hiddenEvidence.map((item) => (
-              <EvidenceCard
-                key={item.id}
-                evidence={item}
-                subdued={item.relationship === "background_context" || item.relationship === "irrelevant"}
-              />
-            ))}
-          </div>
-        </details>
-      ) : null}
-    </div>
+    <details className="rounded-xl border border-app-border bg-app-elevated/35">
+      <summary className="flex cursor-pointer list-none flex-col gap-1 px-4 py-3 text-sm font-semibold text-app-muted transition hover:text-app-text sm:flex-row sm:items-center sm:justify-between">
+        <span>Source excerpts</span>
+        <span className="text-xs font-medium text-app-subtle">
+          {evidenceSummary(orderedEvidence)} · View supporting document excerpts
+        </span>
+      </summary>
+      <div className="space-y-3 border-t border-app-border p-3">
+        {orderedEvidence.slice(0, DEFAULT_VISIBLE_EVIDENCE_COUNT).map((item) => (
+          <EvidenceCard
+            key={item.id}
+            evidence={item}
+            subdued={item.relationship === "background_context" || item.relationship === "irrelevant"}
+          />
+        ))}
+        {orderedEvidence.length > DEFAULT_VISIBLE_EVIDENCE_COUNT ? (
+          <details className="rounded-xl border border-app-border bg-app-surface/60">
+            <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-app-muted transition hover:text-app-text">
+              Show additional source excerpts ({orderedEvidence.length - DEFAULT_VISIBLE_EVIDENCE_COUNT} more)
+            </summary>
+            <div className="space-y-3 border-t border-app-border p-3">
+              {orderedEvidence.slice(DEFAULT_VISIBLE_EVIDENCE_COUNT).map((item) => (
+                <EvidenceCard
+                  key={item.id}
+                  evidence={item}
+                  subdued={item.relationship === "background_context" || item.relationship === "irrelevant"}
+                />
+              ))}
+            </div>
+          </details>
+        ) : null}
+      </div>
+    </details>
   );
 }

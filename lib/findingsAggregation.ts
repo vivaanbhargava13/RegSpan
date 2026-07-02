@@ -470,7 +470,7 @@ function statusSummary(requirement: RegSpRequirement, status: FindingStatus) {
     case "partial":
       return "Partially covered based on reviewed documents.";
     case "missing":
-      return "RegSpan did not find clear evidence that this control is defined.";
+      return "RegSpan did not find clear evidence that this requirement is addressed.";
     case "conflicting":
       return "Reviewed documents appear to conflict on whether this control is defined.";
     case "needs_review":
@@ -480,7 +480,7 @@ function statusSummary(requirement: RegSpRequirement, status: FindingStatus) {
 
 export function remediationForFinding(requirement: RegSpRequirement, status: FindingStatus) {
   if (status === "covered") {
-    return "Keep the cited policy or procedure current. Consider cross-referencing it from related security and compliance documents so users know where this control is defined.";
+    return "Keep this procedure current and confirm related procedures point to it during the next review.";
   }
 
   const base = `Update the organization’s documentation to clearly address this requirement: ${requirement.description}`;
@@ -555,7 +555,7 @@ function whatWeFoundForFinding({
       parts.push(coveredSummary);
     }
     if (documentScopeLimitations.length > 0) {
-      parts.push("Related documents say they do not cover this control, which appears to be a scope limitation for those documents rather than a contradiction.");
+      parts.push("Related documents say they do not cover this requirement, which appears to be a scope limitation for those documents rather than a contradiction.");
     }
   }
 
@@ -582,14 +582,14 @@ function whatWeFoundForFinding({
 
   if (status === "conflicting") {
     if (supportQuote) {
-      parts.push(`${supportDocument} appears to support this control: “${supportQuote}”`);
+      parts.push(`${supportDocument} appears to address this requirement: “${supportQuote}”`);
     } else {
-      parts.push(`${supportDocument} appears to support this control.`);
+      parts.push(`${supportDocument} appears to address this requirement.`);
     }
     if (organizationNegativeQuote) {
       parts.push(`${negativeDocument} appears to contradict that support: “${organizationNegativeQuote}”`);
     } else {
-      parts.push(`${negativeDocument} appears to say the firm does not maintain or perform this control.`);
+      parts.push(`${negativeDocument} appears to say the firm does not address this requirement.`);
     }
     parts.push("A reviewer should confirm which document is authoritative.");
   }
@@ -597,29 +597,29 @@ function whatWeFoundForFinding({
   if (status === "missing") {
     if (organizationNegativeQuote) {
       parts.push(`${negativeDocument} states: “${organizationNegativeQuote}”`);
-      parts.push("RegSpan did not find stronger reviewed policy evidence showing this control is defined.");
+      parts.push("RegSpan did not find stronger reviewed policy evidence showing this requirement is addressed.");
     } else {
-      parts.push("RegSpan did not find clear policy or procedure language in the reviewed documents that defines this control.");
+      parts.push("RegSpan did not find clear policy or procedure language in the reviewed documents that addresses this requirement.");
     }
   }
 
   if (status === "needs_review") {
     if (documentScopeLimitations.length > 0 && !strongestSupport) {
       if (limitationQuote) {
-        parts.push(`${limitationDocument} says it does not cover this control: “${limitationQuote}”`);
+        parts.push(`${limitationDocument} says it does not cover this requirement: “${limitationQuote}”`);
       } else {
-        parts.push(`${limitationDocument} says it does not cover this control.`);
+        parts.push(`${limitationDocument} says it does not cover this requirement.`);
       }
-      parts.push("That may describe the limits of that document rather than proof that the firm lacks the control.");
+      parts.push("That may describe the limits of that document rather than proof that the firm lacks the requirement.");
     } else if (background.length > 0) {
-      parts.push("RegSpan found related context, but it was not specific enough to show whether this control is defined.");
+      parts.push("RegSpan found related context, but it was not specific enough to show whether this requirement is addressed.");
     } else {
-      parts.push("The reviewed evidence was not clear enough to determine whether this control is defined.");
+      parts.push("The reviewed evidence was not clear enough to determine whether this requirement is addressed.");
     }
   }
 
   if (ignoredReferenceCount > 0) {
-    parts.push("Public guidance or other reference material was not treated as proof that the firm has this control.");
+    parts.push("Public guidance or other reference material was not treated as proof that the firm addresses this requirement.");
   }
 
   return parts.join(" ");
@@ -633,35 +633,37 @@ function evidenceReasonForStorage(
   const reason = chunk.grade_reason
     .replace(/\bthe chunk\b/gi, "the cited text")
     .replace(/\bchunk\b/gi, "cited text")
+    .replace(/\bthe cited text explicitly\b/gi, "the excerpt")
+    .replace(/\bthe cited text\b/gi, "the excerpt")
     .trim();
   const negativeScope = negativeScopeByChunkId.get(chunk.chunk_id);
   if (negativeScope === "organization_level_negative") {
-    return `The firm appears not to have this control: ${reason}`;
+    return `The reviewed document appears to say this requirement is not addressed: ${reason}`;
   }
   if (negativeScope === "document_scope_limitation") {
-    return `This document says it does not cover this control: ${reason}`;
+    return `This document says it does not cover this requirement. RegSpan treats that as a document-scope limitation, not a contradiction by itself. ${reason}`;
   }
   if (chunk.evidence_relationship === "supports") {
     const covered = renderedElementList(requirement, chunk.covered_elements ?? [], "found");
     return covered.length > 0
-      ? `This section ${covered}. ${reason}`
-      : `This section is relevant to the requirement. ${reason}`;
+      ? `The cited section ${covered}. ${reason}`
+      : `The cited section is relevant to the requirement. ${reason}`;
   }
   if (chunk.evidence_relationship === "partially_supports") {
     const covered = renderedElementList(requirement, chunk.covered_elements ?? [], "partial");
     const missing = renderedElementList(requirement, chunk.missing_elements ?? [], "missing");
     return [
       covered.length > 0
-        ? `This section discusses ${covered}${missing.length > 0 ? "," : "."}`
+        ? `The cited section discusses ${covered}${missing.length > 0 ? "," : "."}`
         : missing.length > 0
-          ? "This section mentions this topic,"
-          : "This section is related to this requirement.",
+          ? "The cited section mentions this topic,"
+          : "The cited section is related to this requirement.",
       missing.length > 0 ? `but it does not clearly define ${missing}.` : null,
       reason,
     ].filter(Boolean).join(" ");
   }
   if (chunk.evidence_relationship === "background_context") {
-    return `Background: ${reason}`;
+    return `Related context: ${reason}`;
   }
   return reason;
 }

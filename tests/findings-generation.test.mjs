@@ -140,7 +140,7 @@ test("true organization-level negative evidence produces conflicting or missing 
   assert.equal(missing.status, "missing");
   assert.match(conflicting.summary, /conflict/);
   assert.match(conflicting.rationale, /appears to contradict/);
-  assert.equal(conflicting.evidence[1].reason.startsWith("The firm appears not to have this control:"), true);
+  assert.equal(conflicting.evidence[1].reason.startsWith("The reviewed document appears to say this requirement is not addressed:"), true);
 });
 
 test("strong support with weak document-scope limitation stays covered", () => {
@@ -163,7 +163,7 @@ test("strong support with weak document-scope limitation stays covered", () => {
   assert.equal(finding.severity, "info");
   assert.match(finding.rationale, /scope limitation/);
   assert.equal(
-    finding.evidence.some((evidence) => evidence.reason.startsWith("This document says it does not cover this control:")),
+    finding.evidence.some((evidence) => evidence.reason.startsWith("This document says it does not cover this requirement.")),
     true,
   );
 });
@@ -235,9 +235,10 @@ test("covered and partial evidence explanations use natural language", () => {
   assert.doesNotMatch(covered.rationale, /Reviewed evidence covers:/);
   assert.doesNotMatch(partial.rationale, /RegSpan did not find clear evidence for:/);
   assert.doesNotMatch(covered.evidence[0].reason, /^This section supports:/);
-  assert.match(covered.evidence[0].reason, /This section defines when customer notice is required and defines the timing for customer notice/);
+  assert.match(covered.evidence[0].reason, /The cited section defines when customer notice is required and defines the timing for customer notice/);
   assert.match(partial.evidence[0].reason, /discusses customer-notice decisioning, but it does not clearly define the required timing for notice/);
   assert.doesNotMatch(partial.evidence[0].reason, /This section partially addresses this requirement/);
+  assert.doesNotMatch(covered.evidence[0].reason, /the cited text explicitly/i);
 });
 
 test("evidence explanations avoid raw coverage-element grammar artifacts", () => {
@@ -328,13 +329,30 @@ test("evidence explanations avoid raw coverage-element grammar artifacts", () =>
   }
 });
 
-test("covered findings render risk-if-missing badge without alarming severity styling", async () => {
+test("findings UI keeps covered cards quiet and collapses source excerpts", async () => {
   const client = await readFile("components/FindingsClient.tsx", "utf8");
 
-  assert.match(client, /const coveredRiskClass = "border-app-border bg-app-elevated text-app-muted"/);
-  assert.match(client, /finding\.status === "covered" \? coveredRiskClass : severityClasses\[finding\.severity\]/);
-  assert.match(client, /Risk if missing: \{humanize\(finding\.severity\)\}/);
+  assert.match(client, /if \(finding\.status === "covered"\) \{\s+return statusBadge;/);
+  assert.doesNotMatch(client, /Risk if missing/);
+  assert.match(client, /Risk if unresolved: \{humanize\(finding\.severity\)\}/);
   assert.match(client, /high: "border-app-danger\/20 bg-app-danger-soft text-app-danger"/);
+  assert.match(client, /<details className="rounded-xl border border-app-border bg-app-elevated\/35">/);
+  assert.match(client, /Source excerpts/);
+  assert.match(client, /View supporting document excerpts/);
+  assert.match(client, /Document excerpt/);
+  assert.match(client, /Supports this conclusion/);
+  assert.match(client, /Partially supports this conclusion/);
+  assert.doesNotMatch(client, /Supports this finding/);
+  assert.doesNotMatch(client, /Partially supports this finding/);
+  assert.doesNotMatch(client, /Evidence citations/);
+  assert.doesNotMatch(client, /organization evidence/i);
+  assert.doesNotMatch(client, /coverage element/i);
+  assert.doesNotMatch(client, /classifier/i);
+  assert.doesNotMatch(client, /heuristic/i);
+  assert.doesNotMatch(client, /retrieval/i);
+  assert.doesNotMatch(client, /candidate/i);
+  assert.doesNotMatch(client, /chunk/i);
+  assert.doesNotMatch(client, /control is defined/i);
 });
 
 test("strong support with partial procedure scope limitation is not conflicting", () => {
@@ -423,7 +441,8 @@ test("primary finding text avoids internal classifier terminology", () => {
   const primaryText = [finding.summary, finding.rationale, finding.remediation].join(" ");
 
   assert.doesNotMatch(primaryText, /candidate|heuristic|classifier|retrieval|chunk|status was assigned|document-scope/i);
-  assert.match(finding.rationale, /Related documents say they do not cover this control/);
+  assert.match(finding.rationale, /Related documents say they do not cover this requirement/);
+  assert.doesNotMatch(primaryText, /control is defined|satisfy this control|covered control|missing control/i);
 });
 
 test("finding evidence preserves citation metadata", () => {
@@ -467,14 +486,14 @@ test("findings UI shows generation and empty states", async () => {
   assert.match(client, /Run analysis/);
   assert.match(client, /No processed evidence yet/);
   assert.match(client, /No findings generated yet/);
-  assert.match(client, /Evidence citations/);
+  assert.match(client, /Source excerpts/);
   assert.match(client, /\/api\/findings\/generate/);
   assert.match(client, /\/api\/findings/);
   assert.match(client, /High risk open/);
   assert.match(client, /finding\.status !== "covered"/);
-  assert.match(client, /Risk if missing:/);
+  assert.match(client, /Risk if unresolved:/);
   assert.match(client, /DEFAULT_VISIBLE_EVIDENCE_COUNT = 4/);
-  assert.match(client, /Show all evidence/);
+  assert.match(client, /Show additional source excerpts/);
   assert.match(client, /background_context/);
   assert.match(client, /subdued/);
   assert.doesNotMatch(client, /SUPABASE_SERVICE_ROLE_KEY|EMBEDDING_API_KEY|OPENAI_API_KEY/);
