@@ -123,19 +123,25 @@ export function buildRequirementEvaluationGuidance(requirement: RegSpRequirement
     written_incident_response_program:
       "Supports when the chunk shows a maintained written incident/cyber event response program, plan, policy, standard, or procedure with ownership, approval, review, roles, escalation, notice, evidence, remediation, or recovery responsibilities.",
     unauthorized_access_detection_escalation:
-      "Supports when the chunk describes detecting, triaging, classifying, escalating, or assigning severity to unauthorized access or use of customer information.",
+      "Supports when the chunk describes assessing the nature and scope of unauthorized access or use of customer information, identifying affected customer information systems or information types, escalating the incident, or taking containment and control steps.",
     customer_notification_unauthorized_access:
-      "Supports when the chunk describes notifying affected customers, individuals, people, consumers, or clients after unauthorized access/use of customer, personal, or sensitive information.",
+      "Supports when the chunk describes notifying affected customers, individuals, people, consumers, or clients after unauthorized access/use of sensitive customer information, especially with timing such as as soon as practicable or no later than 30 days and a substantial harm or inconvenience trigger.",
+    customer_notification_content:
+      "Supports when the chunk defines customer notice contents such as incident description, type of sensitive customer information, incident date or date range, contact information, account review, fraud alerts, credit reports, identity theft resources, or FTC/usa.gov guidance.",
     regulator_law_enforcement_notification:
-      "Supports when the chunk describes notifying regulators, law enforcement, supervisory authorities, government agencies, or other authorities where required.",
+      "This is supporting-control evidence, not a standalone Reg S-P customer-notice obligation. Supports when the chunk describes legal/compliance coordination for regulator, law enforcement, supervisory, contractual, Attorney General delay, public-safety, or national-security notification decisions.",
     vendor_incident_handling:
-      "Supports when the chunk imposes vendor, supplier, service-provider, or third-party incident reporting, notification, escalation, cooperation, coordination, contract, investigation, remediation, or recovery obligations.",
+      "Supports when the chunk imposes service-provider, vendor, supplier, or third-party customer-information protection, due diligence, monitoring, breach notice to the firm, 72-hour reporting, cooperation, coordination, contract, investigation, remediation, or recovery obligations.",
     customer_information_safeguards:
-      "Supports when the chunk describes safeguards or access controls protecting customer information, including authentication, encryption, monitoring, least privilege, or administrative/technical/physical controls.",
+      "Supports when the chunk describes administrative, technical, or physical safeguards protecting customer records and information, including authentication, encryption, monitoring, least privilege, access controls, vendor controls, or physical protections.",
+    disposal_consumer_customer_information:
+      "Supports when the chunk describes proper disposal, secure destruction, media sanitization, shredding, wiping, deletion, or disposal-vendor controls for consumer information or customer information.",
+    written_compliance_records:
+      "Supports when the chunk requires written records documenting safeguards or disposal compliance, incident-response determinations, customer-notice determinations, Attorney General delay documentation, copies of notices, policy versions, retention periods, or accessible storage.",
     evidence_log_preservation:
-      "Supports when the chunk describes collecting, preserving, retaining, or maintaining logs, evidence, incident records, forensic data, chain of custody, or investigation files.",
+      "This is supporting-control evidence. Supports when the chunk describes collecting, preserving, retaining, or maintaining logs, evidence, incident records, forensic data, chain of custody, or investigation files.",
     remediation_recovery_validation:
-      "Supports when the chunk describes remediation tracking, corrective actions, validation, repeated testing, recovery assurance, restored asset verification, lessons learned, or post-incident review.",
+      "Supports when the chunk describes recovery from unauthorized access or use, remediation tracking, corrective actions, validation, repeated testing, recovery assurance, restored asset verification, lessons learned, or post-incident review.",
   };
 
   return [

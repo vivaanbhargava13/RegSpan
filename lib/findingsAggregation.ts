@@ -35,9 +35,11 @@ export type GeneratedRequirementFinding = {
 const highImpactRequirements = new Set<RegSpRequirementId>([
   "written_incident_response_program",
   "customer_notification_unauthorized_access",
-  "regulator_law_enforcement_notification",
+  "customer_notification_content",
   "vendor_incident_handling",
   "customer_information_safeguards",
+  "disposal_consumer_customer_information",
+  "written_compliance_records",
 ]);
 
 function organizationEvidence(chunks: GradedEvidenceChunk[]) {

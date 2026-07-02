@@ -99,17 +99,23 @@ test("requirement debug defines the canonical Reg S-P baseline", async () => {
     "written_incident_response_program",
     "unauthorized_access_detection_escalation",
     "customer_notification_unauthorized_access",
-    "regulator_law_enforcement_notification",
+    "customer_notification_content",
     "vendor_incident_handling",
     "customer_information_safeguards",
+    "disposal_consumer_customer_information",
+    "written_compliance_records",
     "evidence_log_preservation",
     "remediation_recovery_validation",
+    "regulator_law_enforcement_notification",
   ]) {
     assert.match(requirements, new RegExp(`id: "${id}"`));
   }
 
-  const requirementCount = (requirements.match(/id: "/g) ?? []).length;
-  assert.equal(requirementCount, 8);
+  const requirementCount = (requirements.match(/mvpScope: "/g) ?? []).length;
+  assert.equal(requirementCount, 11);
+  assert.match(requirements, /sourceBasis/);
+  assert.match(requirements, /regulatoryRole/);
+  assert.match(requirements, /evidenceCriteria/);
   assert.match(requirements, /retrievalQuery/);
   assert.match(requirements, /directSignals/);
   assert.match(requirements, /actionSignals/);

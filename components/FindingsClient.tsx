@@ -136,13 +136,19 @@ function whyItMattersForFinding(finding: Finding) {
     case "unauthorized_access_detection_escalation":
       return "Unauthorized access can become a customer-information incident quickly. Clear detection, triage, and escalation steps help the firm make timely decisions.";
     case "customer_notification_unauthorized_access":
-      return "Reg S-P expects firms to be prepared to notify affected customers when unauthorized access involves sensitive customer information and notice is required.";
+      return "Reg S-P expects firms to be prepared to notify affected individuals when unauthorized access or use involves sensitive customer information and notice is required.";
+    case "customer_notification_content":
+      return "Clear notice-content procedures help affected individuals understand what happened, what information was involved, whom to contact, and what protective steps they can take.";
     case "regulator_law_enforcement_notification":
-      return "Some incidents may require regulator, law enforcement, contractual, or other external reporting. Documented decision rules reduce delay and confusion during an incident.";
+      return "Some incidents may involve regulator, law-enforcement, contractual, or public-safety coordination. Documented decision rules reduce delay and confusion during an incident.";
     case "vendor_incident_handling":
-      return "Service providers may handle customer information or support critical systems. Clear vendor incident obligations help the firm get timely notice, cooperation, and remediation.";
+      return "Service providers may handle customer information or support critical systems. Clear service-provider obligations help the firm get timely notice, cooperation, and remediation.";
     case "customer_information_safeguards":
       return "Safeguards and access controls help prevent unauthorized access to customer information and support the firm’s written information-security program.";
+    case "disposal_consumer_customer_information":
+      return "Secure disposal helps prevent customer or consumer information from being exposed after records, media, devices, or paper files are no longer needed.";
+    case "written_compliance_records":
+      return "Written records help the firm show how it complied with its safeguards, disposal, incident-response, and notification procedures during later review.";
     case "evidence_log_preservation":
       return "Preserving logs, records, and forensic evidence helps the firm investigate incidents, support notification decisions, and demonstrate what happened.";
     case "remediation_recovery_validation":
@@ -301,7 +307,7 @@ export function FindingsClient() {
           </span>{" "}
           {processedDocumentCount === 1 ? "document" : "documents"} against{" "}
           <span className="font-semibold text-app-text">
-            {latestRun?.requirement_count ?? 8}
+            {latestRun?.requirement_count ?? 10}
           </span>{" "}
           Reg S-P requirements.
           {latestRun ? (

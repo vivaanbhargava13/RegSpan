@@ -124,8 +124,8 @@ test("requirement eval runner defaults to all requirements and supports single r
     readFile("lib/regSpRequirements.ts", "utf8"),
   ]);
 
-  const requirementCount = (requirements.match(/id: "/g) ?? []).length;
-  assert.equal(requirementCount, 8);
+  const requirementCount = (requirements.match(/mvpScope: "/g) ?? []).length;
+  assert.equal(requirementCount, 11);
   assert.match(runner, /REG_SP_REQUIREMENTS/);
   assert.match(runner, /createRequirementEvidenceClassifier/);
   assert.match(runner, /buildRequirementMatchResultWithClassifier/);
