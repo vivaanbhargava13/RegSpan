@@ -76,6 +76,12 @@ const severityClasses: Record<Finding["severity"], string> = {
   info: "border-app-success/20 bg-app-success-soft text-app-success",
 };
 
+const coveredRiskClass = "border-app-border bg-app-elevated text-app-muted";
+
+function riskBadgeClass(finding: Finding) {
+  return finding.status === "covered" ? coveredRiskClass : severityClasses[finding.severity];
+}
+
 function humanize(value: string | null | undefined) {
   return (value ?? "unknown")
     .split("_")
@@ -413,7 +419,7 @@ export function FindingsClient() {
                     <span className={`rounded-full border px-3 py-1.5 text-xs font-bold ${statusClasses[finding.status]}`}>
                       {humanize(finding.status)}
                     </span>
-                    <span className={`rounded-full border px-3 py-1.5 text-xs font-bold ${severityClasses[finding.severity]}`}>
+                    <span className={`rounded-full border px-3 py-1.5 text-xs font-bold ${riskBadgeClass(finding)}`}>
                       Risk if missing: {humanize(finding.severity)}
                     </span>
                     <StatusBadge>{humanize(finding.confidence)}</StatusBadge>

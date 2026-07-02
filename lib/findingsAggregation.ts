@@ -233,6 +233,16 @@ const foundElementCopy: Partial<Record<RegSpRequirementId, Record<string, string
 };
 
 const missingElementCopy: Partial<Record<RegSpRequirementId, Record<string, string>>> = {
+  written_incident_response_program: {
+    written_program: "a maintained written incident response program or equivalent policy",
+    customer_information_scope: "that the program applies to customer information",
+    response_recovery_responsibilities: "response and recovery responsibilities",
+  },
+  unauthorized_access_detection_escalation: {
+    assesses_scope: "how the firm assesses the nature and scope of unauthorized access or use",
+    customer_information_systems: "how affected customer information systems or information types are identified",
+    containment_control: "required containment or control steps",
+  },
   customer_notification_unauthorized_access: {
     unauthorized_access_or_use: "language tying notice to unauthorized access or use of sensitive customer information",
     notice_trigger: "the decision standard for when notice is required, including substantial harm or inconvenience",
@@ -250,6 +260,10 @@ const missingElementCopy: Partial<Record<RegSpRequirementId, Record<string, stri
     notice_to_firm: "vendor or service-provider notice to the firm",
     cooperation_remediation: "vendor cooperation with investigation, remediation, or recovery",
   },
+  customer_information_safeguards: {
+    customer_information_scope: "that the safeguards apply to customer information",
+    safeguards_controls: "administrative, technical, or physical safeguards",
+  },
   disposal_consumer_customer_information: {
     disposal_scope: "consumer or customer information disposal scope",
     secure_disposal_method: "secure disposal, destruction, shredding, wiping, or sanitization methods",
@@ -259,10 +273,85 @@ const missingElementCopy: Partial<Record<RegSpRequirementId, Record<string, stri
     notice_determination_records: "incident or notification determinations and notice records",
     retention_accessibility: "retention period or accessible storage requirements",
   },
+  evidence_log_preservation: {
+    incident_materials: "how logs, evidence, or investigation records must be preserved",
+    integrity_or_chain_of_custody: "evidence integrity or chain-of-custody requirements",
+  },
+  remediation_recovery_validation: {
+    recovery_steps: "required recovery steps",
+    remediation_tracking: "remediation or corrective-action tracking",
+    validation_testing: "how recovery or remediation must be validated",
+  },
+  regulator_law_enforcement_notification: {
+    external_notification_decisioning: "who decides when external notification is required",
+    legal_compliance_owner: "legal or compliance ownership for external notification decisions",
+  },
 };
 
-function elementPhrase(requirement: RegSpRequirement, elementId: string, mode: "found" | "missing") {
-  const map = mode === "found" ? foundElementCopy : missingElementCopy;
+type ElementPhraseMode = "found" | "missing" | "partial";
+
+const partialElementCopy: Partial<Record<RegSpRequirementId, Record<string, string>>> = {
+  written_incident_response_program: {
+    written_program: "a written incident response program or equivalent standard",
+    customer_information_scope: "customer-information scope",
+    response_recovery_responsibilities: "response and recovery responsibilities",
+  },
+  unauthorized_access_detection_escalation: {
+    assesses_scope: "incident assessment",
+    customer_information_systems: "affected customer information systems or information types",
+    containment_control: "containment or control steps",
+  },
+  customer_notification_unauthorized_access: {
+    unauthorized_access_or_use: "customer notification after unauthorized access or use",
+    notice_trigger: "customer-notice decisioning",
+    notice_trigger_standard: "customer-notice decisioning",
+    notice_timing: "customer-notice timing",
+  },
+  customer_notification_content: {
+    incident_description: "incident-description content",
+    information_involved: "identification of affected sensitive customer information",
+    protective_steps: "protective steps for affected individuals",
+    contact_information: "contact information for questions",
+  },
+  vendor_incident_handling: {
+    service_provider_scope: "service-provider or vendor incident scope",
+    notice_to_firm: "vendor or service-provider notice to the firm",
+    cooperation_remediation: "vendor cooperation with investigation, remediation, or recovery",
+  },
+  customer_information_safeguards: {
+    customer_information_scope: "safeguards for customer information",
+    safeguards_controls: "administrative, technical, or physical safeguards",
+  },
+  disposal_consumer_customer_information: {
+    disposal_scope: "consumer or customer information disposal scope",
+    secure_disposal_method: "secure disposal or destruction methods",
+  },
+  written_compliance_records: {
+    compliance_record_scope: "written compliance records",
+    notice_determination_records: "incident or notification decision records",
+    retention_accessibility: "record retention or accessible storage",
+  },
+  evidence_log_preservation: {
+    incident_materials: "evidence and log preservation",
+    integrity_or_chain_of_custody: "evidence integrity or chain of custody",
+  },
+  remediation_recovery_validation: {
+    recovery_steps: "recovery steps",
+    remediation_tracking: "remediation or corrective-action tracking",
+    validation_testing: "recovery or remediation validation",
+  },
+  regulator_law_enforcement_notification: {
+    external_notification_decisioning: "external notification decisioning",
+    legal_compliance_owner: "legal or compliance ownership",
+  },
+};
+
+function elementPhrase(requirement: RegSpRequirement, elementId: string, mode: ElementPhraseMode) {
+  const map = mode === "found"
+    ? foundElementCopy
+    : mode === "partial"
+      ? partialElementCopy
+      : missingElementCopy;
   return map[requirement.id]?.[elementId]
     ?? foundElementCopy[requirement.id]?.[elementId]
     ?? elementLabel(requirement, elementId).replace(/^(Defines|Requires|Applies|Identifies|Includes|Provides)\s+/i, "").toLowerCase();
@@ -271,7 +360,7 @@ function elementPhrase(requirement: RegSpRequirement, elementId: string, mode: "
 function renderedElementList(
   requirement: RegSpRequirement,
   elementIds: string[],
-  mode: "found" | "missing",
+  mode: ElementPhraseMode,
 ) {
   return sentenceList(elementIds.map((elementId) => elementPhrase(requirement, elementId, mode)));
 }
@@ -559,13 +648,15 @@ function evidenceReasonForStorage(
       : `This section is relevant to the requirement. ${reason}`;
   }
   if (chunk.evidence_relationship === "partially_supports") {
-    const covered = renderedElementList(requirement, chunk.covered_elements ?? [], "found");
+    const covered = renderedElementList(requirement, chunk.covered_elements ?? [], "partial");
     const missing = renderedElementList(requirement, chunk.missing_elements ?? [], "missing");
     return [
       covered.length > 0
-        ? `This section discusses ${covered}.`
-        : "This section partially addresses this requirement.",
-      missing.length > 0 ? `It does not clearly define ${missing}.` : null,
+        ? `This section discusses ${covered}${missing.length > 0 ? "," : "."}`
+        : missing.length > 0
+          ? "This section mentions this topic,"
+          : "This section is related to this requirement.",
+      missing.length > 0 ? `but it does not clearly define ${missing}.` : null,
       reason,
     ].filter(Boolean).join(" ");
   }

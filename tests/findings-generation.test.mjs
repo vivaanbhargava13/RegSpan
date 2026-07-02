@@ -236,7 +236,105 @@ test("covered and partial evidence explanations use natural language", () => {
   assert.doesNotMatch(partial.rationale, /RegSpan did not find clear evidence for:/);
   assert.doesNotMatch(covered.evidence[0].reason, /^This section supports:/);
   assert.match(covered.evidence[0].reason, /This section defines when customer notice is required and defines the timing for customer notice/);
-  assert.match(partial.evidence[0].reason, /It does not clearly define the required timing for notice/);
+  assert.match(partial.evidence[0].reason, /discusses customer-notice decisioning, but it does not clearly define the required timing for notice/);
+  assert.doesNotMatch(partial.evidence[0].reason, /This section partially addresses this requirement/);
+});
+
+test("evidence explanations avoid raw coverage-element grammar artifacts", () => {
+  const cases = [
+    {
+      requirement: {
+        ...requirement,
+        id: "customer_information_safeguards",
+        title: "Safeguards for customer information",
+        coverageElements: [
+          {
+            id: "customer_information_scope",
+            label: "Applies safeguards to customer records or information",
+            requiredForCovered: true,
+            signals: ["customer information"],
+          },
+          {
+            id: "safeguards_controls",
+            label: "Defines administrative, technical, or physical safeguards",
+            requiredForCovered: true,
+            signals: ["safeguards"],
+          },
+        ],
+        requiredElementsForCovered: ["customer_information_scope", "safeguards_controls"],
+      },
+      coveredElements: ["safeguards_controls"],
+      missingElements: ["customer_information_scope"],
+      expected: /does not clearly define that the safeguards apply to customer information/,
+    },
+    {
+      requirement: {
+        ...requirement,
+        id: "regulator_law_enforcement_notification",
+        title: "Regulator and law enforcement notification coordination",
+        coverageElements: [
+          {
+            id: "external_notification_decisioning",
+            label: "Defines external notification decisioning",
+            requiredForCovered: true,
+            signals: ["regulator"],
+          },
+        ],
+        requiredElementsForCovered: ["external_notification_decisioning"],
+      },
+      coveredElements: [],
+      missingElements: ["external_notification_decisioning"],
+      expected: /does not clearly define who decides when external notification is required/,
+    },
+    {
+      requirement: {
+        ...requirement,
+        id: "evidence_log_preservation",
+        title: "Incident evidence and log preservation",
+        coverageElements: [
+          {
+            id: "incident_materials",
+            label: "Preserves logs, evidence, or investigation records",
+            requiredForCovered: true,
+            signals: ["preserve logs"],
+          },
+        ],
+        requiredElementsForCovered: ["incident_materials"],
+      },
+      coveredElements: [],
+      missingElements: ["incident_materials"],
+      expected: /does not clearly define how logs, evidence, or investigation records must be preserved/,
+    },
+  ];
+
+  for (const testCase of cases) {
+    const finding = aggregateFindingForRequirement(testCase.requirement, [
+      chunk({
+        grade: "partial",
+        evidence_relationship: "partially_supports",
+        requirement_supported: false,
+        covered_elements: testCase.coveredElements,
+        missing_elements: testCase.missingElements,
+        grade_reason: "The cited text mentions the topic but leaves details unclear.",
+      }),
+    ]);
+    const reason = finding.evidence[0]?.reason ?? "";
+
+    assert.equal(finding.status, "partial");
+    assert.match(reason, testCase.expected);
+    assert.doesNotMatch(reason, /does not clearly define applies/i);
+    assert.doesNotMatch(reason, /does not clearly define defines/i);
+    assert.doesNotMatch(reason, /does not clearly define preserves/i);
+  }
+});
+
+test("covered findings render risk-if-missing badge without alarming severity styling", async () => {
+  const client = await readFile("components/FindingsClient.tsx", "utf8");
+
+  assert.match(client, /const coveredRiskClass = "border-app-border bg-app-elevated text-app-muted"/);
+  assert.match(client, /finding\.status === "covered" \? coveredRiskClass : severityClasses\[finding\.severity\]/);
+  assert.match(client, /Risk if missing: \{humanize\(finding\.severity\)\}/);
+  assert.match(client, /high: "border-app-danger\/20 bg-app-danger-soft text-app-danger"/);
 });
 
 test("strong support with partial procedure scope limitation is not conflicting", () => {
