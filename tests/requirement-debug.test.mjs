@@ -370,6 +370,9 @@ test("OpenAI classifier rejects invented supporting quotes", async () => {
     confidence: "high",
     requirement_supported: true,
     control_absent_or_out_of_scope: false,
+    covered_elements: requirement.requiredElementsForCovered,
+    missing_elements: [],
+    vague_elements: [],
     reason: "The chunk supports customer notification.",
     supporting_quote: "The organization has a robust customer notice workflow.",
   }, classifierInputForChunk(requirement, chunk));
@@ -502,10 +505,107 @@ test("customer notification reference language can grade direct when explicit", 
   );
 
   const graded = gradeRetrievedChunk(requirement, retrievedChunk(
-    "The organization should provide notice to affected individuals and consumers after unauthorized access to sensitive information or personal information.",
+    "The organization must provide notice to affected individuals after unauthorized access to sensitive customer information when the incident is reasonably likely to result in substantial harm or inconvenience. Notice must be sent as soon as practicable and not later than 30 days.",
   ));
 
   assert.equal(graded.grade, "direct");
+  assert.deepEqual(graded.missing_elements, []);
+});
+
+test("generic customer notice language does not cover notice-content requirement", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { gradeRetrievedChunk }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementMatching.ts"),
+  ]);
+  const requirement = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "customer_notification_content",
+  );
+
+  const graded = gradeRetrievedChunk(requirement, organizationChunk(
+    "The firm will notify affected customers after a qualifying security incident.",
+  ));
+
+  assert.notEqual(graded.grade, "direct");
+  assert.equal(graded.missing_elements.includes("incident_description"), true);
+  assert.equal(graded.missing_elements.includes("information_involved"), true);
+  assert.equal(graded.missing_elements.includes("protective_steps"), true);
+});
+
+test("notice-content evidence covers customer notification content", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { gradeRetrievedChunk }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementMatching.ts"),
+  ]);
+  const requirement = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "customer_notification_content",
+  );
+
+  const graded = gradeRetrievedChunk(requirement, organizationChunk(
+    "Customer notices must include a description of the incident, the type of sensitive customer information involved, the incident date range, contact information, and protective steps such as fraud alert placement, credit report review, account statement monitoring, and identity theft resources.",
+  ));
+
+  assert.equal(graded.grade, "direct");
+  assert.deepEqual(graded.missing_elements, []);
+});
+
+test("generic safeguards do not cover disposal but disposal evidence does", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { gradeRetrievedChunk }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementMatching.ts"),
+  ]);
+  const requirement = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "disposal_consumer_customer_information",
+  );
+
+  const generic = gradeRetrievedChunk(requirement, organizationChunk(
+    "The firm protects customer information with access controls, authentication, monitoring, and encryption.",
+  ));
+  const disposal = gradeRetrievedChunk(requirement, organizationChunk(
+    "The firm must properly dispose of consumer information and customer information through secure disposal, secure destruction, shredding, wiping, or media sanitization.",
+  ));
+
+  assert.notEqual(generic.grade, "direct");
+  assert.equal(disposal.grade, "direct");
+});
+
+test("generic logging does not cover written compliance records but recordkeeping evidence does", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { gradeRetrievedChunk }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementMatching.ts"),
+  ]);
+  const requirement = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "written_compliance_records",
+  );
+
+  const generic = gradeRetrievedChunk(requirement, organizationChunk(
+    "Security tools retain system logs for investigations.",
+  ));
+  const records = gradeRetrievedChunk(requirement, organizationChunk(
+    "The firm must make and maintain written records documenting compliance, including the determination made for customer notice, a copy of any notice transmitted, policies and procedures in effect, and retention for six years in an easily accessible place.",
+  ));
+
+  assert.notEqual(generic.grade, "direct");
+  assert.equal(records.grade, "direct");
+});
+
+test("internal escalation does not cover vendor notice but vendor notice and cooperation does", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { gradeRetrievedChunk }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementMatching.ts"),
+  ]);
+  const requirement = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "vendor_incident_handling",
+  );
+
+  const internal = gradeRetrievedChunk(requirement, organizationChunk(
+    "The internal incident team escalates supplier-related issues to management.",
+  ));
+  const vendor = gradeRetrievedChunk(requirement, organizationChunk(
+    "Service providers and suppliers that handle customer information must notify the firm no later than 72 hours after a breach, cooperate with investigation, coordinate remediation, and support recovery.",
+  ));
+
+  assert.notEqual(internal.grade, "direct");
+  assert.equal(vendor.grade, "direct");
 });
 
 test("evidence and log preservation reference language can grade direct when explicit", async () => {
@@ -584,7 +684,7 @@ test("equivalent written cyber event response standard grades direct when mainta
   );
 
   const graded = gradeRetrievedChunk(requirement, organizationChunk(
-    "Meridian maintains a written cyber event response standard approved by the Risk Committee and reviewed annually. The standard assigns decision authority, describes escalation, notice decisions, supplier coordination, evidence custody, corrective action tracking, restoration assurance, and final review.",
+    "Meridian maintains a written cyber event response standard for incidents involving customer information approved by the Risk Committee and reviewed annually. The standard assigns decision authority, describes escalation, notice decisions, supplier coordination, evidence custody, corrective action tracking, restoration assurance, recovery responsibilities, and final review.",
   ));
 
   assert.equal(graded.grade, "direct");

@@ -23,6 +23,9 @@ export type GradedEvidenceChunk = RetrievedChunk & {
   classifier_confidence: RequirementEvidenceConfidence;
   requirement_supported: boolean;
   control_absent_or_out_of_scope: boolean;
+  covered_elements: string[];
+  missing_elements: string[];
+  vague_elements: string[];
   supporting_quote: string | null;
   classifier_provider: RequirementEvidenceClassifierProvider;
 };
@@ -76,6 +79,9 @@ function chunkWithClassification(
     classifier_confidence: classification.confidence,
     requirement_supported: classification.requirement_supported,
     control_absent_or_out_of_scope: classification.control_absent_or_out_of_scope,
+    covered_elements: classification.covered_elements,
+    missing_elements: classification.missing_elements,
+    vague_elements: classification.vague_elements,
     supporting_quote: classification.supporting_quote,
     classifier_provider: classification.classifier_provider,
   };

@@ -21,6 +21,13 @@ export type RegSpEvidenceCriteria = {
   missingOrNegativeEvidence: string;
 };
 
+export type RegSpCoverageElement = {
+  id: string;
+  label: string;
+  requiredForCovered: boolean;
+  signals: string[];
+};
+
 export type RegSpRequirement = {
   id: RegSpRequirementId;
   title: string;
@@ -29,6 +36,12 @@ export type RegSpRequirement = {
   regulatoryRole: RegSpRequirementRole;
   mvpScope: RegSpRequirementMvpScope;
   evidenceCriteria: RegSpEvidenceCriteria;
+  coverageElements: RegSpCoverageElement[];
+  requiredElementsForCovered: string[];
+  optionalElements: string[];
+  strongEvidenceGuidance: string;
+  partialEvidenceGuidance: string;
+  missingEvidenceGuidance: string;
   retrievalQuery: string;
   directSignals: string[];
   actionSignals: string[];
@@ -38,8 +51,32 @@ export type RegSpRequirement = {
   negativeSignals?: string[];
 };
 
+type RegSpRequirementDefinition = Omit<
+  RegSpRequirement,
+  | "requiredElementsForCovered"
+  | "optionalElements"
+  | "strongEvidenceGuidance"
+  | "partialEvidenceGuidance"
+  | "missingEvidenceGuidance"
+>;
+
+function defineRequirement(requirement: RegSpRequirementDefinition): RegSpRequirement {
+  return {
+    ...requirement,
+    requiredElementsForCovered: requirement.coverageElements
+      .filter((element) => element.requiredForCovered)
+      .map((element) => element.id),
+    optionalElements: requirement.coverageElements
+      .filter((element) => !element.requiredForCovered)
+      .map((element) => element.id),
+    strongEvidenceGuidance: requirement.evidenceCriteria.strongEvidence,
+    partialEvidenceGuidance: requirement.evidenceCriteria.partialEvidence,
+    missingEvidenceGuidance: requirement.evidenceCriteria.missingOrNegativeEvidence,
+  };
+}
+
 export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
-  {
+  defineRequirement({
     id: "written_incident_response_program",
     title: "Written incident response program",
     description:
@@ -53,6 +90,26 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
       partialEvidence: "Incident response procedures are mentioned, but ownership, approval, customer-information scope, or recovery responsibilities are unclear.",
       missingOrNegativeEvidence: "The documents say the firm has no incident response program, or only contain generic incident references without a written customer-information response process.",
     },
+    coverageElements: [
+      {
+        id: "written_program",
+        label: "Maintains a written incident response program or equivalent policy",
+        requiredForCovered: true,
+        signals: ["written incident response", "incident response program", "incident response plan", "incident response policy", "response standard"],
+      },
+      {
+        id: "customer_information_scope",
+        label: "Applies to customer information or customer information systems",
+        requiredForCovered: true,
+        signals: ["customer information", "customer records", "sensitive customer information", "customer information systems"],
+      },
+      {
+        id: "response_recovery_responsibilities",
+        label: "Defines response and recovery responsibilities",
+        requiredForCovered: true,
+        signals: ["respond", "response", "recover", "recovery", "roles", "responsibilities", "escalation", "remediation"],
+      },
+    ],
     retrievalQuery:
       "written incident response program plan cybersecurity incident response policy cyber event response standard customer information responsibilities procedures",
     directSignals: [
@@ -102,8 +159,8 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
     ],
     partialSignals: ["cybersecurity incident", "security incident", "response team", "incident management"],
     backgroundSignals: ["program", "policy", "procedure", "roles", "responsibilities"],
-  },
-  {
+  }),
+  defineRequirement({
     id: "unauthorized_access_detection_escalation",
     title: "Incident assessment, containment, and control",
     description:
@@ -117,6 +174,26 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
       partialEvidence: "Detection, escalation, or containment appears in isolation, but assessment of customer information scope or control actions is incomplete.",
       missingOrNegativeEvidence: "The documents say assessment or containment is not defined, or only describe generic monitoring without incident response steps.",
     },
+    coverageElements: [
+      {
+        id: "assesses_scope",
+        label: "Assesses the nature and scope of unauthorized access or use",
+        requiredForCovered: true,
+        signals: ["assess the nature and scope", "nature and scope", "assess", "triage", "classify"],
+      },
+      {
+        id: "customer_information_systems",
+        label: "Identifies affected customer information systems or information types",
+        requiredForCovered: true,
+        signals: ["customer information systems", "types of customer information", "customer information", "sensitive customer information"],
+      },
+      {
+        id: "containment_control",
+        label: "Requires containment or control steps",
+        requiredForCovered: true,
+        signals: ["contain and control", "containment", "control", "eradication", "isolate", "mitigate"],
+      },
+    ],
     retrievalQuery:
       "unauthorized access use customer information assess nature scope contain control customer information systems data types triage severity escalation",
     directSignals: [
@@ -136,8 +213,8 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
     topicSignals: ["unauthorized access", "unauthorized use", "customer information", "customer information systems", "incident escalation", "containment"],
     partialSignals: ["triage", "classification", "major incident", "security event", "alert", "monitoring"],
     backgroundSignals: ["detect", "monitor", "analyze", "investigate", "incident"],
-  },
-  {
+  }),
+  defineRequirement({
     id: "customer_notification_unauthorized_access",
     title: "Customer notification trigger and timing",
     description:
@@ -151,6 +228,26 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
       partialEvidence: "Customer or individual notice is mentioned, but timing, sensitive customer information, harm/inconvenience analysis, or exception criteria are missing.",
       missingOrNegativeEvidence: "The documents say customer notification is not defined, or only mention breach notice generically without a trigger and timing standard.",
     },
+    coverageElements: [
+      {
+        id: "unauthorized_access_or_use",
+        label: "Addresses unauthorized access to or use of sensitive customer information",
+        requiredForCovered: true,
+        signals: ["unauthorized access", "unauthorized use", "sensitive customer information"],
+      },
+      {
+        id: "notice_trigger_standard",
+        label: "Defines the customer-notice decision standard",
+        requiredForCovered: true,
+        signals: ["substantial harm", "substantial inconvenience", "reasonably likely", "notice is required", "determines"],
+      },
+      {
+        id: "notice_timing",
+        label: "Defines customer-notice timing",
+        requiredForCovered: true,
+        signals: ["as soon as practicable", "not later than 30 days", "30 days", "without unreasonable delay"],
+      },
+    ],
     retrievalQuery:
       "notify affected customers individuals unauthorized access use sensitive customer information substantial harm inconvenience as soon as practicable 30 days breach notification timing",
     directSignals: [
@@ -180,8 +277,8 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
     topicSignals: ["customer notification", "affected customers", "affected individuals", "unauthorized access", "sensitive customer information", "substantial harm", "30 days"],
     partialSignals: ["notice", "notification", "customer information", "personal information", "sensitive information", "unauthorized use", "affected individuals"],
     backgroundSignals: ["communications", "legal", "privacy", "incident response"],
-  },
-  {
+  }),
+  defineRequirement({
     id: "customer_notification_content",
     title: "Customer notification content",
     description:
@@ -195,6 +292,32 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
       partialEvidence: "The documents mention notifying affected individuals but do not define the notice contents.",
       missingOrNegativeEvidence: "The documents say notice content is not defined or leave notice details entirely to ad hoc legal review.",
     },
+    coverageElements: [
+      {
+        id: "incident_description",
+        label: "Requires a description of the incident",
+        requiredForCovered: true,
+        signals: ["description of the incident", "describe the incident", "what happened", "incident description"],
+      },
+      {
+        id: "information_involved",
+        label: "Identifies the sensitive customer information involved",
+        requiredForCovered: true,
+        signals: ["type of sensitive customer information", "information involved", "data elements", "personal information involved"],
+      },
+      {
+        id: "protective_steps",
+        label: "Includes protective steps or resources for affected individuals",
+        requiredForCovered: true,
+        signals: ["fraud alert", "credit report", "identity theft", "account statements", "protective steps", "suspicious activity"],
+      },
+      {
+        id: "contact_information",
+        label: "Provides contact information for questions",
+        requiredForCovered: false,
+        signals: ["contact information", "telephone number", "email address", "contact us"],
+      },
+    ],
     retrievalQuery:
       "customer notification notice contents incident description type of sensitive customer information date contact information fraud alert credit report identity theft FTC",
     directSignals: [
@@ -215,8 +338,8 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
     topicSignals: ["notice", "affected individual", "sensitive customer information", "fraud alert", "credit report", "identity theft"],
     partialSignals: ["notice", "notification", "template", "legal review", "communications"],
     backgroundSignals: ["customer communications", "privacy", "breach response", "incident communications"],
-  },
-  {
+  }),
+  defineRequirement({
     id: "vendor_incident_handling",
     title: "Service provider incident oversight and notice",
     description:
@@ -230,6 +353,26 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
       partialEvidence: "Vendor oversight or cybersecurity requirements exist, but 72-hour notice, customer-information scope, or notification support is missing.",
       missingOrNegativeEvidence: "The documents say supplier incident reporting is not required or do not define vendor breach reporting/cooperation obligations.",
     },
+    coverageElements: [
+      {
+        id: "service_provider_scope",
+        label: "Applies to service providers or vendors handling customer information",
+        requiredForCovered: true,
+        signals: ["service provider", "vendor", "supplier", "third party", "customer information system"],
+      },
+      {
+        id: "notice_to_firm",
+        label: "Requires service-provider notice to the firm",
+        requiredForCovered: true,
+        signals: ["notify", "notification", "report", "reporting", "prompt notice", "72 hours", "no later than 72 hours"],
+      },
+      {
+        id: "cooperation_remediation",
+        label: "Requires cooperation, investigation, remediation, or recovery support",
+        requiredForCovered: true,
+        signals: ["cooperate", "cooperation", "investigation", "remediation", "recovery", "coordinate", "coordination"],
+      },
+    ],
     retrievalQuery:
       "service provider vendor supplier breach security customer information system 72 hours notify covered institution due diligence monitoring incident handling",
     directSignals: [
@@ -263,8 +406,8 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
     topicSignals: ["vendor", "service provider", "third party", "supplier", "covered supplier", "customer information", "customer information system", "breach"],
     partialSignals: ["vendor", "third party", "supplier", "contract", "oversight", "cybersecurity requirements"],
     backgroundSignals: ["incident", "customer information", "escalation", "notification"],
-  },
-  {
+  }),
+  defineRequirement({
     id: "customer_information_safeguards",
     title: "Safeguards for customer information",
     description:
@@ -278,6 +421,20 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
       partialEvidence: "Security controls are described, but the link to customer information or administrative/technical/physical safeguards is incomplete.",
       missingOrNegativeEvidence: "The documents say customer-information safeguards are not maintained or contain only generic security principles without customer-information controls.",
     },
+    coverageElements: [
+      {
+        id: "customer_information_scope",
+        label: "Applies safeguards to customer records or information",
+        requiredForCovered: true,
+        signals: ["customer information", "customer records and information", "customer records", "customer data"],
+      },
+      {
+        id: "safeguards_controls",
+        label: "Defines administrative, technical, or physical safeguards",
+        requiredForCovered: true,
+        signals: ["safeguards", "administrative safeguards", "technical safeguards", "physical safeguards", "access controls", "least privilege", "encryption", "authentication"],
+      },
+    ],
     retrievalQuery:
       "safeguards administrative technical physical access controls customer information protect encryption monitoring authentication least privilege",
     directSignals: [
@@ -296,8 +453,8 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
     topicSignals: ["safeguards", "access controls", "customer information", "least privilege", "encryption"],
     partialSignals: ["monitoring", "authorization", "protect", "controls", "security controls"],
     backgroundSignals: ["information security", "privacy", "data protection", "confidentiality"],
-  },
-  {
+  }),
+  defineRequirement({
     id: "disposal_consumer_customer_information",
     title: "Disposal of consumer and customer information",
     description:
@@ -311,6 +468,20 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
       partialEvidence: "Retention or deletion is mentioned, but secure disposal measures or customer/consumer information scope is unclear.",
       missingOrNegativeEvidence: "The documents say disposal is not defined or only reference retention without secure destruction or disposal controls.",
     },
+    coverageElements: [
+      {
+        id: "disposal_scope",
+        label: "Applies to consumer information or customer information",
+        requiredForCovered: true,
+        signals: ["consumer information", "customer information", "customer records", "consumer report information"],
+      },
+      {
+        id: "secure_disposal_method",
+        label: "Requires proper disposal or secure destruction",
+        requiredForCovered: true,
+        signals: ["properly dispose", "secure disposal", "secure destruction", "media sanitization", "destroy", "shred", "wipe", "sanitize", "disposal"],
+      },
+    ],
     retrievalQuery:
       "properly dispose consumer information customer information secure disposal destruction media sanitization records retention unauthorized access use disposal",
     directSignals: [
@@ -331,8 +502,8 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
     topicSignals: ["disposal", "consumer information", "customer information", "records", "media", "destruction"],
     partialSignals: ["retention", "deletion", "records", "archive", "destruction"],
     backgroundSignals: ["records management", "retention", "privacy", "data lifecycle"],
-  },
-  {
+  }),
+  defineRequirement({
     id: "written_compliance_records",
     title: "Written records documenting compliance",
     description:
@@ -346,6 +517,26 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
       partialEvidence: "Incident records or logs are mentioned, but records documenting Regulation S-P safeguards/disposal compliance are incomplete.",
       missingOrNegativeEvidence: "The documents say compliance records are not maintained or only mention operational tickets without retention or required written documentation.",
     },
+    coverageElements: [
+      {
+        id: "compliance_record_scope",
+        label: "Requires written records documenting Reg S-P compliance",
+        requiredForCovered: true,
+        signals: ["written records documenting compliance", "records documenting compliance", "maintain written records", "make and maintain written records"],
+      },
+      {
+        id: "notice_determination_records",
+        label: "Documents incident or notification determinations and notices",
+        requiredForCovered: true,
+        signals: ["determination made", "notice transmitted", "copy of any notice", "customer-notice determinations", "incident-response determinations"],
+      },
+      {
+        id: "retention_accessibility",
+        label: "Defines retention period or accessible storage",
+        requiredForCovered: true,
+        signals: ["six years", "retention period", "easily accessible place", "accessible storage", "retain"],
+      },
+    ],
     retrievalQuery:
       "written records documenting compliance safeguards disposal incident response determinations customer notification notice copies attorney general delay records retention six years",
     directSignals: [
@@ -365,8 +556,8 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
     topicSignals: ["records", "compliance", "safeguards", "disposal", "notice", "incident response", "retention"],
     partialSignals: ["records", "logs", "incident records", "retention", "documentation"],
     backgroundSignals: ["documentation", "records management", "audit trail", "evidence"],
-  },
-  {
+  }),
+  defineRequirement({
     id: "evidence_log_preservation",
     title: "Incident evidence and log preservation",
     description:
@@ -380,6 +571,20 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
       partialEvidence: "Logs or evidence are mentioned, but retention, ownership, or incident use is unclear.",
       missingOrNegativeEvidence: "The documents say evidence preservation is not defined or only describe monitoring without retaining incident materials.",
     },
+    coverageElements: [
+      {
+        id: "incident_materials",
+        label: "Preserves logs, evidence, or investigation records",
+        requiredForCovered: true,
+        signals: ["preserve logs", "preserve evidence", "incident records", "investigation records", "forensic evidence", "log retention"],
+      },
+      {
+        id: "integrity_or_chain_of_custody",
+        label: "Maintains evidence integrity or chain of custody",
+        requiredForCovered: false,
+        signals: ["chain of custody", "records integrity", "provenance", "custody"],
+      },
+    ],
     retrievalQuery:
       "preserve logs evidence forensic records chain of custody incident investigation retention",
     directSignals: [
@@ -401,8 +606,8 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
     topicSignals: ["logs", "evidence", "forensic", "chain of custody", "incident records", "investigation records"],
     partialSignals: ["logs", "evidence", "records", "forensic", "retention", "investigation records"],
     backgroundSignals: ["investigation", "analysis", "documentation", "incident"],
-  },
-  {
+  }),
+  defineRequirement({
     id: "remediation_recovery_validation",
     title: "Response recovery and remediation validation",
     description:
@@ -416,6 +621,26 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
       partialEvidence: "Recovery or remediation is mentioned, but validation, testing, ownership, or closure evidence is unclear.",
       missingOrNegativeEvidence: "The documents say recovery validation is not required or only describe informal restoration without confirmation or follow-up.",
     },
+    coverageElements: [
+      {
+        id: "recovery_steps",
+        label: "Defines recovery after unauthorized access or use",
+        requiredForCovered: true,
+        signals: ["recover from unauthorized access", "recover from unauthorized use", "recovery", "restore", "restoration"],
+      },
+      {
+        id: "remediation_tracking",
+        label: "Tracks remediation or corrective actions",
+        requiredForCovered: true,
+        signals: ["remediation tracking", "track remediation", "corrective action", "corrective actions", "vulnerability remediation"],
+      },
+      {
+        id: "validation_testing",
+        label: "Validates recovery or remediation",
+        requiredForCovered: true,
+        signals: ["validate recovery", "confirm remediation", "verify restored assets", "follow-up vulnerability scan", "repeated testing", "validation"],
+      },
+    ],
     retrievalQuery:
       "respond recover remediation validation corrective actions vulnerabilities tracked closure testing restoration customer information incident response",
     directSignals: [
@@ -439,8 +664,8 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
     topicSignals: ["recovery", "remediation", "validation", "vulnerability remediation", "corrective actions", "lessons learned"],
     partialSignals: ["recovery", "restoration", "closure", "testing", "lessons learned", "vulnerability scan"],
     backgroundSignals: ["vulnerability", "incident", "action plan", "follow up"],
-  },
-  {
+  }),
+  defineRequirement({
     id: "regulator_law_enforcement_notification",
     title: "Regulator and law enforcement notification coordination",
     description:
@@ -454,6 +679,20 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
       partialEvidence: "External reporting is mentioned, but triggers, owner, timing, or relationship to customer notice is unclear.",
       missingOrNegativeEvidence: "The documents say regulator or law-enforcement reporting is not defined, or contain no external notification decision process.",
     },
+    coverageElements: [
+      {
+        id: "external_notification_decisioning",
+        label: "Defines external notification decisioning",
+        requiredForCovered: true,
+        signals: ["regulator", "regulatory notification", "law enforcement", "authorities", "attorney general", "external notification"],
+      },
+      {
+        id: "legal_compliance_owner",
+        label: "Assigns legal or compliance ownership",
+        requiredForCovered: false,
+        signals: ["legal", "compliance", "privacy counsel", "general counsel", "owner"],
+      },
+    ],
     retrievalQuery:
       "regulator law enforcement authorities required reporting legal compliance incident notification attorney general delay public safety national security",
     directSignals: [
@@ -473,7 +712,7 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
     topicSignals: ["regulator", "law enforcement", "authorities", "required by law", "external notification", "attorney general"],
     partialSignals: ["legal", "compliance", "external notification", "government", "agency"],
     backgroundSignals: ["notification", "reporting", "escalation", "incident"],
-  },
+  }),
 ];
 
 export const REG_SP_REQUIREMENT_FUTURE_SCOPE = [

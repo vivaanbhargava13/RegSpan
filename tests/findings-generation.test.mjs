@@ -12,6 +12,34 @@ const requirement = {
   description:
     "The organization notifies affected customers after unauthorized access to sensitive customer information.",
   retrievalQuery: "customer notification unauthorized access sensitive customer information",
+  sourceBasis: "Test source basis.",
+  regulatoryRole: "direct_reg_s_p",
+  mvpScope: "mvp",
+  evidenceCriteria: {
+    lookFor: "Test evidence criteria.",
+    strongEvidence: "Strong evidence covers trigger and timing.",
+    partialEvidence: "Partial evidence covers only one element.",
+    missingOrNegativeEvidence: "Missing evidence lacks required elements.",
+  },
+  coverageElements: [
+    {
+      id: "notice_trigger",
+      label: "Defines when customer notice is required",
+      requiredForCovered: true,
+      signals: ["unauthorized access", "customer notification"],
+    },
+    {
+      id: "notice_timing",
+      label: "Defines notice timing",
+      requiredForCovered: true,
+      signals: ["30 days", "without unreasonable delay"],
+    },
+  ],
+  requiredElementsForCovered: ["notice_trigger", "notice_timing"],
+  optionalElements: [],
+  strongEvidenceGuidance: "Strong evidence covers trigger and timing.",
+  partialEvidenceGuidance: "Partial evidence covers only one element.",
+  missingEvidenceGuidance: "Missing evidence lacks required elements.",
   directSignals: ["customer notification"],
   actionSignals: ["notify"],
   topicSignals: ["customer information"],
@@ -44,6 +72,9 @@ function chunk(overrides = {}) {
     classifier_confidence: "high",
     requirement_supported: true,
     control_absent_or_out_of_scope: false,
+    covered_elements: ["notice_trigger", "notice_timing"],
+    missing_elements: [],
+    vague_elements: [],
     supporting_quote: "notify affected customers after unauthorized access",
     classifier_provider: "heuristic",
     ...overrides,
@@ -134,6 +165,51 @@ test("strong support with weak document-scope limitation stays covered", () => {
     finding.evidence.some((evidence) => evidence.reason.startsWith("This document says it does not cover this control:")),
     true,
   );
+});
+
+test("missing required coverage elements prevents covered findings", () => {
+  const finding = aggregateFindingForRequirement(requirement, [
+    chunk({
+      grade: "partial",
+      evidence_relationship: "partially_supports",
+      requirement_supported: false,
+      covered_elements: ["notice_trigger"],
+      missing_elements: ["notice_timing"],
+      supporting_quote: "notify affected customers after unauthorized access",
+      grade_reason: "The cited text covers the notification trigger but not timing.",
+    }),
+  ]);
+
+  assert.equal(finding.status, "partial");
+  assert.match(finding.rationale, /RegSpan did not find clear evidence for: Defines notice timing/);
+  assert.doesNotMatch(finding.rationale, /appears to define this control/i);
+});
+
+test("multiple complementary supports can cover required elements", () => {
+  const trigger = chunk({
+    grade: "partial",
+    evidence_relationship: "partially_supports",
+    requirement_supported: false,
+    covered_elements: ["notice_trigger"],
+    missing_elements: ["notice_timing"],
+    supporting_quote: "notify affected customers after unauthorized access",
+    grade_reason: "The cited text covers the notification trigger.",
+  });
+  const timing = chunk({
+    chunk_id: "66666666-6666-4666-8666-666666666666",
+    grade: "partial",
+    evidence_relationship: "partially_supports",
+    requirement_supported: false,
+    covered_elements: ["notice_timing"],
+    missing_elements: ["notice_trigger"],
+    supporting_quote: "notice must be provided without unreasonable delay",
+    grade_reason: "The cited text covers notice timing.",
+  });
+
+  const finding = aggregateFindingForRequirement(requirement, [trigger, timing]);
+
+  assert.equal(finding.status, "covered");
+  assert.match(finding.rationale, /Reviewed evidence covers: Defines when customer notice is required and Defines notice timing/);
 });
 
 test("strong support with partial procedure scope limitation is not conflicting", () => {

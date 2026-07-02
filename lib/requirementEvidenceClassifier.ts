@@ -38,6 +38,9 @@ export type RequirementEvidenceClassification = {
   confidence: RequirementEvidenceConfidence;
   requirement_supported: boolean;
   control_absent_or_out_of_scope: boolean;
+  covered_elements: string[];
+  missing_elements: string[];
+  vague_elements: string[];
   reason: string;
   supporting_quote: string | null;
   classifier_provider: RequirementEvidenceClassifierProvider;
@@ -95,6 +98,45 @@ function hasAnySignal(text: string, signals: string[]) {
   return countSignalMatches(text, signals).count > 0;
 }
 
+function uniqueStrings(values: Array<string | null | undefined>) {
+  return [...new Set(values.filter((value): value is string => Boolean(value)))];
+}
+
+function validCoverageElementIds(requirement: RegSpRequirement) {
+  return new Set((requirement.coverageElements ?? []).map((element) => element.id));
+}
+
+function sanitizeElementIds(value: unknown, requirement: RegSpRequirement) {
+  if (!Array.isArray(value)) return [];
+  const validIds = validCoverageElementIds(requirement);
+  return uniqueStrings(
+    value.map((item) => (typeof item === "string" ? item.trim() : null))
+      .filter((item) => item && validIds.has(item)),
+  );
+}
+
+function assessCoverageElements(requirement: RegSpRequirement, text: string) {
+  const coverageElements = requirement.coverageElements ?? [];
+  const requiredElements = requirement.requiredElementsForCovered ?? [];
+  const covered = coverageElements
+    .filter((element) =>
+      element.signals.some((signal) => {
+        const normalizedSignal = normalize(signal);
+        return normalizedSignal && text.includes(normalizedSignal);
+      }),
+    )
+    .map((element) => element.id);
+  const missingRequired = requiredElements.filter(
+    (elementId) => !covered.includes(elementId),
+  );
+
+  return {
+    covered,
+    missingRequired,
+    vague: [] as string[],
+  };
+}
+
 function sentenceContaining(rawText: string, signals: string[]) {
   const sentences = (rawText.match(/[^.!?]+[.!?]?/g) ?? [rawText])
     .map((sentence) => sentence.trim())
@@ -115,8 +157,13 @@ export function buildRequirementEvaluationGuidance(requirement: RegSpRequirement
     "Classify only the provided retrieved chunk, not the whole document.",
     "A mention of requirement keywords is not proof.",
     "Direct support requires that the chunk explicitly addresses the requirement action.",
+    "Do not classify evidence as supports merely because it shares the same broad topic.",
+    "Identify which requirement coverage elements are actually proven by this chunk.",
+    "If evidence is broad but missing one or more required coverage elements, classify it as partially_supports.",
+    "If evidence is related but does not prove a required coverage element, classify it as background_context.",
     "If the chunk says the control is absent, excluded, delegated elsewhere, handled in another policy, or out of scope, classify it as negative_evidence.",
     "Guidance/reference documents may support interpretation, but organization compliance evidence requires organization/client policy, procedure, or contract content.",
+    `Coverage elements: ${(requirement.coverageElements ?? []).map((element) => `${element.id}=${element.label}${element.requiredForCovered ? " (required)" : " (optional)"}`).join("; ")}`,
   ];
 
   const requirementSpecificGuidance: Record<string, string> = {
@@ -175,6 +222,7 @@ export function classifyRequirementEvidenceHeuristically(
   const action = countSignalMatches(text, requirement.actionSignals);
   const partial = countSignalMatches(text, requirement.partialSignals);
   const background = countSignalMatches(text, requirement.backgroundSignals);
+  const coverage = assessCoverageElements(requirement, text);
   const hasExplicitAction = action.count > 0;
   const hasVendorIncidentHandlingContext = requirement.id !== "vendor_incident_handling"
     || (
@@ -196,6 +244,7 @@ export function classifyRequirementEvidenceHeuristically(
         "cooperation",
       ])
     );
+  const hasDirectSupportSignals = hasExplicitAction && hasVendorIncidentHandlingContext && direct.count >= 2;
 
   if (negativeEvidence.isNegativeEvidence) {
     return {
@@ -203,6 +252,9 @@ export function classifyRequirementEvidenceHeuristically(
       confidence: "high",
       requirement_supported: false,
       control_absent_or_out_of_scope: true,
+      covered_elements: coverage.covered,
+      missing_elements: coverage.missingRequired,
+      vague_elements: coverage.vague,
       reason:
         `Negative evidence: chunk states this requirement is absent, excluded, delegated elsewhere, or out of scope (${negativeEvidence.matchedPhrase} near ${negativeEvidence.matchedSignal}).`,
       supporting_quote: sentenceContaining(chunkContent, [
@@ -213,13 +265,19 @@ export function classifyRequirementEvidenceHeuristically(
     };
   }
 
-  if (hasExplicitAction && hasVendorIncidentHandlingContext && direct.count >= 2) {
+  if (
+    hasDirectSupportSignals &&
+    coverage.missingRequired.length === 0
+  ) {
     const matched = [...direct.matched, ...action.matched.slice(0, 2)];
     return {
       relationship: "supports",
       confidence: "high",
       requirement_supported: true,
       control_absent_or_out_of_scope: false,
+      covered_elements: coverage.covered,
+      missing_elements: [],
+      vague_elements: coverage.vague,
       reason: heuristicClassificationReason("Direct support signals matched", matched),
       supporting_quote: sentenceContaining(chunkContent, matched),
       classifier_provider: provider,
@@ -243,6 +301,9 @@ export function classifyRequirementEvidenceHeuristically(
       confidence: "medium",
       requirement_supported: false,
       control_absent_or_out_of_scope: false,
+      covered_elements: coverage.covered,
+      missing_elements: coverage.missingRequired,
+      vague_elements: coverage.vague,
       reason: heuristicClassificationReason("Partial support signals matched", matched),
       supporting_quote: sentenceContaining(chunkContent, matched),
       classifier_provider: provider,
@@ -256,6 +317,9 @@ export function classifyRequirementEvidenceHeuristically(
       confidence: "medium",
       requirement_supported: false,
       control_absent_or_out_of_scope: false,
+      covered_elements: coverage.covered,
+      missing_elements: coverage.missingRequired,
+      vague_elements: coverage.vague,
       reason: heuristicClassificationReason("Background context signals matched", matched),
       supporting_quote: sentenceContaining(chunkContent, matched),
       classifier_provider: provider,
@@ -267,6 +331,9 @@ export function classifyRequirementEvidenceHeuristically(
     confidence: "low",
     requirement_supported: false,
     control_absent_or_out_of_scope: false,
+    covered_elements: [],
+    missing_elements: requirement.requiredElementsForCovered,
+    vague_elements: [],
     reason:
       "Candidate was retrieved semantically, but it does not contain enough requirement-specific support, absence, or context for this classifier.",
     supporting_quote: null,
@@ -325,7 +392,10 @@ function chunkHasExplicitAbsenceLanguage(input: RequirementEvidenceClassifierInp
   ]).isNegativeEvidence;
 }
 
-function parseOpenAiClassification(body: unknown): Omit<RequirementEvidenceClassification, "classifier_provider"> {
+function parseOpenAiClassification(
+  body: unknown,
+  requirement: RegSpRequirement,
+): Omit<RequirementEvidenceClassification, "classifier_provider"> {
   const content = (body as {
     choices?: Array<{ message?: { content?: unknown } }>;
   })?.choices?.[0]?.message?.content;
@@ -350,6 +420,9 @@ function parseOpenAiClassification(body: unknown): Omit<RequirementEvidenceClass
     confidence,
     requirement_supported: requirementSupported,
     control_absent_or_out_of_scope: controlAbsent,
+    covered_elements: sanitizeElementIds(parsed.covered_elements, requirement),
+    missing_elements: sanitizeElementIds(parsed.missing_elements, requirement),
+    vague_elements: sanitizeElementIds(parsed.vague_elements, requirement),
     reason: coerceString(parsed.reason, "Classifier did not provide a reason."),
     supporting_quote: coerceNullableString(parsed.supporting_quote),
   };
@@ -363,6 +436,9 @@ export function postProcessOpenAiClassification(
   const silenceBasedNegative = reasonIsSilenceBasedNegativeEvidence(parsed.reason);
   const inferredAbsence = reasonInfersAbsence(parsed.reason);
   const supportingQuote = sanitizeSupportingQuote(parsed.supporting_quote, input.chunkContent);
+  const parsedCoveredElements = parsed.covered_elements ?? [];
+  const parsedMissingElements = parsed.missing_elements ?? [];
+  const parsedVagueElements = parsed.vague_elements ?? [];
 
   if (
     parsed.relationship === "negative_evidence"
@@ -373,17 +449,39 @@ export function postProcessOpenAiClassification(
       confidence: parsed.confidence === "high" ? "medium" : parsed.confidence,
       requirement_supported: false,
       control_absent_or_out_of_scope: false,
+      covered_elements: parsedCoveredElements,
+      missing_elements: uniqueStrings([
+        ...parsedMissingElements,
+        ...(input.requirement.requiredElementsForCovered ?? []).filter(
+          (elementId) => !parsedCoveredElements.includes(elementId),
+        ),
+      ]),
+      vague_elements: parsedVagueElements,
       reason:
         `Downgraded from negative_evidence because absence must be explicit for this requirement and cannot be inferred from silence or adjacent controls. ${parsed.reason}`,
       supporting_quote: null,
     };
   }
 
+  const requiredMissing = (input.requirement.requiredElementsForCovered ?? []).filter(
+    (elementId) => !parsedCoveredElements.includes(elementId),
+  );
+  const relationship = parsed.relationship === "supports" && requiredMissing.length > 0
+    ? "partially_supports"
+    : parsed.relationship;
+
   return {
     ...parsed,
+    relationship,
+    requirement_supported: relationship === "supports" && requiredMissing.length === 0
+      ? parsed.requirement_supported
+      : false,
     control_absent_or_out_of_scope: explicitAbsence
       ? parsed.control_absent_or_out_of_scope
       : false,
+    covered_elements: parsedCoveredElements,
+    missing_elements: uniqueStrings([...parsedMissingElements, ...requiredMissing]),
+    vague_elements: parsedVagueElements,
     supporting_quote: supportingQuote,
   };
 }
@@ -413,6 +511,12 @@ export function buildRequirementEvidenceClassifierPrompt(input: RequirementEvide
       }, null, 2),
       "",
       "Classify whether this chunk proves the requirement, partially supports it, contradicts it or says it is absent/out of scope, merely provides background context, or is irrelevant.",
+      "Coverage elements to evaluate:",
+      JSON.stringify(input.requirement.coverageElements ?? [], null, 2),
+      "Return covered_elements as the IDs of elements actually proven by the chunk.",
+      "Return missing_elements as required element IDs that are not proven by the chunk.",
+      "Return vague_elements as element IDs mentioned only in broad or ambiguous terms.",
+      "Do not return supports unless all requiredElementsForCovered are proven by the chunk.",
       "Use negative_evidence narrowly: only when the chunk explicitly states that the requirement/control is absent, excluded, not defined, not required, not established, delegated elsewhere, reserved for another policy/team, or outside the document scope.",
       "A chunk that merely does not mention the requirement is irrelevant, not negative_evidence.",
       "Do not infer absence from silence.",
@@ -423,7 +527,7 @@ export function buildRequirementEvidenceClassifierPrompt(input: RequirementEvide
       "Use confidence exactly as one of: high, medium, low.",
       "Set requirement_supported true only when the chunk itself explicitly supports the requirement action.",
       "Set control_absent_or_out_of_scope true when the chunk says the requirement is absent, excluded, delegated elsewhere, or out of scope.",
-      "Return JSON with keys: relationship, confidence, requirement_supported, control_absent_or_out_of_scope, reason, supporting_quote.",
+      "Return JSON with keys: relationship, confidence, requirement_supported, control_absent_or_out_of_scope, covered_elements, missing_elements, vague_elements, reason, supporting_quote.",
       "",
       "Chunk text:",
       input.chunkContent.slice(0, 6000),
@@ -522,7 +626,7 @@ export function createRequirementEvidenceClassifier(
         }
 
         const parsed = postProcessOpenAiClassification(
-          parseOpenAiClassification(await response.json()),
+          parseOpenAiClassification(await response.json(), input.requirement),
           input,
         );
         return {
