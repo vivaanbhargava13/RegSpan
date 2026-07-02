@@ -116,7 +116,8 @@ test("organization evidence can produce covered and partial findings", () => {
   assert.equal(partial.status, "partial");
   assert.equal(partial.summary, "Partially covered based on reviewed documents.");
   assert.match(partial.rationale, /mentions this area/);
-  assert.match(partial.remediation, /missing owner, timing, approval, escalation/);
+  assert.match(partial.remediation, /do not clearly define the full notification trigger and timing/);
+  assert.doesNotMatch(partial.remediation, /missing owner, timing, approval, escalation/);
 });
 
 test("no organization evidence produces a missing finding", () => {
@@ -181,8 +182,11 @@ test("missing required coverage elements prevents covered findings", () => {
   ]);
 
   assert.equal(finding.status, "partial");
-  assert.match(finding.rationale, /RegSpan did not find clear evidence for: Defines notice timing/);
+  assert.match(finding.rationale, /RegSpan did not find clear language defining the required timing for notice/);
   assert.doesNotMatch(finding.rationale, /appears to define this control/i);
+  assert.doesNotMatch(finding.rationale, /RegSpan did not find clear evidence for:/);
+  assert.doesNotMatch(finding.remediation, /appear to define/i);
+  assert.match(finding.remediation, /do not clearly define the full notification trigger and timing/);
 });
 
 test("multiple complementary supports can cover required elements", () => {
@@ -209,7 +213,30 @@ test("multiple complementary supports can cover required elements", () => {
   const finding = aggregateFindingForRequirement(requirement, [trigger, timing]);
 
   assert.equal(finding.status, "covered");
-  assert.match(finding.rationale, /Reviewed evidence covers: Defines when customer notice is required and Defines notice timing/);
+  assert.match(finding.rationale, /defines when customer notice is required and defines the timing for customer notice/);
+  assert.doesNotMatch(finding.rationale, /Reviewed evidence covers:/);
+});
+
+test("covered and partial evidence explanations use natural language", () => {
+  const covered = aggregateFindingForRequirement(requirement, [chunk()]);
+  const partial = aggregateFindingForRequirement(requirement, [
+    chunk({
+      grade: "partial",
+      evidence_relationship: "partially_supports",
+      requirement_supported: false,
+      covered_elements: ["notice_trigger"],
+      missing_elements: ["notice_timing"],
+      supporting_quote: "notify affected customers after unauthorized access",
+      grade_reason: "The cited text covers the notification trigger but not timing.",
+    }),
+  ]);
+
+  assert.doesNotMatch(covered.rationale, /provides reviewed evidence for the required elements/);
+  assert.doesNotMatch(covered.rationale, /Reviewed evidence covers:/);
+  assert.doesNotMatch(partial.rationale, /RegSpan did not find clear evidence for:/);
+  assert.doesNotMatch(covered.evidence[0].reason, /^This section supports:/);
+  assert.match(covered.evidence[0].reason, /This section defines when customer notice is required and defines the timing for customer notice/);
+  assert.match(partial.evidence[0].reason, /It does not clearly define the required timing for notice/);
 });
 
 test("strong support with partial procedure scope limitation is not conflicting", () => {

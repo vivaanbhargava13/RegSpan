@@ -169,15 +169,168 @@ function elementLabel(requirement: RegSpRequirement, elementId: string) {
   return requirement.coverageElements.find((element) => element.id === elementId)?.label ?? elementId;
 }
 
-function elementList(requirement: RegSpRequirement, elementIds: string[]) {
-  return elementIds.map((elementId) => elementLabel(requirement, elementId));
-}
-
 function sentenceList(values: string[]) {
   if (values.length === 0) return "";
   if (values.length === 1) return values[0];
   if (values.length === 2) return `${values[0]} and ${values[1]}`;
   return `${values.slice(0, -1).join(", ")}, and ${values[values.length - 1]}`;
+}
+
+const foundElementCopy: Partial<Record<RegSpRequirementId, Record<string, string>>> = {
+  written_incident_response_program: {
+    written_program: "maintains a written incident response program or equivalent standard",
+    customer_information_scope: "applies the response process to customer information",
+    response_recovery_responsibilities: "defines response and recovery responsibilities",
+  },
+  unauthorized_access_detection_escalation: {
+    assesses_scope: "requires assessment of the nature and scope of unauthorized access or use",
+    customer_information_systems: "addresses affected customer information systems or information types",
+    containment_control: "requires containment or control steps",
+  },
+  customer_notification_unauthorized_access: {
+    unauthorized_access_or_use: "addresses unauthorized access to or use of sensitive customer information",
+    notice_trigger: "defines when customer notice is required",
+    notice_trigger_standard: "defines when customer notice is required",
+    notice_timing: "defines the timing for customer notice",
+  },
+  customer_notification_content: {
+    incident_description: "describes what happened",
+    information_involved: "identifies the sensitive customer information involved",
+    protective_steps: "includes protective steps for affected individuals",
+    contact_information: "provides contact information for questions",
+  },
+  vendor_incident_handling: {
+    service_provider_scope: "applies to service providers or vendors handling customer information",
+    notice_to_firm: "requires vendors or service providers to notify the firm",
+    cooperation_remediation: "requires cooperation with investigation, remediation, or recovery",
+  },
+  customer_information_safeguards: {
+    customer_information_scope: "applies safeguards to customer information",
+    safeguards_controls: "describes safeguards or access controls",
+  },
+  disposal_consumer_customer_information: {
+    disposal_scope: "applies disposal requirements to consumer or customer information",
+    secure_disposal_method: "defines secure disposal or destruction methods",
+  },
+  written_compliance_records: {
+    compliance_record_scope: "requires written compliance records",
+    notice_determination_records: "documents incident or notification decisions and notices",
+    retention_accessibility: "defines retention or accessible storage",
+  },
+  evidence_log_preservation: {
+    incident_materials: "preserves incident logs, evidence, or investigation records",
+    integrity_or_chain_of_custody: "maintains evidence integrity or chain of custody",
+  },
+  remediation_recovery_validation: {
+    recovery_steps: "defines recovery steps",
+    remediation_tracking: "tracks remediation or corrective actions",
+    validation_testing: "validates recovery or remediation",
+  },
+  regulator_law_enforcement_notification: {
+    external_notification_decisioning: "defines external notification decisioning",
+    legal_compliance_owner: "assigns legal or compliance ownership",
+  },
+};
+
+const missingElementCopy: Partial<Record<RegSpRequirementId, Record<string, string>>> = {
+  customer_notification_unauthorized_access: {
+    unauthorized_access_or_use: "language tying notice to unauthorized access or use of sensitive customer information",
+    notice_trigger: "the decision standard for when notice is required, including substantial harm or inconvenience",
+    notice_trigger_standard: "the decision standard for when notice is required, including substantial harm or inconvenience",
+    notice_timing: "the required timing for notice",
+  },
+  customer_notification_content: {
+    incident_description: "notice language describing what happened",
+    information_involved: "notice language identifying the sensitive customer information involved",
+    protective_steps: "protective steps or resources for affected individuals",
+    contact_information: "required contact information for questions",
+  },
+  vendor_incident_handling: {
+    service_provider_scope: "coverage for service providers or vendors handling customer information",
+    notice_to_firm: "vendor or service-provider notice to the firm",
+    cooperation_remediation: "vendor cooperation with investigation, remediation, or recovery",
+  },
+  disposal_consumer_customer_information: {
+    disposal_scope: "consumer or customer information disposal scope",
+    secure_disposal_method: "secure disposal, destruction, shredding, wiping, or sanitization methods",
+  },
+  written_compliance_records: {
+    compliance_record_scope: "written records documenting Reg S-P compliance",
+    notice_determination_records: "incident or notification determinations and notice records",
+    retention_accessibility: "retention period or accessible storage requirements",
+  },
+};
+
+function elementPhrase(requirement: RegSpRequirement, elementId: string, mode: "found" | "missing") {
+  const map = mode === "found" ? foundElementCopy : missingElementCopy;
+  return map[requirement.id]?.[elementId]
+    ?? foundElementCopy[requirement.id]?.[elementId]
+    ?? elementLabel(requirement, elementId).replace(/^(Defines|Requires|Applies|Identifies|Includes|Provides)\s+/i, "").toLowerCase();
+}
+
+function renderedElementList(
+  requirement: RegSpRequirement,
+  elementIds: string[],
+  mode: "found" | "missing",
+) {
+  return sentenceList(elementIds.map((elementId) => elementPhrase(requirement, elementId, mode)));
+}
+
+function coveredFindingSentence(requirement: RegSpRequirement, coveredRequired: string[]) {
+  const elements = renderedElementList(requirement, coveredRequired, "found");
+  if (!elements) return "The reviewed policy defines the main elements of this requirement.";
+
+  switch (requirement.id) {
+    case "customer_information_safeguards":
+      return `The reviewed policy ${elements}.`;
+    case "vendor_incident_handling":
+      return `The reviewed policy ${elements}.`;
+    case "written_compliance_records":
+      return `The reviewed policy ${elements}.`;
+    case "customer_notification_content":
+      return `The reviewed policy defines notice-content requirements that ${elements}.`;
+    case "disposal_consumer_customer_information":
+      return `The reviewed policy ${elements}.`;
+    default:
+      return `The reviewed policy defines the main elements of this requirement and ${elements}.`;
+  }
+}
+
+function partialMissingSentence(requirement: RegSpRequirement, missingRequired: string[]) {
+  const elements = renderedElementList(requirement, missingRequired, "missing");
+  if (!elements) return "Some required details are still unclear.";
+
+  switch (requirement.id) {
+    case "customer_notification_content":
+      return `RegSpan did not find clear language requiring the notice to include ${elements}.`;
+    case "customer_notification_unauthorized_access":
+      return `RegSpan did not find clear language defining ${elements}.`;
+    case "disposal_consumer_customer_information":
+      return `RegSpan did not find clear disposal language covering ${elements}.`;
+    case "written_compliance_records":
+      return `RegSpan did not find clear recordkeeping language covering ${elements}.`;
+    case "vendor_incident_handling":
+      return `RegSpan did not find clear service-provider language covering ${elements}.`;
+    default:
+      return `RegSpan did not find clear language covering ${elements}.`;
+  }
+}
+
+function partialRemediationForRequirement(requirement: RegSpRequirement) {
+  switch (requirement.id) {
+    case "customer_notification_content":
+      return "The reviewed documents mention this area, but they do not clearly define notice-content requirements. Add requirements covering what happened, what information was involved, what the firm is doing, how affected individuals can get help, protective steps, and required contact information.";
+    case "customer_notification_unauthorized_access":
+      return "The reviewed documents mention this area, but they do not clearly define the full notification trigger and timing. Clarify the decision standard for when notice is required, including sensitive customer information, substantial harm or inconvenience, and required timing.";
+    case "disposal_consumer_customer_information":
+      return "The reviewed documents mention this area, but they do not clearly define disposal requirements. Define how consumer and customer information must be securely disposed of, who owns the process, and what records or vendor handoffs are required.";
+    case "written_compliance_records":
+      return "The reviewed documents mention this area, but they do not clearly define required compliance records. Define what records must be retained, who owns them, how long they are retained, and where they remain accessible.";
+    case "vendor_incident_handling":
+      return "The reviewed documents mention this area, but they do not clearly define service-provider incident obligations. Add vendor notice, cooperation, investigation, remediation, recovery, and timing requirements.";
+    default:
+      return `The reviewed documents mention this area, but they do not clearly define all required elements. Add the missing details described in the finding and identify the owner, timing, approvals, escalation, handoffs, and records where applicable.`;
+  }
 }
 
 function coverageForChunks(requirement: RegSpRequirement, chunks: GradedEvidenceChunk[]) {
@@ -246,7 +399,7 @@ export function remediationForFinding(requirement: RegSpRequirement, status: Fin
     return `${base} Resolve the contradiction between the documents and identify which policy or procedure is authoritative.`;
   }
   if (status === "partial") {
-    return `${base} Add the missing owner, timing, approval, escalation, handoff, or follow-up details where applicable.`;
+    return partialRemediationForRequirement(requirement);
   }
   if (status === "needs_review") {
     return `${base} Have a compliance or security owner confirm whether the cited document is intended to satisfy this requirement.`;
@@ -298,19 +451,19 @@ function whatWeFoundForFinding({
   const supportDocument = reviewedDocumentLabel(strongestSupport);
   const limitationDocument = reviewedDocumentLabel(strongestLimitation);
   const negativeDocument = reviewedDocumentLabel(strongestOrganizationNegative);
-  const coveredLabels = elementList(requirement, coveredRequired);
-  const missingLabels = elementList(requirement, missingRequired);
-  const vagueLabels = elementList(requirement, vagueRequired);
+  const coveredSummary = coveredFindingSentence(requirement, coveredRequired);
+  const missingSummary = partialMissingSentence(requirement, missingRequired);
+  const vagueSummary = partialMissingSentence(requirement, vagueRequired);
   const parts: string[] = [];
 
   if (status === "covered") {
     if (supportQuote) {
       parts.push(`${supportDocument} states: “${supportQuote}”`);
     } else {
-      parts.push(`${supportDocument} provides reviewed evidence for the required elements.`);
+      parts.push(`${supportDocument} defines the main elements of this requirement.`);
     }
-    if (coveredLabels.length > 0) {
-      parts.push(`Reviewed evidence covers: ${sentenceList(coveredLabels)}.`);
+    if (coveredRequired.length > 0) {
+      parts.push(coveredSummary);
     }
     if (documentScopeLimitations.length > 0) {
       parts.push("Related documents say they do not cover this control, which appears to be a scope limitation for those documents rather than a contradiction.");
@@ -323,13 +476,13 @@ function whatWeFoundForFinding({
     } else {
       parts.push(`${supportDocument} mentions this area, but the reviewed evidence does not clearly define the full process.`);
     }
-    if (coveredLabels.length > 0) {
-      parts.push(`Reviewed evidence covers: ${sentenceList(coveredLabels)}.`);
+    if (coveredRequired.length > 0) {
+      parts.push(coveredSummary);
     }
-    if (missingLabels.length > 0) {
-      parts.push(`RegSpan did not find clear evidence for: ${sentenceList(missingLabels)}.`);
-    } else if (vagueLabels.length > 0) {
-      parts.push(`Some required elements are still vague: ${sentenceList(vagueLabels)}.`);
+    if (missingRequired.length > 0) {
+      parts.push(missingSummary);
+    } else if (vagueRequired.length > 0) {
+      parts.push(vagueSummary);
     } else {
       parts.push("Important details such as ownership, timing, approvals, escalation, or follow-up may still need to be documented.");
     }
@@ -400,19 +553,19 @@ function evidenceReasonForStorage(
     return `This document says it does not cover this control: ${reason}`;
   }
   if (chunk.evidence_relationship === "supports") {
-    const covered = elementList(requirement, chunk.covered_elements ?? []);
+    const covered = renderedElementList(requirement, chunk.covered_elements ?? [], "found");
     return covered.length > 0
-      ? `This section supports: ${sentenceList(covered)}. ${reason}`
-      : `This section supports this requirement. ${reason}`;
+      ? `This section ${covered}. ${reason}`
+      : `This section is relevant to the requirement. ${reason}`;
   }
   if (chunk.evidence_relationship === "partially_supports") {
-    const covered = elementList(requirement, chunk.covered_elements ?? []);
-    const missing = elementList(requirement, chunk.missing_elements ?? []);
+    const covered = renderedElementList(requirement, chunk.covered_elements ?? [], "found");
+    const missing = renderedElementList(requirement, chunk.missing_elements ?? [], "missing");
     return [
       covered.length > 0
-        ? `This section partially addresses: ${sentenceList(covered)}.`
+        ? `This section discusses ${covered}.`
         : "This section partially addresses this requirement.",
-      missing.length > 0 ? `Missing or unclear: ${sentenceList(missing)}.` : null,
+      missing.length > 0 ? `It does not clearly define ${missing}.` : null,
       reason,
     ].filter(Boolean).join(" ");
   }
