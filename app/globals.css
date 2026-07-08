@@ -149,4 +149,30 @@ a {
   .app-section-title {
     @apply text-base font-semibold tracking-[-0.01em] text-app-text;
   }
+
+  .requirement-card {
+    scroll-margin-top: 7rem;
+    transition:
+      border-color 160ms ease,
+      background-color 160ms ease,
+      box-shadow 160ms ease;
+  }
+
+  .requirement-card:target {
+    border-color: rgb(var(--app-accent) / 0.55);
+    background: rgb(var(--app-accent-soft) / 0.22);
+    box-shadow:
+      0 0 0 4px rgb(var(--app-accent) / 0.12),
+      var(--app-card-shadow);
+  }
+
+  .citation-disclosure > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .citation-disclosure:target > summary {
+    border-color: rgb(var(--app-accent) / 0.55);
+    color: rgb(var(--app-accent));
+    box-shadow: 0 0 0 4px rgb(var(--app-accent) / 0.12);
+  }
 }

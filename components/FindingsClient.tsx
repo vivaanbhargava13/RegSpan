@@ -5,6 +5,10 @@ import { Button } from "@/components/Button";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { getBrowserSupabaseClient } from "@/components/supabaseClient";
+import {
+  REG_SP_CONTROL_KEY_BY_LEGACY_REQUIREMENT_ID,
+  REG_SP_LEGACY_REQUIREMENT_ID_BY_CONTROL_KEY,
+} from "@/lib/regulatoryControlFramework";
 
 type AnalysisRun = {
   id: string;
@@ -75,11 +79,39 @@ const severityClasses: Record<Finding["severity"], string> = {
   info: "border-app-success/20 bg-app-success-soft text-app-success",
 };
 
+const findingAccentClasses: Record<Finding["status"], string> = {
+  covered: "bg-app-success",
+  partial: "bg-app-warning",
+  missing: "bg-app-danger",
+  conflicting: "bg-app-danger",
+  needs_review: "bg-app-review",
+};
+
 function humanize(value: string | null | undefined) {
   return (value ?? "unknown")
     .split("_")
     .map((part) => part[0]?.toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+function requirementControlKey(requirementId: string | null | undefined) {
+  if (!requirementId) return null;
+  return REG_SP_CONTROL_KEY_BY_LEGACY_REQUIREMENT_ID[requirementId] ?? requirementId;
+}
+
+function requirementCopyId(requirementId: string | null | undefined) {
+  if (!requirementId) return null;
+  return REG_SP_LEGACY_REQUIREMENT_ID_BY_CONTROL_KEY[
+    requirementId as keyof typeof REG_SP_LEGACY_REQUIREMENT_ID_BY_CONTROL_KEY
+  ] ?? requirementId;
+}
+
+function requirementBasis(finding: Finding) {
+  const controlKey = requirementControlKey(finding.requirement_id);
+  return {
+    href: controlKey ? `/controls#control-${controlKey}` : "/controls",
+    label: finding.requirement_name ?? "Untitled requirement",
+  };
 }
 
 function formatDate(value: string | null) {
@@ -129,7 +161,7 @@ function evidenceRelationshipLabel(relationship: string | null) {
 }
 
 function whyItMattersForFinding(finding: Finding) {
-  switch (finding.requirement_id) {
+  switch (requirementCopyId(finding.requirement_id)) {
     case "written_incident_response_program":
       return "Reg S-P expects firms to maintain written procedures for responding to incidents involving customer information. A clear program helps teams act consistently when an event occurs.";
     case "unauthorized_access_detection_escalation":
@@ -425,54 +457,75 @@ export function FindingsClient() {
           </p>
         </div>
       ) : (
-        <section className="space-y-4" aria-label="Generated findings">
-          {findings.map((finding) => (
-            <article key={finding.id} className="app-card overflow-hidden">
-              <div className="border-b border-app-border bg-app-elevated/65 px-5 py-4 lg:px-6">
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <section className="space-y-6" aria-label="Generated findings">
+          {findings.map((finding) => {
+            const basis = requirementBasis(finding);
+
+            return (
+              <article
+                key={finding.id}
+                className="app-card overflow-hidden border-app-border-strong/70 bg-gradient-to-br from-app-surface to-app-elevated/40 shadow-app-card"
+              >
+                <div aria-hidden="true" className={`h-1 ${findingAccentClasses[finding.status]}`} />
+                <div className="border-b border-app-border bg-gradient-to-r from-app-elevated/95 to-app-surface px-5 py-4 lg:px-6">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <h2 className="text-lg font-semibold tracking-[-0.02em] text-app-text">
+                        {finding.requirement_name ?? "Untitled requirement"}
+                      </h2>
+                      <p className="mt-2 text-xs font-semibold text-app-subtle">
+                        Requirement basis:{" "}
+                        <span className="text-app-muted">{basis.label}</span>
+                      </p>
+                      <p className="mt-2 max-w-4xl text-sm font-medium leading-6 text-app-muted">
+                        {finding.summary}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {findingBadges(finding)}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4 p-5 lg:p-6">
+                  <div className="grid gap-4 lg:grid-cols-3">
+                    <div className="rounded-xl border border-app-border bg-app-surface px-4 py-3">
+                      <h3 className="text-sm font-semibold text-app-text">What we found</h3>
+                      <p className="mt-2 text-sm leading-6 text-app-muted">{finding.rationale}</p>
+                    </div>
+                    <div className="rounded-xl border border-app-border bg-app-surface px-4 py-3">
+                      <h3 className="text-sm font-semibold text-app-text">Why it matters</h3>
+                      <p className="mt-2 text-sm leading-6 text-app-muted">{whyItMattersForFinding(finding)}</p>
+                      <p className="mt-3 text-xs font-semibold text-app-subtle">
+                        Reg S-P basis:{" "}
+                        <a
+                          className="inline-flex items-center rounded-full border border-app-accent/25 bg-app-accent-soft px-2.5 py-1 text-xs font-bold text-app-accent transition hover:border-app-accent/45 hover:text-app-accent-hover"
+                          href={basis.href}
+                        >
+                          View requirement
+                        </a>
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-app-border bg-app-surface px-4 py-3">
+                      <h3 className="text-sm font-semibold text-app-text">Recommended next step</h3>
+                      <p className="mt-2 text-sm leading-6 text-app-muted">{finding.remediation}</p>
+                    </div>
+                  </div>
+
                   <div>
-                    <h2 className="text-lg font-semibold tracking-[-0.02em] text-app-text">
-                      {finding.requirement_name ?? "Untitled requirement"}
-                    </h2>
-                    <p className="mt-2 max-w-4xl text-sm font-medium leading-6 text-app-muted">
-                      {finding.summary}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {findingBadges(finding)}
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-4 p-5 lg:p-6">
-                <div className="grid gap-4 lg:grid-cols-3">
-                  <div className="rounded-xl border border-app-border bg-app-surface px-4 py-3">
-                    <h3 className="text-sm font-semibold text-app-text">What we found</h3>
-                    <p className="mt-2 text-sm leading-6 text-app-muted">{finding.rationale}</p>
-                  </div>
-                  <div className="rounded-xl border border-app-border bg-app-surface px-4 py-3">
-                    <h3 className="text-sm font-semibold text-app-text">Why it matters</h3>
-                    <p className="mt-2 text-sm leading-6 text-app-muted">{whyItMattersForFinding(finding)}</p>
-                  </div>
-                  <div className="rounded-xl border border-app-border bg-app-surface px-4 py-3">
-                    <h3 className="text-sm font-semibold text-app-text">Recommended next step</h3>
-                    <p className="mt-2 text-sm leading-6 text-app-muted">{finding.remediation}</p>
+                    <h3 className="sr-only">Source excerpts</h3>
+                    {finding.evidence.length === 0 ? (
+                      <p className="mt-2 rounded-xl border border-app-border bg-app-elevated/60 px-4 py-3 text-sm text-app-muted">
+                        No source excerpts were stored for this finding.
+                      </p>
+                    ) : (
+                      <EvidenceList evidence={finding.evidence} />
+                    )}
                   </div>
                 </div>
-
-                <div>
-                  <h3 className="sr-only">Source excerpts</h3>
-                  {finding.evidence.length === 0 ? (
-                    <p className="mt-2 rounded-xl border border-app-border bg-app-elevated/60 px-4 py-3 text-sm text-app-muted">
-                      No source excerpts were stored for this finding.
-                    </p>
-                  ) : (
-                    <EvidenceList evidence={finding.evidence} />
-                  )}
-                </div>
-              </div>
-            </article>
-          ))}
+              </article>
+            );
+          })}
         </section>
       )}
     </div>

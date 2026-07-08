@@ -8,7 +8,7 @@ export const appNavLinks = [
   { label: "Dashboard", href: "/dashboard", icon: "dashboard" },
   { label: "Documents", href: "/documents", icon: "documents" },
   { label: "Requirements", href: "/controls", icon: "requirements" },
-  { label: "Gaps", href: "/findings", icon: "gaps" },
+  { label: "Analysis", href: "/findings", icon: "gaps" },
   { label: "Reports", href: "/reports", icon: "reports" },
   { label: "Retrieval", href: "/retrieval-debug", icon: "retrieval" },
   { label: "Internal Debug", href: "/requirement-debug", icon: "matching" },

@@ -2,7 +2,7 @@ import { MetricCard } from "@/components/MetricCard";
 
 const metrics = [
   { label: "Reg S-P Readiness", value: "72%" },
-  { label: "High-Risk Gaps", value: "4", tone: "danger" as const },
+  { label: "High-Risk Analysis", value: "4", tone: "danger" as const },
   { label: "Controls Requiring Review", value: "12", tone: "warning" as const },
   { label: "Documents Processed", value: "6" },
   { label: "Open Remediation Tasks", value: "9", tone: "warning" as const },

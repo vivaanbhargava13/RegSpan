@@ -220,10 +220,11 @@ test("retrieval and import paths keep regulatory chunks separate from workspace 
 });
 
 test("findings generation and Requirements tab prefer DB controls with fallback", async () => {
-  const [generator, controlsPage, docs] = await Promise.all([
+  const [generator, controlsPage, docs, hashScroller] = await Promise.all([
     readFile("lib/findingsGeneration.ts", "utf8"),
     readFile("app/(app)/controls/page.tsx", "utf8"),
     readFile("docs/regulatory-source-of-truth.md", "utf8"),
+    readFile("components/ControlsHashScroller.tsx", "utf8"),
   ]);
 
   assert.match(generator, /loadRegSpRequirementsForFindings/);
@@ -234,6 +235,58 @@ test("findings generation and Requirements tab prefer DB controls with fallback"
   assert.match(controlsPage, /No active Regulation S-P controls/);
   assert.match(controlsPage, /control\.elements/);
   assert.match(controlsPage, /control\.citations/);
+  assert.match(controlsPage, /id=\{controlAnchor\(control\)\}/);
+  assert.match(controlsPage, /return `control-\$\{control\.controlKey\}`/);
+  assert.match(controlsPage, /<ControlsHashScroller \/>/);
+  assert.match(hashScroller, /window\.location\.hash/);
+  assert.match(hashScroller, /document\.getElementById\(targetId\)/);
+  assert.match(hashScroller, /scrollIntoView/);
   assert.match(docs, /regulatory_source_chunks` are never organization evidence/);
   assert.match(docs, /does not create `document_chunks`/);
+});
+
+test("Requirements tab renders human requirement cards without visible raw keys", async () => {
+  const [controlsPage, globals] = await Promise.all([
+    readFile("app/(app)/controls/page.tsx", "utf8"),
+    readFile("app/globals.css", "utf8"),
+  ]);
+
+  assert.match(controlsPage, /<h2 className="text-lg font-semibold[^"]*">\s+\{control\.name\}/);
+  assert.match(controlsPage, /regulatoryRoleLabel\(control\.regulatoryRole\)/);
+  assert.match(controlsPage, /<StatusBadge>\{`\$\{titleCase\(control\.severity\)\} risk`\}<\/StatusBadge>/);
+  assert.match(controlsPage, /Required elements/);
+  assert.match(controlsPage, /SEC basis/);
+  assert.match(controlsPage, /riskAccentClass\(control\.severity\)/);
+  assert.doesNotMatch(controlsPage, />\{control\.controlKey\}<\/div>/);
+  assert.doesNotMatch(controlsPage, /font-mono[^"]*">\{control\.controlKey\}/);
+  assert.match(globals, /\.requirement-card\s*\{/);
+  assert.match(globals, /scroll-margin-top:\s*7rem/);
+  assert.match(globals, /\.requirement-card:target/);
+});
+
+test("Requirements tab collapses SEC citation details with unique per-card anchors", async () => {
+  const [controlsPage, globals] = await Promise.all([
+    readFile("app/(app)/controls/page.tsx", "utf8"),
+    readFile("app/globals.css", "utf8"),
+  ]);
+
+  assert.match(controlsPage, /<details\s+key=\{citation\.id\}\s+id=\{citationAnchor\(control, citation, citationIndex\)\}/);
+  assert.match(controlsPage, /return `citation-\$\{control\.controlKey\}-\$\{citation\.id \|\| citationIndex\}`/);
+  assert.match(controlsPage, /<summary className="cursor-pointer list-none rounded-full/);
+  assert.match(controlsPage, /View SEC basis/);
+  assert.match(controlsPage, /citation\.sourceChunk\?\.content/);
+  assert.doesNotMatch(controlsPage, /source-\$\{citation\.sourceChunk\.id\}/);
+  assert.match(globals, /\.citation-disclosure > summary::-webkit-details-marker/);
+  assert.match(globals, /\.citation-disclosure:target > summary/);
+});
+
+test("user-facing navigation labels findings as Analysis, not Gaps", async () => {
+  const [sidebar, productPreview] = await Promise.all([
+    readFile("components/Sidebar.tsx", "utf8"),
+    readFile("components/ProductPreview.tsx", "utf8"),
+  ]);
+
+  assert.match(sidebar, /label: "Analysis", href: "\/findings"/);
+  assert.doesNotMatch(sidebar, /label: "Gaps"/);
+  assert.doesNotMatch(productPreview, /High-Risk Gaps/);
 });

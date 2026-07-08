@@ -342,6 +342,14 @@ test("findings UI keeps covered cards quiet and collapses source excerpts", asyn
   assert.match(client, /Document excerpt/);
   assert.match(client, /Supports this conclusion/);
   assert.match(client, /Partially supports this conclusion/);
+  assert.match(client, /Requirement basis:/);
+  assert.match(client, /Reg S-P basis:/);
+  assert.equal((client.match(/View requirement/g) ?? []).length, 1);
+  assert.match(client, /Requirement basis:\{" "\}\s+<span className="text-app-muted">\{basis\.label\}<\/span>/);
+  assert.doesNotMatch(client, /Requirement basis:[\s\S]{0,320}<a/);
+  assert.match(client, /href=\{basis\.href\}/);
+  assert.match(client, /`\/controls#control-\$\{controlKey\}`/);
+  assert.match(client, /REG_SP_CONTROL_KEY_BY_LEGACY_REQUIREMENT_ID/);
   assert.doesNotMatch(client, /Supports this finding/);
   assert.doesNotMatch(client, /Partially supports this finding/);
   assert.doesNotMatch(client, /Evidence citations/);
@@ -353,6 +361,30 @@ test("findings UI keeps covered cards quiet and collapses source excerpts", asyn
   assert.doesNotMatch(client, /candidate/i);
   assert.doesNotMatch(client, /chunk/i);
   assert.doesNotMatch(client, /control is defined/i);
+});
+
+test("findings UI uses status accent rails and stronger card separation", async () => {
+  const client = await readFile("components/FindingsClient.tsx", "utf8");
+
+  assert.match(client, /const findingAccentClasses: Record<Finding\["status"\], string> = \{/);
+  assert.match(client, /covered: "bg-app-success"/);
+  assert.match(client, /partial: "bg-app-warning"/);
+  assert.match(client, /missing: "bg-app-danger"/);
+  assert.match(client, /conflicting: "bg-app-danger"/);
+  assert.match(client, /needs_review: "bg-app-review"/);
+  assert.match(client, /className=\{`h-1 \$\{findingAccentClasses\[finding\.status\]\}`\}/);
+  assert.match(client, /className="app-card overflow-hidden border-app-border-strong\/70 bg-gradient-to-br/);
+  assert.match(client, /<section className="space-y-6" aria-label="Generated findings">/);
+});
+
+test("findings header keeps requirement basis readable without a duplicate action", async () => {
+  const client = await readFile("components/FindingsClient.tsx", "utf8");
+
+  assert.match(client, /label: finding\.requirement_name \?\? "Untitled requirement"/);
+  assert.match(client, /Requirement basis:\{" "\}/);
+  assert.match(client, /<span className="text-app-muted">\{basis\.label\}<\/span>/);
+  assert.doesNotMatch(client, /label: finding\.requirement_name \?\? "View requirement"/);
+  assert.equal((client.match(/Reg S-P basis:/g) ?? []).length, 1);
 });
 
 test("strong support with partial procedure scope limitation is not conflicting", () => {
@@ -490,6 +522,7 @@ test("findings UI shows generation and empty states", async () => {
   assert.match(client, /\/api\/findings\/generate/);
   assert.match(client, /\/api\/findings/);
   assert.match(client, /High risk open/);
+  assert.match(client, /View requirement/);
   assert.match(client, /finding\.status !== "covered"/);
   assert.match(client, /Risk if unresolved:/);
   assert.match(client, /DEFAULT_VISIBLE_EVIDENCE_COUNT = 4/);

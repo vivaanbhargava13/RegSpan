@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { DataTable } from "@/components/DataTable";
+import { ControlsHashScroller } from "@/components/ControlsHashScroller";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { loadActiveRegulatoryControls } from "@/lib/regulatoryControls";
@@ -24,6 +24,30 @@ function titleCase(value: string) {
     .filter(Boolean)
     .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
     .join(" ");
+}
+
+function regulatoryRoleLabel(role: RegulatoryControl["regulatoryRole"]) {
+  switch (role) {
+    case "direct_reg_s_p":
+      return "Direct Reg S-P requirement";
+    case "supporting_control":
+      return "Supporting implementation control";
+    case "future_scope":
+      return "Future-scope requirement";
+  }
+}
+
+function riskAccentClass(severity: RegulatoryControl["severity"]) {
+  switch (severity) {
+    case "critical":
+      return "bg-app-danger";
+    case "high":
+      return "bg-app-danger";
+    case "medium":
+      return "bg-app-warning";
+    case "low":
+      return "bg-app-review";
+  }
 }
 
 function fallbackControls(): RegulatoryControl[] {
@@ -104,6 +128,22 @@ function citationLabel(citation: RegulatoryControl["citations"][number]) {
   ].join(", ");
 }
 
+function controlAnchor(control: RegulatoryControl) {
+  return `control-${control.controlKey}`;
+}
+
+function citationAnchor(
+  control: RegulatoryControl,
+  citation: RegulatoryControl["citations"][number],
+  citationIndex: number,
+) {
+  return `citation-${control.controlKey}-${citation.id || citationIndex}`;
+}
+
+function requiredElements(control: RegulatoryControl) {
+  return control.elements.filter((element) => element.required);
+}
+
 function EmptyState() {
   return (
     <div className="app-card px-5 py-8 text-sm text-app-muted">
@@ -120,7 +160,7 @@ function LoadingState() {
   );
 }
 
-async function ControlsTable() {
+async function ControlsList() {
   const { controls, source, error } = await loadControlsForPage();
 
   if (controls.length === 0) {
@@ -128,7 +168,7 @@ async function ControlsTable() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="app-card flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-2">
           <span className="rounded-full bg-app-accent-soft px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.08em] text-app-accent">
@@ -145,38 +185,89 @@ async function ControlsTable() {
         </div>
       ) : null}
 
-      <DataTable
-        columns={["Control", "Rule area", "Role", "Summary", "Required elements", "SEC citations", "Risk"]}
-        minWidth="min-w-[1180px]"
-      >
-        {controls.map((control) => (
-          <tr key={control.id}>
-            <td className="px-4 py-4">
-              <div className="font-mono text-xs font-semibold text-app-accent">{control.controlKey}</div>
-              <div className="mt-1 font-semibold text-app-text">{control.name}</div>
-            </td>
-            <td className="px-4 py-4 text-app-muted">{control.category ?? control.regulation}</td>
-            <td className="px-4 py-4 text-app-muted">{titleCase(control.regulatoryRole)}</td>
-            <td className="max-w-[320px] px-4 py-4 text-app-muted">{control.summary}</td>
-            <td className="max-w-[280px] px-4 py-4 text-app-muted">
-              {control.elements.filter((element) => element.required).length > 0
-                ? control.elements
-                  .filter((element) => element.required)
-                  .map((element) => element.label)
-                  .join("; ")
-                : "No required elements configured"}
-            </td>
-            <td className="max-w-[260px] px-4 py-4 text-app-muted">
-              {control.citations.length > 0
-                ? control.citations.map(citationLabel).join("; ")
-                : "No SEC citation attached"}
-            </td>
-            <td className="px-4 py-4">
-              <StatusBadge>{titleCase(control.severity)}</StatusBadge>
-            </td>
-          </tr>
-        ))}
-      </DataTable>
+      <section className="space-y-7" aria-label="Reg S-P controls">
+        {controls.map((control) => {
+          const required = requiredElements(control);
+
+          return (
+            <article
+              key={control.id}
+              id={controlAnchor(control)}
+              className="requirement-card app-card relative overflow-hidden border-app-border-strong/70 bg-gradient-to-br from-app-surface to-app-elevated/45 shadow-app-card"
+            >
+              <div aria-hidden="true" className={`h-1 ${riskAccentClass(control.severity)}`} />
+              <div className="border-b border-app-border bg-gradient-to-r from-app-elevated/95 to-app-surface px-5 py-4 lg:px-6">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <h2 className="text-lg font-semibold tracking-[-0.02em] text-app-text">
+                      {control.name}
+                    </h2>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <span className="rounded-full border border-app-border bg-app-surface px-2.5 py-1 text-xs font-semibold text-app-muted">
+                        {control.category ?? control.regulation}
+                      </span>
+                      <span className="rounded-full border border-app-border bg-app-surface px-2.5 py-1 text-xs font-semibold text-app-muted">
+                        {regulatoryRoleLabel(control.regulatoryRole)}
+                      </span>
+                    </div>
+                  </div>
+                  <StatusBadge>{`${titleCase(control.severity)} risk`}</StatusBadge>
+                </div>
+              </div>
+
+              <div className="grid gap-5 p-5 lg:grid-cols-[minmax(0,1.1fr)_minmax(280px,0.9fr)] lg:p-6">
+                <div>
+                  <h3 className="text-sm font-semibold text-app-text">Summary</h3>
+                  <p className="mt-2 text-sm leading-6 text-app-muted">{control.summary}</p>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-semibold text-app-text">Required elements</h3>
+                  {required.length > 0 ? (
+                    <ul className="mt-2 space-y-2 text-sm leading-6 text-app-muted">
+                      {required.map((element) => (
+                        <li key={element.id} className="flex gap-2">
+                          <span aria-hidden="true" className="mt-2 size-1.5 shrink-0 rounded-full bg-app-accent" />
+                          <span>{element.label}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-2 text-sm text-app-muted">No required elements configured.</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="border-t border-app-border bg-app-surface/70 px-5 py-4 lg:px-6">
+                <h3 className="text-sm font-semibold text-app-text">SEC basis</h3>
+                {control.citations.length > 0 ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {control.citations.map((citation, citationIndex) => (
+                      <details
+                        key={citation.id}
+                        id={citationAnchor(control, citation, citationIndex)}
+                        className="citation-disclosure scroll-mt-28"
+                      >
+                        <summary className="cursor-pointer list-none rounded-full border border-app-border bg-app-surface px-3 py-1.5 text-xs font-semibold text-app-muted outline-none transition hover:border-app-accent/50 hover:text-app-text focus-visible:ring-4 focus-visible:ring-app-accent-soft">
+                          {citationLabel(citation)}
+                          <span className="ml-2 text-app-subtle">View SEC basis</span>
+                        </summary>
+                        <div className="mt-2 max-w-3xl rounded-lg border border-app-border bg-app-elevated/70 px-3 py-2 text-xs leading-5 text-app-muted">
+                          {citation.citationNote ? <p>{citation.citationNote}</p> : null}
+                          {citation.sourceChunk?.synopsis ? <p className="mt-2">{citation.sourceChunk.synopsis}</p> : null}
+                          {citation.sourceChunk?.content ? <p className="mt-2">{citation.sourceChunk.content}</p> : null}
+                        </div>
+                      </details>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-2 text-sm text-app-muted">No SEC citation attached.</p>
+                )}
+              </div>
+            </article>
+          );
+        })}
+      </section>
     </div>
   );
 }
@@ -184,6 +275,7 @@ async function ControlsTable() {
 export default function ControlsPage() {
   return (
     <div className="space-y-8">
+      <ControlsHashScroller />
       <PageHeader
         eyebrow="Requirements"
         title="Reg S-P requirements"
@@ -191,7 +283,7 @@ export default function ControlsPage() {
       />
 
       <Suspense fallback={<LoadingState />}>
-        <ControlsTable />
+        <ControlsList />
       </Suspense>
     </div>
   );
