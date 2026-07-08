@@ -34,13 +34,29 @@ export type GeneratedRequirementFinding = {
 
 const highImpactRequirements = new Set<RegSpRequirementId>([
   "written_incident_response_program",
+  "incident_assessment_containment_control",
   "customer_notification_unauthorized_access",
   "customer_notification_content",
+  "service_provider_incident_oversight_notice",
   "vendor_incident_handling",
+  "safeguards_customer_information",
   "customer_information_safeguards",
   "disposal_consumer_customer_information",
   "written_compliance_records",
 ]);
+
+const legacyRequirementIdsByControlKey: Partial<Record<RegSpRequirementId, RegSpRequirementId>> = {
+  incident_assessment_containment_control: "unauthorized_access_detection_escalation",
+  service_provider_incident_oversight_notice: "vendor_incident_handling",
+  safeguards_customer_information: "customer_information_safeguards",
+  incident_evidence_log_preservation: "evidence_log_preservation",
+  regulator_law_enforcement_notification_coordination: "regulator_law_enforcement_notification",
+  response_recovery_remediation_validation: "remediation_recovery_validation",
+};
+
+function copyRequirementId(requirement: RegSpRequirement): RegSpRequirementId {
+  return legacyRequirementIdsByControlKey[requirement.id] ?? requirement.id;
+}
 
 function organizationEvidence(chunks: GradedEvidenceChunk[]) {
   return chunks.filter((chunk) => chunk.evidence_role === "organization_evidence");
@@ -352,8 +368,9 @@ function elementPhrase(requirement: RegSpRequirement, elementId: string, mode: E
     : mode === "partial"
       ? partialElementCopy
       : missingElementCopy;
-  return map[requirement.id]?.[elementId]
-    ?? foundElementCopy[requirement.id]?.[elementId]
+  const requirementId = copyRequirementId(requirement);
+  return map[requirementId]?.[elementId]
+    ?? foundElementCopy[requirementId]?.[elementId]
     ?? elementLabel(requirement, elementId).replace(/^(Defines|Requires|Applies|Identifies|Includes|Provides)\s+/i, "").toLowerCase();
 }
 
@@ -369,7 +386,7 @@ function coveredFindingSentence(requirement: RegSpRequirement, coveredRequired: 
   const elements = renderedElementList(requirement, coveredRequired, "found");
   if (!elements) return "The reviewed policy defines the main elements of this requirement.";
 
-  switch (requirement.id) {
+  switch (copyRequirementId(requirement)) {
     case "customer_information_safeguards":
       return `The reviewed policy ${elements}.`;
     case "vendor_incident_handling":
@@ -389,7 +406,7 @@ function partialMissingSentence(requirement: RegSpRequirement, missingRequired: 
   const elements = renderedElementList(requirement, missingRequired, "missing");
   if (!elements) return "Some required details are still unclear.";
 
-  switch (requirement.id) {
+  switch (copyRequirementId(requirement)) {
     case "customer_notification_content":
       return `RegSpan did not find clear language requiring the notice to include ${elements}.`;
     case "customer_notification_unauthorized_access":
@@ -406,7 +423,7 @@ function partialMissingSentence(requirement: RegSpRequirement, missingRequired: 
 }
 
 function partialRemediationForRequirement(requirement: RegSpRequirement) {
-  switch (requirement.id) {
+  switch (copyRequirementId(requirement)) {
     case "customer_notification_content":
       return "The reviewed documents mention this area, but they do not clearly define notice-content requirements. Add requirements covering what happened, what information was involved, what the firm is doing, how affected individuals can get help, protective steps, and required contact information.";
     case "customer_notification_unauthorized_access":

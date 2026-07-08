@@ -1,14 +1,20 @@
 export type RegSpRequirementId =
   | "written_incident_response_program"
+  | "incident_assessment_containment_control"
   | "unauthorized_access_detection_escalation"
   | "customer_notification_unauthorized_access"
   | "customer_notification_content"
+  | "service_provider_incident_oversight_notice"
   | "vendor_incident_handling"
+  | "safeguards_customer_information"
   | "customer_information_safeguards"
   | "disposal_consumer_customer_information"
   | "written_compliance_records"
+  | "incident_evidence_log_preservation"
   | "evidence_log_preservation"
+  | "response_recovery_remediation_validation"
   | "remediation_recovery_validation"
+  | "regulator_law_enforcement_notification_coordination"
   | "regulator_law_enforcement_notification";
 
 export type RegSpRequirementRole = "direct_reg_s_p" | "supporting_control" | "future_scope";

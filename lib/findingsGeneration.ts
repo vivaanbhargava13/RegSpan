@@ -11,7 +11,7 @@ import {
   type GradedEvidenceChunk,
 } from "@/lib/requirementMatching";
 import { createRequirementEvidenceClassifier } from "@/lib/requirementEvidenceClassifier";
-import { REG_SP_REQUIREMENTS } from "@/lib/regSpRequirements";
+import { loadRegSpRequirementsForFindings } from "@/lib/regulatoryControls";
 import { getServerSupabaseAdminClient } from "@/lib/supabase/server";
 
 export const FINDINGS_GENERATION_TOP_K = 25;
@@ -83,10 +83,12 @@ async function createAnalysisRun({
   supabase,
   workspaceId,
   actorUserId,
+  requirementCount,
 }: {
   supabase: SupabaseClient;
   workspaceId: string;
   actorUserId: string;
+  requirementCount: number;
 }) {
   const { data, error } = await supabase
     .from("analysis_runs")
@@ -94,7 +96,7 @@ async function createAnalysisRun({
       workspace_id: workspaceId,
       status: "running",
       generated_by: actorUserId,
-      requirement_count: REG_SP_REQUIREMENTS.length,
+      requirement_count: requirementCount,
       finding_count: 0,
       started_at: new Date().toISOString(),
     })
@@ -239,12 +241,18 @@ export async function generateFindingsForWorkspace({
   topK = FINDINGS_GENERATION_TOP_K,
 }: GenerateFindingsInput) {
   await assertProcessedEvidenceExists(supabase, workspaceId);
-  const analysisRun = await createAnalysisRun({ supabase, workspaceId, actorUserId });
+  const requirements = await loadRegSpRequirementsForFindings({ supabase });
+  const analysisRun = await createAnalysisRun({
+    supabase,
+    workspaceId,
+    actorUserId,
+    requirementCount: requirements.length,
+  });
   const classifier = createRequirementEvidenceClassifier();
 
   try {
     const generatedFindings: GeneratedRequirementFinding[] = [];
-    for (const requirement of REG_SP_REQUIREMENTS) {
+    for (const requirement of requirements) {
       const candidates = await retrieveRequirementHybridChunks({
         workspaceId,
         requirement,
@@ -280,7 +288,7 @@ export async function generateFindingsForWorkspace({
 
     return {
       analysisRunId: analysisRun.id,
-      requirementCount: REG_SP_REQUIREMENTS.length,
+      requirementCount: requirements.length,
       findingCount: generatedFindings.length,
       findings: generatedFindings,
     };
