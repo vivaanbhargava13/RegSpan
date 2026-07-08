@@ -117,6 +117,7 @@ test("DB-backed controls convert to requirement definitions with canonical keys"
 
   assert.equal(requirement.id, "incident_assessment_containment_control");
   assert.equal(requirement.title, "Incident assessment, containment, and control");
+  assert.equal(requirement.riskSeverity, "high");
   assert.deepEqual(requirement.requiredElementsForCovered, ["assesses_scope"]);
   assert.deepEqual(requirement.coverageElements[0].signals, ["nature and scope"]);
   assert.match(requirement.retrievalQuery, /unauthorized access/);
@@ -124,6 +125,8 @@ test("DB-backed controls convert to requirement definitions with canonical keys"
 
 test("hardcoded fallback framework still exposes the 11 curated controls", () => {
   assert.equal(REG_SP_REQUIREMENTS.length, 11);
+  assert.equal(REG_SP_REQUIREMENTS.find((requirement) => requirement.id === "written_incident_response_program")?.riskSeverity, "high");
+  assert.equal(REG_SP_REQUIREMENTS.find((requirement) => requirement.id === "evidence_log_preservation")?.riskSeverity, "medium");
   assert.deepEqual(
     REG_SP_REQUIREMENTS.map(canonicalControlKeyForRequirement),
     [

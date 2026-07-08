@@ -35,6 +35,7 @@ export type GeneratedRequirementFinding = {
 const highImpactRequirements = new Set<RegSpRequirementId>([
   "written_incident_response_program",
   "incident_assessment_containment_control",
+  "unauthorized_access_detection_escalation",
   "customer_notification_unauthorized_access",
   "customer_notification_content",
   "service_provider_incident_oversight_notice",
@@ -43,6 +44,8 @@ const highImpactRequirements = new Set<RegSpRequirementId>([
   "customer_information_safeguards",
   "disposal_consumer_customer_information",
   "written_compliance_records",
+  "response_recovery_remediation_validation",
+  "remediation_recovery_validation",
 ]);
 
 const legacyRequirementIdsByControlKey: Partial<Record<RegSpRequirementId, RegSpRequirementId>> = {
@@ -471,13 +474,12 @@ function confidenceForStatus(status: FindingStatus, evidence: GradedEvidenceChun
   return "low";
 }
 
-function severityForStatus(requirement: RegSpRequirement, status: FindingStatus): FindingSeverity {
-  if (status === "covered") return "info";
-  if (status === "needs_review") return "medium";
-  if (status === "partial") return highImpactRequirements.has(requirement.id) ? "high" : "medium";
-  if (status === "conflicting") return highImpactRequirements.has(requirement.id) ? "critical" : "high";
-  if (status === "missing") return highImpactRequirements.has(requirement.id) ? "high" : "medium";
-  return "medium";
+function severityForRequirement(requirement: RegSpRequirement): FindingSeverity {
+  if (requirement.riskSeverity) {
+    return requirement.riskSeverity;
+  }
+
+  return highImpactRequirements.has(requirement.id) ? "high" : "medium";
 }
 
 function statusSummary(requirement: RegSpRequirement, status: FindingStatus) {
@@ -487,11 +489,11 @@ function statusSummary(requirement: RegSpRequirement, status: FindingStatus) {
     case "partial":
       return "Partially covered based on reviewed documents.";
     case "missing":
-      return "RegSpan did not find clear evidence that this requirement is addressed.";
+      return "RegSpan did not find client policy evidence for this requirement.";
     case "conflicting":
-      return "Reviewed documents appear to conflict on whether this control is defined.";
+      return "Reviewed documents appear to conflict on whether this requirement is addressed.";
     case "needs_review":
-      return "The evidence is unclear and should be reviewed by a person.";
+      return "RegSpan found related policy language, but not enough detail to confirm full coverage.";
   }
 }
 
@@ -508,7 +510,7 @@ export function remediationForFinding(requirement: RegSpRequirement, status: Fin
     return partialRemediationForRequirement(requirement);
   }
   if (status === "needs_review") {
-    return `${base} Have a compliance or security owner confirm whether the cited document is intended to satisfy this requirement.`;
+    return `${base} A reviewer should confirm whether this requirement is addressed in another policy or procedure.`;
   }
   return `${base} Create or update a written policy or procedure that defines responsibility, timing, required steps, and records to retain.`;
 }
@@ -629,9 +631,9 @@ function whatWeFoundForFinding({
       }
       parts.push("That may describe the limits of that document rather than proof that the firm lacks the requirement.");
     } else if (background.length > 0) {
-      parts.push("RegSpan found related context, but it was not specific enough to show whether this requirement is addressed.");
+      parts.push("RegSpan found related policy language, but not enough detail to confirm full coverage.");
     } else {
-      parts.push("The reviewed evidence was not clear enough to determine whether this requirement is addressed.");
+      parts.push("A reviewer should confirm whether this requirement is addressed in another policy or procedure.");
     }
   }
 
@@ -766,7 +768,7 @@ export function aggregateFindingForRequirement(
     requirement_id: requirement.id,
     requirement_name: requirement.title,
     status,
-    severity: severityForStatus(requirement, status),
+    severity: severityForRequirement(requirement),
     confidence: confidenceForStatus(status, evidence),
     summary: statusSummary(requirement, status),
     remediation: remediationForFinding(requirement, status),

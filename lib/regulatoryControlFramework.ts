@@ -128,6 +128,7 @@ export function regulatoryControlToRegSpRequirement(control: RegulatoryControl):
     sourceBasis: stringValue(metadata.sourceBasis, "SEC Release No. 34-100155, Regulation S-P final rule."),
     regulatoryRole: control.regulatoryRole,
     mvpScope: metadata.mvpScope === "supporting" || metadata.mvpScope === "future" ? metadata.mvpScope : "mvp",
+    riskSeverity: control.severity,
     evidenceCriteria,
     coverageElements,
     requiredElementsForCovered,

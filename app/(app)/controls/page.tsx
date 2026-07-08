@@ -60,7 +60,7 @@ function fallbackControls(): RegulatoryControl[] {
     category: requirement.mvpScope === "mvp" ? "Core requirement" : "Supporting control",
     summary: requirement.description,
     regulatoryRole: requirement.regulatoryRole,
-    severity: requirement.regulatoryRole === "supporting_control" ? "medium" : "high",
+    severity: requirement.riskSeverity,
     status: "active",
     displayOrder: index + 1,
     metadata: {

@@ -15,6 +15,7 @@ const requirement = {
   sourceBasis: "Test source basis.",
   regulatoryRole: "direct_reg_s_p",
   mvpScope: "mvp",
+  riskSeverity: "high",
   evidenceCriteria: {
     lookFor: "Test evidence criteria.",
     strongEvidence: "Strong evidence covers trigger and timing.",
@@ -109,11 +110,12 @@ test("organization evidence can produce covered and partial findings", () => {
   ]);
 
   assert.equal(covered.status, "covered");
-  assert.equal(covered.severity, "info");
+  assert.equal(covered.severity, "high");
   assert.equal(covered.confidence, "high");
   assert.equal(covered.summary, "Appears covered based on reviewed documents.");
   assert.match(covered.rationale, /states: “notify affected customers/);
   assert.equal(partial.status, "partial");
+  assert.equal(partial.severity, "high");
   assert.equal(partial.summary, "Partially covered based on reviewed documents.");
   assert.match(partial.rationale, /mentions this area/);
   assert.match(partial.remediation, /do not clearly define the full notification trigger and timing/);
@@ -124,8 +126,9 @@ test("no organization evidence produces a missing finding", () => {
   const finding = aggregateFindingForRequirement(requirement, []);
 
   assert.equal(finding.status, "missing");
+  assert.equal(finding.severity, "high");
   assert.equal(finding.evidence.length, 0);
-  assert.match(finding.summary, /did not find clear evidence/);
+  assert.match(finding.summary, /did not find client policy evidence/);
   assert.match(finding.rationale, /did not find clear policy or procedure language/);
   assert.doesNotMatch(finding.summary, /noncompliant/i);
 });
@@ -160,7 +163,7 @@ test("strong support with weak document-scope limitation stays covered", () => {
   assert.equal(classifyNegativeEvidenceScope(limitation), "document_scope_limitation");
   assert.equal(finding.status, "covered");
   assert.notEqual(finding.status, "conflicting");
-  assert.equal(finding.severity, "info");
+  assert.equal(finding.severity, "high");
   assert.match(finding.rationale, /scope limitation/);
   assert.equal(
     finding.evidence.some((evidence) => evidence.reason.startsWith("This document says it does not cover this requirement.")),
@@ -420,9 +423,28 @@ test("document-scope limitation without support needs review", () => {
 
   assert.equal(classifyNegativeEvidenceScope(limitation), "document_scope_limitation");
   assert.equal(finding.status, "needs_review");
-  assert.equal(finding.severity, "medium");
-  assert.match(finding.summary, /reviewed by a person/);
+  assert.equal(finding.severity, "high");
+  assert.match(finding.summary, /not enough detail to confirm full coverage/);
   assert.match(finding.rationale, /limits of that document/);
+});
+
+test("needs review direct Reg S-P findings retain high unresolved risk", () => {
+  const finding = aggregateFindingForRequirement(requirement, [
+    chunk({
+      grade: "background",
+      evidence_relationship: "background_context",
+      requirement_supported: false,
+      covered_elements: [],
+      missing_elements: [],
+      supporting_quote: "Customer communications are reviewed by legal.",
+      grade_reason: "The cited text mentions customer communications but does not define the notification standard.",
+    }),
+  ]);
+
+  assert.equal(finding.status, "needs_review");
+  assert.equal(finding.severity, "high");
+  assert.match(finding.summary, /not enough detail to confirm full coverage/);
+  assert.match(finding.rationale, /related policy language/);
 });
 
 test("negative evidence scope classifier distinguishes organization from document limitations", () => {

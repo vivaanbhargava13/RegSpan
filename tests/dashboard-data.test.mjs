@@ -37,6 +37,19 @@ test("dashboard high-risk open excludes covered high-severity findings", () => {
   assert.equal(metrics.openFindings, 1);
 });
 
+test("dashboard high-risk open includes needs-review high-severity findings", () => {
+  const metrics = calculateDashboardFindingMetrics([
+    { status: "needs_review", severity: "high" },
+    { status: "partial", severity: "high" },
+    { status: "needs_review", severity: "medium" },
+    { status: "covered", severity: "high" },
+  ]);
+
+  assert.equal(metrics.highRiskOpen, 2);
+  assert.equal(metrics.openFindings, 3);
+  assert.equal(metrics.needsReview, 2);
+});
+
 test("dashboard document progress handles empty and processed document counts", () => {
   assert.deepEqual(calculateDocumentProgress({ totalDocuments: 0, processedDocuments: 0 }), {
     totalDocuments: 0,

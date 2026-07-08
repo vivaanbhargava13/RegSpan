@@ -19,6 +19,7 @@ export type RegSpRequirementId =
 
 export type RegSpRequirementRole = "direct_reg_s_p" | "supporting_control" | "future_scope";
 export type RegSpRequirementMvpScope = "mvp" | "supporting" | "future";
+export type RegSpRequirementSeverity = "critical" | "high" | "medium" | "low";
 
 export type RegSpEvidenceCriteria = {
   lookFor: string;
@@ -41,6 +42,7 @@ export type RegSpRequirement = {
   sourceBasis: string;
   regulatoryRole: RegSpRequirementRole;
   mvpScope: RegSpRequirementMvpScope;
+  riskSeverity: RegSpRequirementSeverity;
   evidenceCriteria: RegSpEvidenceCriteria;
   coverageElements: RegSpCoverageElement[];
   requiredElementsForCovered: string[];
@@ -90,6 +92,7 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
     sourceBasis: "Amended Regulation S-P safeguards rule, 17 CFR 248.30(a)(3).",
     regulatoryRole: "direct_reg_s_p",
     mvpScope: "mvp",
+    riskSeverity: "high",
     evidenceCriteria: {
       lookFor: "Written incident response policy, plan, program, standard, or procedure covering customer information.",
       strongEvidence: "A maintained written program or equivalent policy/standard with ownership, approval, review, roles, escalation, notice, response, and recovery responsibilities.",
@@ -174,6 +177,7 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
     sourceBasis: "Amended Regulation S-P incident response program elements, 17 CFR 248.30(a)(3)(i) and (ii).",
     regulatoryRole: "direct_reg_s_p",
     mvpScope: "mvp",
+    riskSeverity: "high",
     evidenceCriteria: {
       lookFor: "Assessment of customer-information incidents, affected systems/data, containment, control, escalation, and severity procedures.",
       strongEvidence: "Procedures require assessing the incident scope, identifying customer information systems and information types, escalating decisions, and taking containment/control actions.",
@@ -228,6 +232,7 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
     sourceBasis: "Amended Regulation S-P customer notification rule, 17 CFR 248.30(a)(4)(i).",
     regulatoryRole: "direct_reg_s_p",
     mvpScope: "mvp",
+    riskSeverity: "high",
     evidenceCriteria: {
       lookFor: "Notification procedures triggered by unauthorized access/use of sensitive customer information reasonably likely to cause substantial harm or inconvenience.",
       strongEvidence: "Procedures require notice as soon as practicable and no later than 30 days after awareness, unless the firm determines sensitive customer information was not or is not reasonably likely to be used in a way that would result in substantial harm or inconvenience.",
@@ -292,6 +297,7 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
     sourceBasis: "Amended Regulation S-P notice contents, 17 CFR 248.30(a)(4)(iv).",
     regulatoryRole: "direct_reg_s_p",
     mvpScope: "mvp",
+    riskSeverity: "high",
     evidenceCriteria: {
       lookFor: "Notice templates or procedures covering incident description, type of sensitive information, incident date/range when known, contact information, account review, fraud alerts, credit reports, and identity-theft resources.",
       strongEvidence: "A notice template or procedure lists required notice elements and protective steps for affected individuals.",
@@ -353,6 +359,7 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
     sourceBasis: "Amended Regulation S-P service provider provisions, 17 CFR 248.30(a)(5).",
     regulatoryRole: "direct_reg_s_p",
     mvpScope: "mvp",
+    riskSeverity: "high",
     evidenceCriteria: {
       lookFor: "Service-provider due diligence, monitoring, contractual controls, customer-information protection, and breach notice to the firm no later than 72 hours after awareness.",
       strongEvidence: "Vendor or service-provider policies/contracts require protection of customer information, prompt breach notice to the firm, cooperation, and support for affected-individual notification.",
@@ -421,6 +428,7 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
     sourceBasis: "Regulation S-P safeguards rule, 17 CFR 248.30(a)(1) and amended customer-information scope in 17 CFR 248.30(d)(5).",
     regulatoryRole: "direct_reg_s_p",
     mvpScope: "mvp",
+    riskSeverity: "high",
     evidenceCriteria: {
       lookFor: "Written safeguards covering administrative, technical, and physical controls for customer records and information, including information handled by or on behalf of the firm.",
       strongEvidence: "Policies define safeguards such as access controls, authentication, encryption, monitoring, least privilege, vendor controls, and physical/administrative protections for customer information.",
@@ -468,6 +476,7 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
     sourceBasis: "Amended Regulation S-P disposal rule, 17 CFR 248.30(b).",
     regulatoryRole: "direct_reg_s_p",
     mvpScope: "mvp",
+    riskSeverity: "high",
     evidenceCriteria: {
       lookFor: "Records retention, media sanitization, secure destruction, disposal vendors, disposal approvals, and protection against unauthorized access/use during disposal.",
       strongEvidence: "Policies require secure disposal/destruction of paper, electronic, media, device, consumer report, and customer-information records with controls or vendor oversight.",
@@ -517,6 +526,7 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
     sourceBasis: "Amended Regulation S-P recordkeeping requirements, including 17 CFR 248.30(c).",
     regulatoryRole: "direct_reg_s_p",
     mvpScope: "mvp",
+    riskSeverity: "high",
     evidenceCriteria: {
       lookFor: "Recordkeeping procedures for safeguards/disposal compliance, incident response determinations, notice decisions, Attorney General delay documentation, notices sent, and versions of policies/procedures.",
       strongEvidence: "Policies identify required records, retention period, ownership, accessible storage, incident determinations, notice copies, and written procedures to preserve compliance evidence.",
@@ -571,6 +581,7 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
     sourceBasis: "Supporting control for the amended incident response and recordkeeping requirements; not a standalone quoted Regulation S-P notice obligation.",
     regulatoryRole: "supporting_control",
     mvpScope: "supporting",
+    riskSeverity: "medium",
     evidenceCriteria: {
       lookFor: "Procedures to preserve logs, forensic data, incident records, chain of custody, investigation notes, and evidence needed for review.",
       strongEvidence: "Policies require collecting and preserving incident evidence, logs, investigation records, and chain-of-custody or provenance information.",
@@ -621,6 +632,7 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
     sourceBasis: "Amended Regulation S-P incident response program recovery requirement, 17 CFR 248.30(a)(3), with remediation validation treated as supporting implementation evidence.",
     regulatoryRole: "direct_reg_s_p",
     mvpScope: "mvp",
+    riskSeverity: "high",
     evidenceCriteria: {
       lookFor: "Recovery procedures, remediation tracking, corrective actions, restored asset verification, vulnerability retesting, lessons learned, and closure validation.",
       strongEvidence: "Policies require recovery actions and confirmation that remediation or corrective action is completed and validated after incidents or vulnerabilities.",
@@ -679,6 +691,7 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
     sourceBasis: "Supporting control. The 2024 Regulation S-P amendments include customer notice and Attorney General delay provisions, but do not create a broad standalone regulator/law-enforcement notification requirement in this MVP map.",
     regulatoryRole: "supporting_control",
     mvpScope: "supporting",
+    riskSeverity: "medium",
     evidenceCriteria: {
       lookFor: "Procedures for legal/compliance review of regulator, law-enforcement, contractual, supervisory, or Attorney General delay issues.",
       strongEvidence: "Policies define legal/compliance ownership, escalation criteria, external reporting decisioning, and coordination with customer-notice timing.",
