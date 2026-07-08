@@ -141,6 +141,7 @@ function textForWeighting(chunk: GradedEvidenceChunk) {
   return normalize([
     chunk.filename,
     chunk.section_path,
+    chunk.supporting_quote,
     chunk.grade_reason,
     chunk.content_preview,
   ].filter(Boolean).join(" "));
@@ -425,7 +426,40 @@ function partialMissingSentence(requirement: RegSpRequirement, missingRequired: 
   }
 }
 
-function partialRemediationForRequirement(requirement: RegSpRequirement) {
+function needsReviewDetailForRequirement(requirement: RegSpRequirement, missingRequired: string[]) {
+  const missing = renderedElementList(requirement, missingRequired, "missing");
+  if (missing) return missing;
+
+  switch (copyRequirementId(requirement)) {
+    case "customer_notification_content":
+      return "required customer-notice content, including affected information, protective steps, and contact information";
+    case "customer_notification_unauthorized_access":
+      return "the customer-notification trigger, substantial-harm analysis, and timing standard";
+    case "disposal_consumer_customer_information":
+      return "secure disposal requirements for consumer or customer information";
+    case "written_compliance_records":
+      return "written compliance records, retention, and accessibility requirements";
+    case "vendor_incident_handling":
+      return "vendor or service-provider notice, cooperation, remediation, and recovery obligations";
+    case "customer_information_safeguards":
+      return "safeguards and access controls for customer information";
+    case "evidence_log_preservation":
+      return "incident log, evidence preservation, and chain-of-custody requirements";
+    case "remediation_recovery_validation":
+      return "remediation tracking, recovery steps, and validation requirements";
+    case "regulator_law_enforcement_notification":
+      return "regulator, law-enforcement, or external notification decisioning and ownership";
+    default:
+      return requirement.description;
+  }
+}
+
+function partialRemediationForRequirement(requirement: RegSpRequirement, missingRequired: string[]) {
+  const missing = renderedElementList(requirement, missingRequired, "missing");
+  if (missing) {
+    return `The reviewed documents mention this area, but they do not clearly define ${missing}. Add or update the relevant policy or procedure so those missing details are explicit.`;
+  }
+
   switch (copyRequirementId(requirement)) {
     case "customer_notification_content":
       return "The reviewed documents mention this area, but they do not clearly define notice-content requirements. Add requirements covering what happened, what information was involved, what the firm is doing, how affected individuals can get help, protective steps, and required contact information.";
@@ -482,7 +516,7 @@ function severityForRequirement(requirement: RegSpRequirement): FindingSeverity 
   return highImpactRequirements.has(requirement.id) ? "high" : "medium";
 }
 
-function statusSummary(requirement: RegSpRequirement, status: FindingStatus) {
+function statusSummary(_requirement: RegSpRequirement, status: FindingStatus) {
   switch (status) {
     case "covered":
       return "Appears covered based on reviewed documents.";
@@ -497,7 +531,11 @@ function statusSummary(requirement: RegSpRequirement, status: FindingStatus) {
   }
 }
 
-export function remediationForFinding(requirement: RegSpRequirement, status: FindingStatus) {
+export function remediationForFinding(
+  requirement: RegSpRequirement,
+  status: FindingStatus,
+  missingRequired: string[] = [],
+) {
   if (status === "covered") {
     return "Keep this procedure current and confirm related procedures point to it during the next review.";
   }
@@ -507,10 +545,10 @@ export function remediationForFinding(requirement: RegSpRequirement, status: Fin
     return `${base} Resolve the contradiction between the documents and identify which policy or procedure is authoritative.`;
   }
   if (status === "partial") {
-    return partialRemediationForRequirement(requirement);
+    return partialRemediationForRequirement(requirement, missingRequired);
   }
   if (status === "needs_review") {
-    return `${base} A reviewer should confirm whether this requirement is addressed in another policy or procedure.`;
+    return `Add or point to the procedure that defines ${needsReviewDetailForRequirement(requirement, missingRequired)}. A reviewer should confirm whether another policy already contains this detail.`;
   }
   return `${base} Create or update a written policy or procedure that defines responsibility, timing, required steps, and records to retain.`;
 }
@@ -572,9 +610,6 @@ function whatWeFoundForFinding({
     }
     if (coveredRequired.length > 0) {
       parts.push(coveredSummary);
-    }
-    if (documentScopeLimitations.length > 0) {
-      parts.push("Related documents say they do not cover this requirement, which appears to be a scope limitation for those documents rather than a contradiction.");
     }
   }
 
@@ -771,7 +806,7 @@ export function aggregateFindingForRequirement(
     severity: severityForRequirement(requirement),
     confidence: confidenceForStatus(status, evidence),
     summary: statusSummary(requirement, status),
-    remediation: remediationForFinding(requirement, status),
+    remediation: remediationForFinding(requirement, status, coverage.missingRequired),
     rationale: whatWeFoundForFinding({
       requirement,
       status,

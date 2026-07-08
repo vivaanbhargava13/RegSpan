@@ -9,6 +9,12 @@ import {
   REG_SP_CONTROL_KEY_BY_LEGACY_REQUIREMENT_ID,
   REG_SP_LEGACY_REQUIREMENT_ID_BY_CONTROL_KEY,
 } from "@/lib/regulatoryControlFramework";
+import {
+  buildMarkdownReport,
+  REPORT_WORKSPACE_FALLBACK,
+  workspaceReportName,
+} from "@/lib/findingsReport";
+import { getCurrentWorkspace } from "@/lib/workspaces";
 
 type AnalysisRun = {
   id: string;
@@ -261,15 +267,31 @@ async function getAccessToken() {
   return data.session.access_token;
 }
 
+async function loadWorkspaceReportName() {
+  const supabase = getBrowserSupabaseClient();
+  if (!supabase) {
+    return REPORT_WORKSPACE_FALLBACK;
+  }
+
+  try {
+    const workspace = await getCurrentWorkspace(supabase);
+    return workspaceReportName(workspace.name);
+  } catch {
+    return REPORT_WORKSPACE_FALLBACK;
+  }
+}
+
 export function FindingsClient() {
   const [latestRun, setLatestRun] = useState<AnalysisRun | null>(null);
   const [findings, setFindings] = useState<Finding[]>([]);
   const [hasProcessedEvidence, setHasProcessedEvidence] = useState(false);
   const [processedDocumentCount, setProcessedDocumentCount] = useState<number | null>(null);
+  const [workspaceName, setWorkspaceName] = useState(REPORT_WORKSPACE_FALLBACK);
   const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [reportMessage, setReportMessage] = useState("");
 
   const metrics = useMemo(() => {
     const openCount = findings.filter((finding) => finding.status !== "covered").length;
@@ -290,7 +312,11 @@ export function FindingsClient() {
     setError("");
 
     try {
-      const token = await getAccessToken();
+      const [token, nextWorkspaceName] = await Promise.all([
+        getAccessToken(),
+        loadWorkspaceReportName(),
+      ]);
+      setWorkspaceName(nextWorkspaceName);
       const response = await fetch("/api/findings", {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -313,7 +339,8 @@ export function FindingsClient() {
     if (isGenerating) return;
     setIsGenerating(true);
     setError("");
-    setMessage("");
+    setMessage("RegSpan is reviewing processed documents against the Reg S-P baseline.");
+    setReportMessage("");
 
     try {
       const token = await getAccessToken();
@@ -334,12 +361,38 @@ export function FindingsClient() {
     } catch (generateError) {
       setError(
         generateError instanceof Error
-          ? generateError.message
-          : "Findings generation failed.",
+          ? `${generateError.message} Try again after confirming at least one document is ready for analysis.`
+          : "Findings generation failed. Try again after confirming at least one document is ready for analysis.",
       );
     } finally {
       setIsGenerating(false);
     }
+  }
+
+  async function copyReport() {
+    setReportMessage("");
+    setError("");
+    const markdown = buildMarkdownReport({ latestRun, findings, processedDocumentCount, workspaceName });
+
+    try {
+      await navigator.clipboard.writeText(markdown);
+      setReportMessage("Report copied to clipboard.");
+    } catch {
+      setError("Unable to copy the report. Use Export Markdown instead.");
+    }
+  }
+
+  function exportMarkdownReport() {
+    setReportMessage("");
+    const markdown = buildMarkdownReport({ latestRun, findings, processedDocumentCount, workspaceName });
+    const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "regspan-reg-s-p-analysis-report.md";
+    link.click();
+    URL.revokeObjectURL(url);
+    setReportMessage("Markdown report exported.");
   }
 
   return (
@@ -349,14 +402,27 @@ export function FindingsClient() {
         title="Reg S-P findings"
         description="Review what RegSpan found in your processed documents and the next steps for each Reg S-P requirement."
         actions={(
-          <Button
-            type="button"
-            variant="appPrimary"
-            onClick={runAnalysis}
-            disabled={isGenerating || isLoading || !hasProcessedEvidence}
-          >
-            {isGenerating ? "Generating…" : "Run analysis"}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {findings.length > 0 ? (
+              <>
+                <Button type="button" variant="appSecondary" onClick={copyReport}>
+                  Copy report
+                </Button>
+                <Button type="button" variant="appSecondary" onClick={exportMarkdownReport}>
+                  Export Markdown
+                </Button>
+              </>
+            ) : null}
+            <Button
+              type="button"
+              variant="appPrimary"
+              onClick={runAnalysis}
+              disabled={isGenerating || isLoading || !hasProcessedEvidence}
+              title={!hasProcessedEvidence ? "Process at least one document before running analysis." : undefined}
+            >
+              {isGenerating ? "Reviewing documents…" : "Run analysis"}
+            </Button>
+          </div>
         )}
       />
 
@@ -375,7 +441,7 @@ export function FindingsClient() {
             <>
               {" "}
               {metrics.coveredCount} appear covered, {metrics.highRiskCount} open high-risk{" "}
-              {metrics.highRiskCount === 1 ? "gap" : "gaps"}, and {metrics.needsReviewCount} need{" "}
+              {metrics.highRiskCount === 1 ? "finding" : "findings"}, and {metrics.needsReviewCount} need{" "}
               reviewer confirmation.
             </>
           ) : (
@@ -428,6 +494,12 @@ export function FindingsClient() {
       {message ? (
         <div className="rounded-xl border border-app-success/20 bg-app-success-soft px-4 py-3 text-sm font-medium text-app-success">
           {message}
+        </div>
+      ) : null}
+
+      {reportMessage ? (
+        <div className="rounded-xl border border-app-success/20 bg-app-success-soft px-4 py-3 text-sm font-medium text-app-success">
+          {reportMessage}
         </div>
       ) : null}
 

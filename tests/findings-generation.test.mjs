@@ -5,6 +5,10 @@ import {
   aggregateFindingForRequirement,
   classifyNegativeEvidenceScope,
 } from "../lib/findingsAggregation.ts";
+import {
+  buildMarkdownReport,
+  reportEvidenceForFinding,
+} from "../lib/findingsReport.ts";
 
 const requirement = {
   id: "customer_notification_unauthorized_access",
@@ -98,6 +102,43 @@ function negativeChunk(overrides = {}) {
   });
 }
 
+function reportFinding(overrides = {}) {
+  return {
+    requirement_id: "customer_notification_unauthorized_access",
+    requirement_name: "Customer notification trigger and timing",
+    status: "partial",
+    severity: "high",
+    summary: "Partially covered based on reviewed documents.",
+    remediation: "Add the missing timing detail.",
+    rationale: "The incident response policy mentions customer notification but does not define timing.",
+    evidence: [
+      {
+        relationship: "partially_supports",
+        quote: "notify affected customers after unauthorized access",
+        evidence_quote: null,
+        reason: "The cited section mentions customer notification.",
+        filename: "Incident Response Policy.pdf",
+        page_start: 4,
+        page_end: 5,
+        section_path: "Incident Response > Customer Notification",
+      },
+    ],
+    ...overrides,
+  };
+}
+
+function buildTestReport(findings) {
+  return buildMarkdownReport({
+    latestRun: {
+      requirement_count: findings.length,
+      completed_at: "2026-01-15T15:30:00.000Z",
+    },
+    findings,
+    processedDocumentCount: 2,
+    workspaceName: "Acme Compliance",
+  });
+}
+
 test("organization evidence can produce covered and partial findings", () => {
   const covered = aggregateFindingForRequirement(requirement, [chunk()]);
   const partial = aggregateFindingForRequirement(requirement, [
@@ -164,7 +205,7 @@ test("strong support with weak document-scope limitation stays covered", () => {
   assert.equal(finding.status, "covered");
   assert.notEqual(finding.status, "conflicting");
   assert.equal(finding.severity, "high");
-  assert.match(finding.rationale, /scope limitation/);
+  assert.doesNotMatch(finding.rationale, /scope limitation|do not cover this requirement/i);
   assert.equal(
     finding.evidence.some((evidence) => evidence.reason.startsWith("This document says it does not cover this requirement.")),
     true,
@@ -189,7 +230,7 @@ test("missing required coverage elements prevents covered findings", () => {
   assert.doesNotMatch(finding.rationale, /appears to define this control/i);
   assert.doesNotMatch(finding.rationale, /RegSpan did not find clear evidence for:/);
   assert.doesNotMatch(finding.remediation, /appear to define/i);
-  assert.match(finding.remediation, /do not clearly define the full notification trigger and timing/);
+  assert.match(finding.remediation, /do not clearly define the required timing for notice/);
 });
 
 test("multiple complementary supports can cover required elements", () => {
@@ -387,7 +428,7 @@ test("findings header keeps requirement basis readable without a duplicate actio
   assert.match(client, /Requirement basis:\{" "\}/);
   assert.match(client, /<span className="text-app-muted">\{basis\.label\}<\/span>/);
   assert.doesNotMatch(client, /label: finding\.requirement_name \?\? "View requirement"/);
-  assert.equal((client.match(/Reg S-P basis:/g) ?? []).length, 1);
+  assert.match(client, /<p className="mt-3 text-xs font-semibold text-app-subtle">\s*Reg S-P basis:/);
 });
 
 test("strong support with partial procedure scope limitation is not conflicting", () => {
@@ -426,6 +467,9 @@ test("document-scope limitation without support needs review", () => {
   assert.equal(finding.severity, "high");
   assert.match(finding.summary, /not enough detail to confirm full coverage/);
   assert.match(finding.rationale, /limits of that document/);
+  assert.match(finding.remediation, /Add or point to the procedure that defines/);
+  assert.match(finding.remediation, /A reviewer should confirm whether another policy already contains this detail/);
+  assert.doesNotMatch(finding.remediation, /reviewed documents appear to define/i);
 });
 
 test("needs review direct Reg S-P findings retain high unresolved risk", () => {
@@ -445,6 +489,7 @@ test("needs review direct Reg S-P findings retain high unresolved risk", () => {
   assert.equal(finding.severity, "high");
   assert.match(finding.summary, /not enough detail to confirm full coverage/);
   assert.match(finding.rationale, /related policy language/);
+  assert.doesNotMatch(finding.remediation, /reviewed documents appear to define/i);
 });
 
 test("negative evidence scope classifier distinguishes organization from document limitations", () => {
@@ -495,7 +540,7 @@ test("primary finding text avoids internal classifier terminology", () => {
   const primaryText = [finding.summary, finding.rationale, finding.remediation].join(" ");
 
   assert.doesNotMatch(primaryText, /candidate|heuristic|classifier|retrieval|chunk|status was assigned|document-scope/i);
-  assert.match(finding.rationale, /Related documents say they do not cover this requirement/);
+  assert.doesNotMatch(finding.rationale, /Related documents say they do not cover this requirement/);
   assert.doesNotMatch(primaryText, /control is defined|satisfy this control|covered control|missing control/i);
 });
 
@@ -538,8 +583,10 @@ test("findings UI shows generation and empty states", async () => {
   const client = await readFile("components/FindingsClient.tsx", "utf8");
 
   assert.match(client, /Run analysis/);
+  assert.match(client, /Reviewing documents/);
   assert.match(client, /No processed evidence yet/);
   assert.match(client, /No findings generated yet/);
+  assert.match(client, /Process at least one document before running analysis/);
   assert.match(client, /Source excerpts/);
   assert.match(client, /\/api\/findings\/generate/);
   assert.match(client, /\/api\/findings/);
@@ -552,4 +599,137 @@ test("findings UI shows generation and empty states", async () => {
   assert.match(client, /background_context/);
   assert.match(client, /subdued/);
   assert.doesNotMatch(client, /SUPABASE_SERVICE_ROLE_KEY|EMBEDDING_API_KEY|OPENAI_API_KEY/);
+});
+
+test("Markdown report omits unresolved-risk line for covered findings", () => {
+  const report = buildTestReport([
+    reportFinding({
+      status: "covered",
+      summary: "Appears covered based on reviewed documents.",
+      remediation: "Keep this procedure current.",
+      rationale:
+        "The reviewed document states: “notify affected customers after unauthorized access.” Related documents say they do not cover this requirement, which appears to be a scope limitation for those documents rather than a contradiction.",
+    }),
+  ]);
+
+  assert.match(report, /Status: Covered/);
+  assert.doesNotMatch(report, /Risk if unresolved:/);
+  assert.doesNotMatch(report, /Not shown for covered findings/);
+  assert.doesNotMatch(report, /Related documents say they do not cover this requirement/);
+});
+
+test("Markdown report uses uncertainty-aware needs-review remediation", () => {
+  const report = buildTestReport([
+    reportFinding({
+      status: "needs_review",
+      remediation:
+        "The reviewed documents appear to define when affected individuals must be notified. A reviewer should confirm coverage.",
+      rationale: "RegSpan found related policy language, but not enough detail to confirm full coverage.",
+    }),
+  ]);
+
+  assert.match(report, /Recommended next step: Add or point to the procedure that defines/);
+  assert.match(report, /A reviewer should confirm whether another policy already contains this detail/);
+  assert.doesNotMatch(report, /reviewed documents appear to define/i);
+});
+
+test("Markdown report avoids duplicate summary and finding text", () => {
+  const duplicate = "RegSpan found related policy language, but not enough detail to confirm full coverage.";
+  const report = buildTestReport([
+    reportFinding({
+      status: "needs_review",
+      summary: duplicate,
+      rationale: duplicate,
+    }),
+  ]);
+
+  assert.match(report, /Summary: Reviewer confirmation required\./);
+  assert.match(report, /What RegSpan found: Reviewed client evidence is related to Customer notification trigger and timing/);
+  assert.doesNotMatch(report, new RegExp(`Summary: ${duplicate}[\\s\\S]*What RegSpan found: ${duplicate}`));
+});
+
+test("Markdown report limits source excerpts to the top three per finding", () => {
+  const evidence = Array.from({ length: 5 }, (_, index) => ({
+    relationship: "supports",
+    quote: `customer notification quote ${index + 1}`,
+    evidence_quote: null,
+    reason: "The cited section supports customer notification.",
+    filename: `Policy ${index + 1}.pdf`,
+    page_start: index + 1,
+    page_end: index + 1,
+    section_path: "Incident Response > Customer Notification",
+  }));
+  const report = buildTestReport([
+    reportFinding({
+      status: "partial",
+      evidence,
+    }),
+  ]);
+
+  assert.equal((report.match(/^- /gm) ?? []).length, 3);
+  assert.match(report, /customer notification quote 1/);
+  assert.doesNotMatch(report, /customer notification quote 5/);
+});
+
+test("Markdown report prefers quoted excerpts over generic section-only references", () => {
+  const generic = {
+    relationship: "supports",
+    quote: null,
+    evidence_quote: null,
+    reason: "Generic policy purpose section.",
+    filename: "Incident Response Policy.pdf",
+    page_start: 1,
+    page_end: 1,
+    section_path: "Policy > Purpose",
+  };
+  const quoted = {
+    relationship: "supports",
+    quote: "notify affected customers after unauthorized access",
+    evidence_quote: null,
+    reason: "The cited section supports customer notification.",
+    filename: "Incident Response Policy.pdf",
+    page_start: 4,
+    page_end: 4,
+    section_path: "Incident Response > Customer Notification",
+  };
+  const finding = reportFinding({ evidence: [generic, quoted] });
+  const report = buildTestReport([finding]);
+
+  assert.equal(reportEvidenceForFinding(finding)[0], quoted);
+  assert.match(report, /notify affected customers after unauthorized access/);
+  assert.doesNotMatch(report, /Policy > Purpose/);
+});
+
+test("findings UI can copy or export a Markdown report", async () => {
+  const client = await readFile("components/FindingsClient.tsx", "utf8");
+  const reportHelper = await readFile("lib/findingsReport.ts", "utf8");
+
+  assert.match(client, /buildMarkdownReport/);
+  assert.match(client, /getCurrentWorkspace/);
+  assert.match(reportHelper, /# RegSpan Reg S-P Analysis Report/);
+  assert.match(reportHelper, /Workspace: \$\{workspaceReportName\(workspaceName\)\}/);
+  assert.match(reportHelper, /REPORT_WORKSPACE_FALLBACK = "Current workspace"/);
+  assert.doesNotMatch(client, /RegSpan local workspace/);
+  assert.doesNotMatch(reportHelper, /RegSpan local workspace/);
+  assert.match(reportHelper, /Documents reviewed:/);
+  assert.match(reportHelper, /Requirements reviewed:/);
+  assert.match(reportHelper, /High-risk open:/);
+  assert.match(reportHelper, /Needs reviewer confirmation:/);
+  assert.match(reportHelper, /What RegSpan found:/);
+  assert.match(reportHelper, /Recommended next step:/);
+  assert.match(reportHelper, /Client source excerpts:/);
+  assert.match(reportHelper, /Reg S-P basis: \$\{basis\.label\} \(\$\{basis\.href\}\)/);
+  assert.match(client, /navigator\.clipboard\.writeText/);
+  assert.match(client, /Export Markdown/);
+  assert.match(client, /text\/markdown/);
+});
+
+test("findings report keeps client evidence separate from Reg S-P basis", async () => {
+  const reportHelper = await readFile("lib/findingsReport.ts", "utf8");
+
+  assert.match(reportHelper, /Reg S-P basis:/);
+  assert.match(reportHelper, /Client source excerpts:/);
+  assert.match(reportHelper, /No client source excerpts were stored for this finding/);
+  assert.doesNotMatch(reportHelper, /regulatory_source_chunks/);
+  assert.doesNotMatch(reportHelper, /Reg S-P basis:[\s\S]{0,120}Client source excerpts:/);
 });

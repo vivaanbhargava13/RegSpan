@@ -23,6 +23,20 @@ test("documents page updates selected counts and disables empty selected actions
   assert.match(client, /\{selectedCount\} of \{documents\.length\} selected/);
 });
 
+test("documents page renders clear lifecycle labels and next steps", async () => {
+  const client = await readFile("components/DocumentsClient.tsx", "utf8");
+
+  assert.match(client, /Queued for processing/);
+  assert.match(client, /Extracting and classifying evidence/);
+  assert.match(client, /Ready for analysis/);
+  assert.match(client, /Processing failed/);
+  assert.match(client, /Needs reviewer confirmation/);
+  assert.match(client, /Reprocess or replace this document/);
+  assert.match(client, /Evidence sections/);
+  assert.match(client, /prepare source text for evidence review/);
+  assert.doesNotMatch(client, /begin secure extraction, chunking/);
+});
+
 test("documents page sends selected and all bulk actions to the bulk API", async () => {
   const client = await readFile("components/DocumentsClient.tsx", "utf8");
 

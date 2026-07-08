@@ -26,7 +26,39 @@ function logDocumentsDebug(message: string, details?: Record<string, unknown>) {
 }
 
 function formatSectionsLabel(label: string) {
-  return label.replace(/\bchunks\b/gi, "sections");
+  return label.replace(/\bchunks\b/gi, "sections").replace(/\bPending\b/i, "Not processed yet");
+}
+
+function documentLifecycleLabel(status: MockDocument["status"]) {
+  switch (status) {
+    case "Uploaded":
+    case "Queued":
+      return "Queued for processing";
+    case "Processing":
+      return "Extracting and classifying evidence";
+    case "Processed":
+      return "Ready for analysis";
+    case "Failed":
+      return "Processing failed";
+    case "Needs Review":
+      return "Needs reviewer confirmation";
+  }
+}
+
+function documentLifecycleNextStep(status: MockDocument["status"]) {
+  switch (status) {
+    case "Uploaded":
+    case "Queued":
+      return "Reprocess this document to prepare it for analysis.";
+    case "Processing":
+      return "RegSpan is preparing source text for analysis.";
+    case "Processed":
+      return "This document can be included when you run analysis.";
+    case "Failed":
+      return "Reprocess or replace this document.";
+    case "Needs Review":
+      return "Review this document before relying on its evidence.";
+  }
 }
 
 const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
@@ -201,7 +233,7 @@ export function DocumentsClient() {
     );
     writeStoredDocuments(updatedStored);
     setDocuments(updated);
-    setMessage(`Queued ${targetIds.size} document${targetIds.size === 1 ? "" : "s"} for processing.`);
+    setMessage(`Queued ${targetIds.size} document${targetIds.size === 1 ? "" : "s"} for evidence processing.`);
     clearSelection();
   }
 
@@ -266,7 +298,7 @@ export function DocumentsClient() {
         setMessage(
           action === "delete"
             ? `Deleted ${succeeded} document${succeeded === 1 ? "" : "s"}.`
-            : `Queued ${succeeded} document${succeeded === 1 ? "" : "s"} for processing.`,
+            : `Queued ${succeeded} document${succeeded === 1 ? "" : "s"} for evidence processing.`,
         );
       }
       await loadDocuments();
@@ -522,7 +554,7 @@ export function DocumentsClient() {
           <div className="mx-auto grid size-12 place-items-center rounded-2xl bg-app-accent-soft text-app-accent ring-1 ring-app-accent/10" aria-hidden="true">↥</div>
           <h2 className="mt-4 text-base font-semibold text-app-text">No documents yet</h2>
           <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-app-muted">
-            Upload a policy or procedure to begin secure extraction, chunking, and evidence review.
+            Upload a policy or procedure to prepare source text for evidence review.
           </p>
         </div>
       ) : (
@@ -533,7 +565,7 @@ export function DocumentsClient() {
             "Type",
             "Review status",
             "Uploaded",
-            "Sections",
+            "Evidence sections",
             "Actions",
           ]}
           minWidth={isSelectMode ? "min-w-[900px]" : "min-w-[760px]"}
@@ -578,7 +610,12 @@ export function DocumentsClient() {
               </td>
               <td className="px-4 py-4 text-app-muted">{document.type}</td>
               <td className="px-4 py-4">
-                <StatusBadge>{document.status}</StatusBadge>
+                <div className="space-y-1">
+                  <StatusBadge>{documentLifecycleLabel(document.status)}</StatusBadge>
+                  <p className="max-w-[220px] text-xs leading-5 text-app-muted">
+                    {documentLifecycleNextStep(document.status)}
+                  </p>
+                </div>
               </td>
               <td className="px-4 py-4 text-app-muted">{document.uploaded}</td>
               <td className="px-4 py-4 text-app-muted">{formatSectionsLabel(document.chunks)}</td>

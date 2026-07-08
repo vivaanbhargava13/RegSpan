@@ -2,14 +2,16 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-test("document detail copy describes the real ingestion pipeline", async () => {
+test("document detail copy describes user-facing processing states", async () => {
   const source = await readFile("components/DocumentDetailClient.tsx", "utf8");
 
-  assert.match(source, /PDF text extraction/);
-  assert.match(source, /PDF text was extracted by the secure ingestion worker\./);
-  assert.match(source, /Document chunks were generated from extracted PDF text\./);
-  assert.match(source, /Requirement matching/);
-  assert.match(source, /requirement matching (?:has not been implemented|is not connected)/i);
+  assert.match(source, /Prepare source text/);
+  assert.match(source, /Evidence sections/);
+  assert.match(source, /Ready for analysis/);
+  assert.match(source, /RegSpan could not prepare usable text from this PDF/);
+  assert.match(source, /Reprocess the document to prepare source text for analysis/);
+  assert.match(source, /Evidence sections are ready\. Run Analysis/);
+  assert.doesNotMatch(source, /secure ingestion worker|Document chunks were generated|Chunking|Extracted chunks|Processed chunks|Requirement matching/i);
 
   for (const staleCopy of [
     "Demo complete",
@@ -22,4 +24,3 @@ test("document detail copy describes the real ingestion pipeline", async () => {
     assert.doesNotMatch(source, new RegExp(staleCopy, "i"));
   }
 });
-

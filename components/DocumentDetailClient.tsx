@@ -58,7 +58,7 @@ function validateSelectedPdf(file: File) {
 }
 
 function formatSectionsLabel(label: string) {
-  return label.replace(/\bchunks\b/gi, "sections");
+  return label.replace(/\bchunks\b/gi, "sections").replace(/\bPending\b/i, "Not processed yet");
 }
 
 function formatPageRange(pageStart: number | null, pageEnd: number | null) {
@@ -106,9 +106,9 @@ function formatHierarchySummary(summary: HierarchySummary) {
 }
 
 const requirementMatchingStep: TimelineStep = {
-  label: "Requirement matching",
-  status: "Not connected",
-  detail: "Reg S-P requirement matching has not been implemented yet.",
+  label: "Ready for analysis",
+  status: "Pending",
+  detail: "Run analysis after evidence sections are ready.",
   state: "pending",
 };
 
@@ -116,8 +116,8 @@ function getTimeline(status: DocumentStatus, chunkCount: number): TimelineStep[]
   if (status === "Uploaded") {
     return [
       { label: "Uploaded", status: "Complete", detail: "File and document details are saved.", state: "complete" },
-      { label: "PDF text extraction", status: "Ready", detail: "Start processing to extract text from the stored PDF.", state: "pending" },
-      { label: "Chunking", status: "Pending", detail: "Document chunks will be generated after PDF text extraction.", state: "pending" },
+      { label: "Prepare source text", status: "Ready", detail: "Start processing to prepare source text from the stored PDF.", state: "pending" },
+      { label: "Evidence sections", status: "Pending", detail: "Evidence sections will be prepared after source text is available.", state: "pending" },
       requirementMatchingStep,
     ];
   }
@@ -126,30 +126,30 @@ function getTimeline(status: DocumentStatus, chunkCount: number): TimelineStep[]
     return [
       { label: "Uploaded", status: "Complete", detail: "File and document details are saved.", state: "complete" },
       {
-        label: "PDF text extraction",
+        label: "Prepare source text",
         status: "Complete",
         detail: chunkCount > 0
-          ? "PDF text was extracted by the secure ingestion worker."
-          : "PDF processing completed, but no extracted chunks are currently available.",
+          ? "Source text is ready for evidence review."
+          : "Processing completed, but no evidence sections are currently available.",
         state: "complete",
       },
       {
-        label: "Chunking",
-        status: chunkCount > 0 ? "Complete" : "No chunks",
+        label: "Evidence sections",
+        status: chunkCount > 0 ? "Complete" : "Needs review",
         detail: chunkCount > 0
-          ? "Document chunks were generated from extracted PDF text."
-          : "Reprocess this document to generate extracted text chunks.",
+          ? "Evidence sections are ready for analysis."
+          : "Reprocess this document to prepare evidence sections.",
         state: chunkCount > 0 ? "complete" : "review",
       },
-      requirementMatchingStep,
+      { label: "Ready for analysis", status: "Ready", detail: "This document can be included when you run Analysis.", state: "complete" },
     ];
   }
 
   if (status === "Processing") {
     return [
       { label: "Uploaded", status: "Complete", detail: "File and document details are saved.", state: "complete" },
-      { label: "PDF text extraction", status: "Processing", detail: "The secure ingestion worker is extracting text from the PDF.", state: "current" },
-      { label: "Chunking", status: "Pending", detail: "Chunks will be stored after text extraction completes.", state: "pending" },
+      { label: "Prepare source text", status: "Processing", detail: "RegSpan is preparing source text from this PDF.", state: "current" },
+      { label: "Evidence sections", status: "Pending", detail: "Evidence sections will be available after processing completes.", state: "pending" },
       requirementMatchingStep,
     ];
   }
@@ -157,8 +157,8 @@ function getTimeline(status: DocumentStatus, chunkCount: number): TimelineStep[]
   if (status === "Needs Review") {
     return [
       { label: "Uploaded", status: "Complete", detail: "File and document details are saved.", state: "complete" },
-      { label: "PDF text extraction", status: "Needs review", detail: "Extracted PDF text requires reviewer attention.", state: "review" },
-      { label: "Chunking", status: "Needs review", detail: chunkCount > 0 ? "Review the generated chunks before continuing." : "No extracted chunks are available for review.", state: "review" },
+      { label: "Prepare source text", status: "Needs review", detail: "Prepared source text requires reviewer attention.", state: "review" },
+      { label: "Evidence sections", status: "Needs review", detail: chunkCount > 0 ? "Review the evidence sections before continuing." : "No evidence sections are available for review.", state: "review" },
       requirementMatchingStep,
     ];
   }
@@ -166,34 +166,34 @@ function getTimeline(status: DocumentStatus, chunkCount: number): TimelineStep[]
   if (status === "Failed") {
     return [
       { label: "Uploaded", status: "Complete", detail: "File and document details are saved.", state: "complete" },
-      { label: "PDF text extraction", status: "Failed", detail: "The ingestion worker could not extract usable text from this PDF.", state: "blocked" },
-      { label: "Chunking", status: "Blocked", detail: "Chunks were not generated because PDF text extraction failed.", state: "blocked" },
+      { label: "Prepare source text", status: "Failed", detail: "RegSpan could not prepare usable text from this PDF.", state: "blocked" },
+      { label: "Evidence sections", status: "Blocked", detail: "Evidence sections are unavailable because processing failed.", state: "blocked" },
       requirementMatchingStep,
     ];
   }
 
   return [
     { label: "Uploaded", status: "Complete", detail: "File and document details are saved.", state: "complete" },
-    { label: "PDF text extraction", status: "Queued", detail: "The document is queued for secure PDF text extraction.", state: "current" },
-    { label: "Chunking", status: "Pending", detail: "Chunking will begin after the worker extracts PDF text.", state: "pending" },
+    { label: "Prepare source text", status: "Queued", detail: "The document is queued for source-text preparation.", state: "current" },
+    { label: "Evidence sections", status: "Pending", detail: "Evidence sections will be prepared after source text is available.", state: "pending" },
     requirementMatchingStep,
   ];
 }
 
 function getChunkEmptyState(status: DocumentStatus) {
   if (status === "Processed") {
-    return "Processing completed, but no extracted chunks are available. Reprocess the document to run PDF extraction and chunking again.";
+    return "Processing completed, but no evidence sections are available. Reprocess the document to prepare source text again.";
   }
   if (status === "Processing") {
-    return "PDF text extraction and chunking are currently in progress.";
+    return "Source text and evidence sections are currently being prepared.";
   }
   if (status === "Queued") {
-    return "This document is queued. Extracted chunks will appear after processing completes.";
+    return "This document is queued. Evidence sections will appear after processing completes.";
   }
   if (status === "Failed") {
-    return "Extracted chunks are unavailable because PDF processing failed. Reprocess the document to try again.";
+    return "Evidence sections are unavailable because processing failed. Reprocess the document to try again.";
   }
-  return "Start processing this document to extract PDF text and generate chunks.";
+  return "Start processing this document to prepare source text and evidence sections.";
 }
 
 const stateClasses: Record<TimelineState, string> = {
@@ -271,7 +271,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
 
           if (chunksResult.error || hierarchyResult.error) {
             setWarning(
-              "Document metadata loaded, but processed data is unavailable. Confirm the ingestion migration has been applied.",
+              "Document metadata loaded, but processed evidence is unavailable. Reprocess this document or confirm local setup is complete.",
             );
           }
 
@@ -343,7 +343,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
         throw new Error(result.error || "Processing could not be started.");
       }
 
-      setMessage("Document processing was queued securely.");
+      setMessage("Document processing was queued. RegSpan will prepare source text for analysis.");
       router.refresh();
       setRefreshKey((current) => current + 1);
     } catch (actionError) {
@@ -402,7 +402,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
       if (result.cleanupWarning) {
         setWarning("Replacement succeeded; old object cleanup will need server follow-up.");
       }
-      setMessage("Replacement uploaded. Reprocess the document to extract text and generate chunks.");
+      setMessage("Replacement uploaded. Reprocess the document to prepare source text for analysis.");
       setReplacementFile(null);
       setIsReplaceOpen(false);
       setRefreshKey((current) => current + 1);
@@ -598,7 +598,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
             { label: "Uploaded", value: document.uploaded },
             { label: "Sections", value: formatSectionsLabel(document.chunks) },
             { label: "Review status", value: document.status },
-            ...(chunks.length > 0 ? [{ label: "Processed chunks", value: String(chunks.length) }] : []),
+            ...(chunks.length > 0 ? [{ label: "Evidence sections", value: String(chunks.length) }] : []),
             ...(hierarchySummary !== null
               ? [{ label: "Hierarchy", value: formatHierarchySummary(hierarchySummary) }]
               : []),
@@ -614,7 +614,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
 
         {document.storagePath ? (
           <div className="mt-5 rounded-xl border border-app-border bg-app-elevated/45 p-4">
-            <h2 className="text-sm font-semibold text-app-text">Storage path</h2>
+            <h2 className="text-sm font-semibold text-app-text">Stored file reference</h2>
             <p className="mt-2 overflow-x-auto rounded-lg border border-app-border bg-app-surface px-3 py-2 font-mono text-[11px] text-app-muted" title={document.storagePath}>
               {document.storagePath}
             </p>
@@ -659,7 +659,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-app-accent">Evidence workspace</p>
-                <h2 className="mt-1 app-section-title">Extracted chunks</h2>
+                <h2 className="mt-1 app-section-title">Evidence sections</h2>
               </div>
               {chunks.length > 0 ? <span className="rounded-full bg-app-accent-soft px-2.5 py-1 text-xs font-semibold text-app-accent">{chunks.length} stored</span> : null}
             </div>
@@ -671,7 +671,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                       <div>
                         <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-app-accent">
-                          Evidence chunk {String(chunk.chunk_index).padStart(3, "0")}
+                          Evidence section {String(chunk.chunk_index + 1).padStart(2, "0")}
                         </span>
                         <h3 className="mt-1 text-sm font-semibold text-app-text">
                           {chunk.section_path || chunk.section_heading || "Unsectioned content"}
@@ -696,13 +696,15 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
 
           <div className="app-card p-5 lg:p-6">
             <div className="flex items-center justify-between gap-3">
-              <h2 className="app-section-title">Requirement matching</h2>
-              <span className="rounded-full border border-app-border bg-app-elevated px-2.5 py-1 text-[11px] font-semibold text-app-muted">Not connected</span>
+              <h2 className="app-section-title">Analysis readiness</h2>
+              <span className="rounded-full border border-app-border bg-app-elevated px-2.5 py-1 text-[11px] font-semibold text-app-muted">
+                {chunks.length > 0 ? "Ready" : "Waiting"}
+              </span>
             </div>
             <p className="mt-4 rounded-xl border border-dashed border-app-border-strong bg-app-elevated/55 p-4 text-sm leading-6 text-app-muted">
               {chunks.length > 0
-                ? "Reg S-P requirement matching is not connected yet. Extracted chunks are ready for a future matching workflow."
-                : "Reg S-P requirement matching is not connected yet."}
+                ? "Evidence sections are ready. Run Analysis to compare this client document against the Reg S-P requirements."
+                : "Prepare evidence sections before running Analysis."}
             </p>
           </div>
         </div>
