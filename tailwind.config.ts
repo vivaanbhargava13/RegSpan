@@ -4,6 +4,7 @@ const config: Config = {
   content: [
     "./app/**/*.{js,ts,jsx,tsx,mdx}",
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
+    "./lib/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
     extend: {
@@ -58,7 +59,8 @@ const config: Config = {
         "light-danger-hover": "#991b1b",
       },
       boxShadow: {
-        soft: "0 18px 50px rgba(30, 49, 42, 0.08)",
+        soft: "0 10px 24px rgba(15, 23, 42, 0.08)",
+        "app-border": "0 1px 0 rgb(var(--app-border) / 0.72)",
         "app-soft": "var(--app-shadow)",
         "app-card": "var(--app-card-shadow)",
         "app-float": "var(--app-float-shadow)",

@@ -113,7 +113,7 @@ export function AppShell({ children, showInternalDebugLinks = false }: AppShellP
   if (workspaceError) {
     return (
       <main data-theme={theme} className="flex min-h-screen items-center justify-center bg-app-bg px-6">
-        <div className="max-w-lg rounded-2xl border border-app-danger/20 bg-app-shell px-6 py-5 text-sm font-semibold text-app-danger shadow-app-card">
+        <div className="max-w-lg rounded-lg border border-app-danger/20 bg-app-shell px-6 py-5 text-sm font-semibold text-app-danger shadow-app-card">
           {workspaceError}
         </div>
       </main>
@@ -132,15 +132,16 @@ export function AppShell({ children, showInternalDebugLinks = false }: AppShellP
   }
 
   return (
-    <div
-      data-theme={theme}
-      className="min-h-screen bg-app-bg text-app-text [background-image:radial-gradient(circle_at_top_right,rgb(var(--app-accent-soft)/0.55),transparent_34rem)]"
-    >
+    <div data-theme={theme} className="min-h-screen bg-app-bg text-app-text">
       <div className="flex min-h-screen">
         <Sidebar showInternalDebugLinks={showInternalDebugLinks} />
         <div className="min-w-0 flex-1">
-          <Topbar session={session} workspaceName={workspace.name} />
-          <main className="mx-auto w-full max-w-[1600px] px-4 py-7 sm:px-6 lg:px-10 lg:py-10">
+          <Topbar
+            session={session}
+            showInternalDebugLinks={showInternalDebugLinks}
+            workspaceName={workspace.name}
+          />
+          <main className="mx-auto w-full max-w-[1520px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
             {children}
           </main>
         </div>

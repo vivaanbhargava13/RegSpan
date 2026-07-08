@@ -4,18 +4,18 @@
 
 :root {
   color-scheme: light;
-  background: rgb(244 247 251);
-  --app-bg: 244 247 251;
+  background: rgb(248 250 252);
+  --app-bg: 248 250 252;
   --app-shell: 255 255 255;
   --app-surface: 255 255 255;
-  --app-elevated: 247 249 252;
+  --app-elevated: 241 245 249;
   --app-border: 226 232 240;
   --app-border-strong: 203 213 225;
   --app-text: 15 23 42;
-  --app-muted: 71 85 105;
+  --app-muted: 51 65 85;
   --app-subtle: 100 116 139;
-  --app-accent: 29 78 216;
-  --app-accent-hover: 30 64 175;
+  --app-accent: 30 64 175;
+  --app-accent-hover: 29 78 216;
   --app-accent-soft: 239 246 255;
   --app-success: 4 120 87;
   --app-success-soft: 236 253 245;
@@ -26,19 +26,19 @@
   --app-danger-hover: 153 27 27;
   --app-review: 109 40 217;
   --app-review-soft: 245 243 255;
-  --app-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 10px 30px rgba(15, 23, 42, 0.05);
-  --app-card-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.04);
-  --app-float-shadow: 0 18px 45px rgba(15, 23, 42, 0.12);
+  --app-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --app-card-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --app-float-shadow: 0 16px 36px rgba(15, 23, 42, 0.14);
 }
 
 [data-theme="dark"] {
   color-scheme: dark;
-  --app-bg: 9 11 16;
-  --app-shell: 13 17 23;
-  --app-surface: 17 24 39;
-  --app-elevated: 24 34 51;
-  --app-border: 43 54 72;
-  --app-border-strong: 70 86 111;
+  --app-bg: 2 6 23;
+  --app-shell: 15 23 42;
+  --app-surface: 15 23 42;
+  --app-elevated: 30 41 59;
+  --app-border: 51 65 85;
+  --app-border-strong: 71 85 105;
   --app-text: 243 246 251;
   --app-muted: 170 181 197;
   --app-subtle: 125 138 156;
@@ -54,24 +54,24 @@
   --app-danger-hover: 74 28 33;
   --app-review: 196 181 253;
   --app-review-soft: 37 28 67;
-  --app-shadow: 0 1px 2px rgba(0, 0, 0, 0.18), 0 14px 36px rgba(0, 0, 0, 0.2);
-  --app-card-shadow: 0 1px 2px rgba(0, 0, 0, 0.16), 0 10px 28px rgba(0, 0, 0, 0.16);
+  --app-shadow: 0 1px 2px rgba(0, 0, 0, 0.24);
+  --app-card-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
   --app-float-shadow: 0 22px 52px rgba(0, 0, 0, 0.34);
 }
 
 [data-theme="light"] {
   color-scheme: light;
-  --app-bg: 244 247 251;
+  --app-bg: 248 250 252;
   --app-shell: 255 255 255;
   --app-surface: 255 255 255;
-  --app-elevated: 247 249 252;
+  --app-elevated: 241 245 249;
   --app-border: 226 232 240;
   --app-border-strong: 203 213 225;
   --app-text: 15 23 42;
-  --app-muted: 71 85 105;
+  --app-muted: 51 65 85;
   --app-subtle: 100 116 139;
-  --app-accent: 29 78 216;
-  --app-accent-hover: 30 64 175;
+  --app-accent: 30 64 175;
+  --app-accent-hover: 29 78 216;
   --app-accent-soft: 239 246 255;
   --app-success: 4 120 87;
   --app-success-soft: 236 253 245;
@@ -82,9 +82,9 @@
   --app-danger-hover: 153 27 27;
   --app-review: 109 40 217;
   --app-review-soft: 245 243 255;
-  --app-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 10px 30px rgba(15, 23, 42, 0.05);
-  --app-card-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.04);
-  --app-float-shadow: 0 18px 45px rgba(15, 23, 42, 0.12);
+  --app-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --app-card-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --app-float-shadow: 0 16px 36px rgba(15, 23, 42, 0.14);
 }
 
 * {
@@ -123,31 +123,41 @@ a {
 }
 
 @layer components {
+  .app-surface {
+    @apply rounded-lg border border-app-border bg-app-surface shadow-app-card;
+  }
+
+  .app-panel {
+    @apply rounded-lg border border-app-border bg-app-shell shadow-app-card;
+  }
+
   .app-card {
-    @apply rounded-2xl border border-app-border bg-app-surface shadow-app-card;
+    @apply rounded-lg border border-app-border bg-app-surface shadow-app-card;
   }
 
   .app-card-subtle {
-    @apply rounded-xl border border-app-border bg-app-elevated;
+    @apply rounded-lg border border-app-border bg-app-elevated;
   }
 
   [data-theme="light"] .metric-card {
-    border-color: rgb(var(--app-border-strong) / 0.72);
-    box-shadow:
-      0 1px 2px rgba(15, 23, 42, 0.06),
-      0 10px 28px rgba(15, 23, 42, 0.075);
+    border-color: rgb(var(--app-border));
+    box-shadow: var(--app-card-shadow);
   }
 
   .app-empty-state {
-    @apply rounded-2xl border border-dashed border-app-border-strong bg-app-surface px-6 py-10 text-center shadow-app-card;
+    @apply rounded-lg border border-dashed border-app-border-strong bg-app-surface px-6 py-9 text-center shadow-app-card;
   }
 
   .app-field {
-    @apply w-full rounded-xl border border-app-border bg-app-surface px-3.5 py-2.5 text-sm text-app-text shadow-sm outline-none transition placeholder:text-app-subtle focus:border-app-accent focus:ring-4 focus:ring-app-accent-soft;
+    @apply w-full rounded-lg border border-app-border bg-app-surface px-3.5 py-2.5 text-sm text-app-text shadow-sm outline-none transition placeholder:text-app-subtle focus:border-app-accent focus:ring-4 focus:ring-app-accent-soft;
   }
 
   .app-section-title {
-    @apply text-base font-semibold tracking-[-0.01em] text-app-text;
+    @apply text-base font-semibold text-app-text;
+  }
+
+  .app-focus-ring {
+    @apply focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent;
   }
 
   .requirement-card {

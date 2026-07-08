@@ -15,9 +15,19 @@ export const appNavLinks = [
   { label: "Settings", href: "/settings", icon: "settings" },
 ];
 
-const primaryNavLinks = appNavLinks.filter((link) => link.icon !== "settings");
+const primaryNavLinks = appNavLinks.filter((link) => link.icon !== "settings" && link.href !== "/reports");
 const administrationNavLinks = appNavLinks.filter((link) => link.icon === "settings");
 const internalDebugHrefs = new Set(["/retrieval-debug", "/requirement-debug"]);
+
+export function getVisiblePrimaryNavLinks(showInternalDebugLinks = false) {
+  return showInternalDebugLinks
+    ? primaryNavLinks
+    : primaryNavLinks.filter((link) => !internalDebugHrefs.has(link.href));
+}
+
+export function getVisibleMobileNavLinks(showInternalDebugLinks = false) {
+  return [...getVisiblePrimaryNavLinks(showInternalDebugLinks), ...administrationNavLinks];
+}
 
 function NavIcon({ icon }: { icon: string }) {
   const iconClass = "size-[18px]";
@@ -129,9 +139,9 @@ function NavGroup({
               key={link.href}
               href={link.href}
               aria-current={isActive ? "page" : undefined}
-              className={`group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold outline-none transition duration-150 focus-visible:ring-4 focus-visible:ring-app-accent-soft ${
+              className={`group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold outline-none transition-colors duration-150 focus-visible:ring-4 focus-visible:ring-app-accent-soft ${
                 isActive
-                  ? "bg-app-accent-soft text-app-accent shadow-sm ring-1 ring-app-accent/15"
+                  ? "bg-app-accent-soft text-app-accent ring-1 ring-app-accent/15"
                   : "text-app-muted hover:bg-app-elevated hover:text-app-text"
               }`}
             >
@@ -144,8 +154,8 @@ function NavGroup({
               <span
                 className={`grid size-8 place-items-center rounded-lg transition ${
                   isActive
-                    ? "bg-app-shell/80 text-app-accent"
-                    : "text-app-subtle group-hover:bg-app-shell group-hover:text-app-text"
+                    ? "bg-app-shell text-app-accent"
+                    : "text-app-subtle group-hover:text-app-text"
                 }`}
               >
                 <NavIcon icon={link.icon} />
@@ -164,30 +174,28 @@ export function Sidebar({
 }: {
   showInternalDebugLinks?: boolean;
 }) {
-  const visiblePrimaryNavLinks = showInternalDebugLinks
-    ? primaryNavLinks
-    : primaryNavLinks.filter((link) => !internalDebugHrefs.has(link.href));
+  const visiblePrimaryNavLinks = getVisiblePrimaryNavLinks(showInternalDebugLinks);
 
   return (
-    <aside className="sticky top-0 hidden h-screen w-[268px] shrink-0 flex-col border-r border-app-border bg-app-shell px-4 py-5 shadow-[1px_0_0_rgb(var(--app-border)/0.35)] md:flex">
-      <div className="rounded-[22px] border border-app-border bg-gradient-to-br from-app-surface to-app-elevated p-3 shadow-app-card">
+    <aside className="sticky top-0 hidden h-screen w-[260px] shrink-0 flex-col border-r border-app-border bg-app-shell px-4 py-4 md:flex">
+      <div className="rounded-lg border border-app-border bg-app-surface p-2">
         <Logo href="/dashboard" tone="dark" className="w-full px-1 py-1" showTagline />
       </div>
 
-      <div className="mt-7 space-y-7">
+      <div className="mt-6 space-y-6">
         <NavGroup label="Workspace" links={visiblePrimaryNavLinks} />
         <div className="h-px bg-app-border/70" />
         <NavGroup label="Administration" links={administrationNavLinks} />
       </div>
 
       <div className="mt-auto pb-3">
-        <div className="rounded-[22px] border border-app-border bg-app-elevated/80 p-4 shadow-sm">
+        <div className="rounded-lg border border-app-border bg-app-elevated/70 p-3">
           <div className="flex items-start gap-3">
-            <span className="mt-1 grid size-7 shrink-0 place-items-center rounded-full bg-app-success-soft text-app-success ring-1 ring-app-success/15">
-              <span className="size-2 rounded-full bg-app-success" />
+            <span className="mt-1 grid size-6 shrink-0 place-items-center rounded-md border border-app-success/20 bg-app-success-soft text-app-success">
+              <span className="size-1.5 rounded-full bg-app-success" />
             </span>
             <div className="min-w-0">
-              <div className="text-sm font-semibold tracking-[-0.01em] text-app-text">
+              <div className="text-sm font-semibold text-app-text">
                 Protected workspace
               </div>
               <p className="mt-1.5 text-xs leading-5 text-app-subtle">

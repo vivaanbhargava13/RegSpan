@@ -22,15 +22,15 @@ export function Logo({
     <Link
       href={href}
       aria-label="RegSpan"
-      className={`group inline-flex items-center gap-3 rounded-2xl outline-none transition focus-visible:ring-4 focus-visible:ring-app-accent-soft ${
+      className={`group inline-flex items-center gap-3 rounded-lg outline-none transition-colors focus-visible:ring-4 focus-visible:ring-app-accent-soft ${
         isDark ? "text-app-text" : "text-ink"
       } ${className}`}
     >
       <span
-        className={`grid size-10 place-items-center rounded-[15px] border shadow-sm transition duration-200 group-hover:scale-[1.02] ${
+        className={`grid size-9 place-items-center rounded-lg border transition-colors duration-150 ${
           isDark
-            ? "border-app-accent/20 bg-app-accent-soft shadow-app-card"
-            : "border-line bg-white shadow-app-card"
+            ? "border-app-accent/20 bg-app-accent-soft"
+            : "border-line bg-white"
         }`}
       >
         <Image
@@ -45,7 +45,7 @@ export function Logo({
       </span>
       {variant === "full" ? (
         <span className="flex flex-col leading-none">
-          <span className="text-[20px] font-bold tracking-[-0.045em] text-app-text">
+          <span className="text-[19px] font-bold tracking-[-0.025em] text-app-text">
             RegSpan
           </span>
           {showTagline ? (
