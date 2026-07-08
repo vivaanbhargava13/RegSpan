@@ -18,7 +18,7 @@ test("documents page updates selected counts and disables empty selected actions
 
   assert.match(client, /const selectedCount = selectedDocumentIds\.size/);
   assert.match(client, /`Delete selected \(\$\{selectedCount\}\)`/);
-  assert.match(client, /`Reprocess selected \(\$\{selectedCount\}\)`/);
+  assert.match(client, /`Prepare selected \(\$\{selectedCount\}\)`/);
   assert.match(client, /disabled=\{selectedCount === 0 \|\| isBulkBusy\}/);
   assert.match(client, /\{selectedCount\} of \{documents\.length\} selected/);
 });
@@ -26,13 +26,13 @@ test("documents page updates selected counts and disables empty selected actions
 test("documents page renders clear lifecycle labels and next steps", async () => {
   const client = await readFile("components/DocumentsClient.tsx", "utf8");
 
-  assert.match(client, /Queued for processing/);
-  assert.match(client, /Extracting and classifying evidence/);
+  assert.match(client, /Preparing source text/);
+  assert.match(client, /Prepare this document before running analysis/);
   assert.match(client, /Ready for analysis/);
   assert.match(client, /Processing failed/);
   assert.match(client, /Needs reviewer confirmation/);
   assert.match(client, /Reprocess or replace this document/);
-  assert.match(client, /Evidence sections/);
+  assert.match(client, /Source sections/);
   assert.match(client, /prepare source text for evidence review/);
   assert.doesNotMatch(client, /begin secure extraction, chunking/);
 });

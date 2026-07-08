@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { Alert } from "@/components/Alert";
 import { Button } from "@/components/Button";
 import { DataTable } from "@/components/DataTable";
+import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
 import {
   documentTypes,
@@ -15,7 +17,8 @@ import {
   type SupabaseDocumentRecord,
   writeStoredDocuments,
 } from "@/components/mockDocuments";
-import { StatusBadge } from "@/components/StatusBadge";
+import { LifecycleBadge } from "@/components/StatusBadge";
+import { Surface } from "@/components/Surface";
 import { getBrowserSupabaseClient, isSupabaseConfigured as hasSupabaseEnv } from "@/components/supabaseClient";
 import { getCurrentWorkspace, type CurrentWorkspace } from "@/lib/workspaces";
 
@@ -26,16 +29,16 @@ function logDocumentsDebug(message: string, details?: Record<string, unknown>) {
 }
 
 function formatSectionsLabel(label: string) {
-  return label.replace(/\bchunks\b/gi, "sections").replace(/\bPending\b/i, "Not processed yet");
+  return label.replace(/\bchunks\b/gi, "sections").replace(/\bPending\b/i, "Not prepared yet");
 }
 
 function documentLifecycleLabel(status: MockDocument["status"]) {
   switch (status) {
     case "Uploaded":
     case "Queued":
-      return "Queued for processing";
+      return "Preparing source text";
     case "Processing":
-      return "Extracting and classifying evidence";
+      return "Preparing source text";
     case "Processed":
       return "Ready for analysis";
     case "Failed":
@@ -49,7 +52,7 @@ function documentLifecycleNextStep(status: MockDocument["status"]) {
   switch (status) {
     case "Uploaded":
     case "Queued":
-      return "Reprocess this document to prepare it for analysis.";
+      return "Prepare this document before running analysis.";
     case "Processing":
       return "RegSpan is preparing source text for analysis.";
     case "Processed":
@@ -233,7 +236,7 @@ export function DocumentsClient() {
     );
     writeStoredDocuments(updatedStored);
     setDocuments(updated);
-    setMessage(`Queued ${targetIds.size} document${targetIds.size === 1 ? "" : "s"} for evidence processing.`);
+    setMessage(`Queued ${targetIds.size} document${targetIds.size === 1 ? "" : "s"} for source text preparation.`);
     clearSelection();
   }
 
@@ -298,7 +301,7 @@ export function DocumentsClient() {
         setMessage(
           action === "delete"
             ? `Deleted ${succeeded} document${succeeded === 1 ? "" : "s"}.`
-            : `Queued ${succeeded} document${succeeded === 1 ? "" : "s"} for evidence processing.`,
+            : `Queued ${succeeded} document${succeeded === 1 ? "" : "s"} for source text preparation.`,
         );
       }
       await loadDocuments();
@@ -399,84 +402,83 @@ export function DocumentsClient() {
         description="Add the policies, procedures, vendor materials, and incident response plans your team wants reviewed."
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            {isSelectMode ? (
-              <>
-                <Button
-                  variant="appSecondary"
-                  onClick={() => void runBulkAction("delete", "selected")}
-                  disabled={selectedCount === 0 || isBulkBusy}
-                  className="border-app-danger/30 text-app-danger hover:bg-app-danger-soft"
-                >
-                  {bulkAction === "delete-selected" ? "Deleting..." : `Delete selected (${selectedCount})`}
-                </Button>
-                <Button
-                  variant="appSecondary"
-                  onClick={() => void runBulkAction("process", "selected")}
-                  disabled={selectedCount === 0 || isBulkBusy}
-                >
-                  {bulkAction === "process-selected" ? "Reprocessing..." : `Reprocess selected (${selectedCount})`}
-                </Button>
-                <Button variant="appSecondary" onClick={clearSelection} disabled={isBulkBusy}>
-                  Cancel
-                </Button>
-              </>
-            ) : (
-              <>
-                <Button variant="appSecondary" onClick={() => setIsSelectMode(true)} disabled={!hasDocuments || isBulkBusy}>
-                  Select
-                </Button>
-                <Button
-                  variant="appSecondary"
-                  onClick={() => void runBulkAction("delete", "all")}
-                  disabled={!hasDocuments || isBulkBusy}
-                  className="border-app-danger/30 text-app-danger hover:bg-app-danger-soft"
-                >
-                  {bulkAction === "delete-all" ? "Deleting..." : "Delete all"}
-                </Button>
-                <Button
-                  variant="appSecondary"
-                  onClick={() => void runBulkAction("process", "all")}
-                  disabled={!hasDocuments || isBulkBusy}
-                >
-                  {bulkAction === "process-all" ? "Reprocessing..." : "Reprocess all"}
-                </Button>
-                <Button variant="appPrimary" onClick={() => setIsUploadOpen(true)} disabled={isBulkBusy}>
-                  Upload document
-                </Button>
-              </>
-            )}
+            <Button variant="appSecondary" onClick={() => setIsSelectMode(true)} disabled={!hasDocuments || isBulkBusy || isSelectMode}>
+              Select documents
+            </Button>
+            <Button variant="appPrimary" onClick={() => setIsUploadOpen(true)} disabled={isBulkBusy}>
+              Upload document
+            </Button>
           </div>
         }
       />
 
       {warning ? (
-        <div className="flex gap-3 rounded-xl border border-app-warning/20 bg-app-warning-soft px-4 py-3 text-sm font-medium text-app-warning shadow-sm">
-          <span aria-hidden="true" className="mt-2 size-2 shrink-0 rounded-full bg-app-warning" />
-          <p>{warning}</p>
-        </div>
+        <Alert tone="warning">{warning}</Alert>
       ) : null}
 
       {error ? (
-        <div className="flex gap-3 rounded-xl border border-app-danger/20 bg-app-danger-soft px-4 py-3 text-sm font-medium text-app-danger shadow-sm">
-          <span aria-hidden="true" className="mt-2 size-2 shrink-0 rounded-full bg-app-danger" />
-          <p>{error}</p>
-        </div>
+        <Alert tone="danger">{error}</Alert>
       ) : null}
 
       {message ? (
-        <div className="flex gap-3 rounded-xl border border-app-success/20 bg-app-success-soft px-4 py-3 text-sm font-medium text-app-success shadow-sm">
-          <span aria-hidden="true" className="mt-2 size-2 shrink-0 rounded-full bg-app-success" />
-          <p>{message}</p>
-        </div>
+        <Alert tone="success">{message}</Alert>
+      ) : null}
+
+      {isSelectMode ? (
+        <Surface as="section" className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between" padding="md">
+          <label className="flex items-center gap-3 text-sm font-semibold text-app-text">
+            <input
+              type="checkbox"
+              checked={allVisibleSelected}
+              onChange={toggleSelectAll}
+              aria-label="Select all documents"
+              className="size-4 rounded border-app-border text-app-accent focus:ring-app-accent"
+            />
+            <span>{selectedCount} of {documents.length} selected</span>
+          </label>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="danger"
+              onClick={() => void runBulkAction("delete", "selected")}
+              disabled={selectedCount === 0 || isBulkBusy}
+            >
+              {bulkAction === "delete-selected" ? "Deleting..." : `Delete selected (${selectedCount})`}
+            </Button>
+            <Button
+              variant="appSecondary"
+              onClick={() => void runBulkAction("process", "selected")}
+              disabled={selectedCount === 0 || isBulkBusy}
+            >
+              {bulkAction === "process-selected" ? "Preparing..." : `Prepare selected (${selectedCount})`}
+            </Button>
+            <Button
+              variant="appSecondary"
+              onClick={() => void runBulkAction("process", "all")}
+              disabled={!hasDocuments || isBulkBusy}
+            >
+              {bulkAction === "process-all" ? "Preparing..." : "Prepare all"}
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => void runBulkAction("delete", "all")}
+              disabled={!hasDocuments || isBulkBusy}
+            >
+              {bulkAction === "delete-all" ? "Deleting..." : "Delete all"}
+            </Button>
+            <Button variant="appSecondary" onClick={clearSelection} disabled={isBulkBusy}>
+              Cancel
+            </Button>
+          </div>
+        </Surface>
       ) : null}
 
       {isUploadOpen ? (
-        <section className="app-card p-5 lg:p-6">
+        <Surface as="section" padding="lg">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <h2 className="text-lg font-semibold text-app-text">Add a document</h2>
               <p className="mt-2 text-sm leading-6 text-app-muted">
-                Upload a PDF for secure storage, server-side text extraction, and deterministic document sectioning.
+                Upload a PDF for secure storage and source text preparation.
               </p>
             </div>
             <button
@@ -541,7 +543,7 @@ export function DocumentsClient() {
               </Button>
             </div>
           </form>
-        </section>
+        </Surface>
       ) : null}
 
       {isLoading ? (
@@ -550,83 +552,114 @@ export function DocumentsClient() {
           Loading documents…
         </div>
       ) : documents.length === 0 ? (
-        <div className="app-empty-state">
-          <div className="mx-auto grid size-12 place-items-center rounded-2xl bg-app-accent-soft text-app-accent ring-1 ring-app-accent/10" aria-hidden="true">↥</div>
-          <h2 className="mt-4 text-base font-semibold text-app-text">No documents yet</h2>
-          <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-app-muted">
+        <EmptyState
+          action={(
+            <Button variant="appPrimary" onClick={() => setIsUploadOpen(true)}>
+              Upload document
+            </Button>
+          )}
+          icon={<span className="font-mono text-[10px] font-bold">PDF</span>}
+          title="No documents yet"
+        >
+          <p>
             Upload a policy or procedure to prepare source text for evidence review.
           </p>
-        </div>
+        </EmptyState>
       ) : (
-        <DataTable
-          columns={[
-            ...(isSelectMode ? ["Select"] : []),
-            "Document name",
-            "Type",
-            "Review status",
-            "Uploaded",
-            "Evidence sections",
-            "Actions",
-          ]}
-          minWidth={isSelectMode ? "min-w-[900px]" : "min-w-[760px]"}
-        >
-          {isSelectMode ? (
-            <tr className="bg-app-elevated/35">
-              <td className="px-4 py-3">
-                <input
-                  type="checkbox"
-                  checked={allVisibleSelected}
-                  onChange={toggleSelectAll}
-                  aria-label="Select all documents"
-                  className="size-4 rounded border-app-border text-app-accent focus:ring-app-accent"
-                />
-              </td>
-              <td colSpan={6} className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.08em] text-app-muted">
-                {selectedCount} of {documents.length} selected
-              </td>
-            </tr>
-          ) : null}
-          {documents.map((document) => (
-            <tr
-              key={document.id}
-              className={selectedDocumentIds.has(document.id) ? "bg-app-accent-soft/45" : undefined}
+        <>
+          <div className="hidden lg:block">
+            <DataTable
+              columns={[
+                ...(isSelectMode ? ["Select"] : []),
+                "Document name",
+                "Type",
+                "Review status",
+                "Uploaded",
+                "Source sections",
+                "Actions",
+              ]}
+              minWidth={isSelectMode ? "min-w-[900px]" : "min-w-[760px]"}
             >
-              {isSelectMode ? (
-                <td className="px-4 py-4">
-                  <input
-                    type="checkbox"
-                    checked={selectedDocumentIds.has(document.id)}
-                    onChange={() => toggleDocumentSelection(document.id)}
-                    aria-label={`Select ${document.name}`}
-                    className="size-4 rounded border-app-border text-app-accent focus:ring-app-accent"
-                  />
-                </td>
-              ) : null}
-              <td className="px-4 py-4 font-medium text-app-text">
-                <div className="flex items-center gap-3">
-                  <span aria-hidden="true" className="grid size-9 shrink-0 place-items-center rounded-lg border border-app-border bg-app-elevated font-mono text-[10px] font-bold text-app-accent">PDF</span>
-                  <span className="block max-w-[280px] truncate" title={document.name}>{document.name}</span>
+              {documents.map((document) => (
+                <tr
+                  key={document.id}
+                  className={selectedDocumentIds.has(document.id) ? "bg-app-accent-soft/45" : undefined}
+                >
+                  {isSelectMode ? (
+                    <td className="px-4 py-4">
+                      <input
+                        type="checkbox"
+                        checked={selectedDocumentIds.has(document.id)}
+                        onChange={() => toggleDocumentSelection(document.id)}
+                        aria-label={`Select ${document.name}`}
+                        className="size-4 rounded border-app-border text-app-accent focus:ring-app-accent"
+                      />
+                    </td>
+                  ) : null}
+                  <td className="px-4 py-4 font-medium text-app-text">
+                    <div className="flex items-center gap-3">
+                      <span aria-hidden="true" className="grid size-8 shrink-0 place-items-center rounded-md border border-app-border bg-app-elevated font-mono text-[10px] font-bold text-app-accent">PDF</span>
+                      <span className="block max-w-[280px] truncate" title={document.name}>{document.name}</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-4 text-app-muted">{document.type}</td>
+                  <td className="px-4 py-4">
+                    <div className="space-y-1">
+                      <LifecycleBadge label={documentLifecycleLabel(document.status)} value={document.status} />
+                      <p className="max-w-[220px] text-xs leading-5 text-app-muted">
+                        {documentLifecycleNextStep(document.status)}
+                      </p>
+                    </div>
+                  </td>
+                  <td className="px-4 py-4 text-app-muted">{document.uploaded}</td>
+                  <td className="px-4 py-4 text-app-muted">{formatSectionsLabel(document.chunks)}</td>
+                  <td className="px-4 py-4">
+                    <Link className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-semibold text-app-accent transition-colors hover:bg-app-accent-soft hover:text-app-accent-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-app-accent" href={`/documents/${document.id}`}>
+                      Review <span aria-hidden="true">→</span>
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </DataTable>
+          </div>
+
+          <div className="grid gap-3 lg:hidden">
+            {documents.map((document) => (
+              <Surface key={document.id} className={selectedDocumentIds.has(document.id) ? "border-app-accent/30 bg-app-accent-soft/35" : ""} padding="md">
+                <div className="flex items-start gap-3">
+                  {isSelectMode ? (
+                    <input
+                      type="checkbox"
+                      checked={selectedDocumentIds.has(document.id)}
+                      onChange={() => toggleDocumentSelection(document.id)}
+                      aria-label={`Select ${document.name}`}
+                      className="mt-1 size-4 rounded border-app-border text-app-accent focus:ring-app-accent"
+                    />
+                  ) : null}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate font-semibold text-app-text" title={document.name}>{document.name}</p>
+                        <p className="mt-1 text-xs font-medium text-app-muted">{document.type} · Uploaded {document.uploaded}</p>
+                      </div>
+                      <span aria-hidden="true" className="grid size-8 shrink-0 place-items-center rounded-md border border-app-border bg-app-elevated font-mono text-[10px] font-bold text-app-accent">PDF</span>
+                    </div>
+                    <div className="mt-3 space-y-1">
+                      <LifecycleBadge label={documentLifecycleLabel(document.status)} value={document.status} />
+                      <p className="text-xs leading-5 text-app-muted">{documentLifecycleNextStep(document.status)}</p>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between gap-3 text-xs text-app-muted">
+                      <span>Source sections: {formatSectionsLabel(document.chunks)}</span>
+                      <Link className="shrink-0 rounded-md px-2 py-1 text-sm font-semibold text-app-accent transition-colors hover:bg-app-accent-soft hover:text-app-accent-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-app-accent" href={`/documents/${document.id}`}>
+                        Review
+                      </Link>
+                    </div>
+                  </div>
                 </div>
-              </td>
-              <td className="px-4 py-4 text-app-muted">{document.type}</td>
-              <td className="px-4 py-4">
-                <div className="space-y-1">
-                  <StatusBadge>{documentLifecycleLabel(document.status)}</StatusBadge>
-                  <p className="max-w-[220px] text-xs leading-5 text-app-muted">
-                    {documentLifecycleNextStep(document.status)}
-                  </p>
-                </div>
-              </td>
-              <td className="px-4 py-4 text-app-muted">{document.uploaded}</td>
-              <td className="px-4 py-4 text-app-muted">{formatSectionsLabel(document.chunks)}</td>
-              <td className="px-4 py-4">
-                <Link className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-semibold text-app-accent transition-colors hover:bg-app-accent-soft hover:text-app-accent-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-app-accent" href={`/documents/${document.id}`}>
-                  Review <span aria-hidden="true">→</span>
-                </Link>
-              </td>
-            </tr>
-          ))}
-        </DataTable>
+              </Surface>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );

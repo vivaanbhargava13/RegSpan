@@ -58,7 +58,7 @@ function validateSelectedPdf(file: File) {
 }
 
 function formatSectionsLabel(label: string) {
-  return label.replace(/\bchunks\b/gi, "sections").replace(/\bPending\b/i, "Not processed yet");
+  return label.replace(/\bchunks\b/gi, "sections").replace(/\bPending\b/i, "Not prepared yet");
 }
 
 function formatPageRange(pageStart: number | null, pageEnd: number | null) {
@@ -130,7 +130,7 @@ function getTimeline(status: DocumentStatus, chunkCount: number): TimelineStep[]
         status: "Complete",
         detail: chunkCount > 0
           ? "Source text is ready for evidence review."
-          : "Processing completed, but no evidence sections are currently available.",
+          : "Source-text preparation completed, but no evidence sections are currently available.",
         state: "complete",
       },
       {
@@ -148,8 +148,8 @@ function getTimeline(status: DocumentStatus, chunkCount: number): TimelineStep[]
   if (status === "Processing") {
     return [
       { label: "Uploaded", status: "Complete", detail: "File and document details are saved.", state: "complete" },
-      { label: "Prepare source text", status: "Processing", detail: "RegSpan is preparing source text from this PDF.", state: "current" },
-      { label: "Evidence sections", status: "Pending", detail: "Evidence sections will be available after processing completes.", state: "pending" },
+      { label: "Prepare source text", status: "Preparing", detail: "RegSpan is preparing source text from this PDF.", state: "current" },
+      { label: "Evidence sections", status: "Pending", detail: "Evidence sections will be available after source text is prepared.", state: "pending" },
       requirementMatchingStep,
     ];
   }
@@ -174,7 +174,7 @@ function getTimeline(status: DocumentStatus, chunkCount: number): TimelineStep[]
 
   return [
     { label: "Uploaded", status: "Complete", detail: "File and document details are saved.", state: "complete" },
-    { label: "Prepare source text", status: "Queued", detail: "The document is queued for source-text preparation.", state: "current" },
+    { label: "Prepare source text", status: "Queued", detail: "The document is queued for source text preparation.", state: "current" },
     { label: "Evidence sections", status: "Pending", detail: "Evidence sections will be prepared after source text is available.", state: "pending" },
     requirementMatchingStep,
   ];
@@ -182,13 +182,13 @@ function getTimeline(status: DocumentStatus, chunkCount: number): TimelineStep[]
 
 function getChunkEmptyState(status: DocumentStatus) {
   if (status === "Processed") {
-    return "Processing completed, but no evidence sections are available. Reprocess the document to prepare source text again.";
+    return "Source-text preparation completed, but no evidence sections are available. Prepare the document again.";
   }
   if (status === "Processing") {
     return "Source text and evidence sections are currently being prepared.";
   }
   if (status === "Queued") {
-    return "This document is queued. Evidence sections will appear after processing completes.";
+    return "This document is queued. Evidence sections will appear after source text is prepared.";
   }
   if (status === "Failed") {
     return "Evidence sections are unavailable because processing failed. Reprocess the document to try again.";
@@ -340,17 +340,17 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
       };
 
       if (!response.ok || !result.ok) {
-        throw new Error(result.error || "Processing could not be started.");
+        throw new Error(result.error || "Preparation could not be started.");
       }
 
-      setMessage("Document processing was queued. RegSpan will prepare source text for analysis.");
+      setMessage("Document preparation was queued. RegSpan will prepare source text for analysis.");
       router.refresh();
       setRefreshKey((current) => current + 1);
     } catch (actionError) {
       setError(
         actionError instanceof Error
           ? actionError.message
-          : "Processing could not be started.",
+          : "Preparation could not be started.",
       );
     }
 
@@ -529,7 +529,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
               onClick={handleReprocess}
               className="h-9 rounded-xl border border-app-border bg-app-surface px-3.5 text-sm font-semibold text-app-muted shadow-sm transition-colors hover:border-app-accent hover:text-app-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {activeAction === "reprocess" ? "Reprocessing..." : "Reprocess"}
+              {activeAction === "reprocess" ? "Preparing..." : "Prepare again"}
             </button>
             <button
               type="button"
@@ -633,7 +633,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
       <section className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
         <div className="app-card p-5 lg:p-6">
           <div className="flex items-center justify-between gap-3">
-            <h2 className="app-section-title">Processing timeline</h2>
+            <h2 className="app-section-title">Document lifecycle</h2>
             <span className="text-xs font-medium text-app-muted">4 stages</span>
           </div>
           <div className="mt-5 space-y-3">
