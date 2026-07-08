@@ -254,9 +254,10 @@ test("Requirements tab renders human requirement cards without visible raw keys"
     readFile("app/globals.css", "utf8"),
   ]);
 
-  assert.match(controlsPage, /<h2 className="text-lg font-semibold[^"]*">\s+\{control\.name\}/);
+  assert.match(controlsPage, /title="Control register"/);
+  assert.match(controlsPage, /<h2 className="mt-1 text-base font-semibold[^"]*">\s+\{control\.name\}/);
   assert.match(controlsPage, /regulatoryRoleLabel\(control\.regulatoryRole\)/);
-  assert.match(controlsPage, /<StatusBadge>\{`\$\{titleCase\(control\.severity\)\} risk`\}<\/StatusBadge>/);
+  assert.match(controlsPage, /<RiskBadge label=\{`\$\{titleCase\(control\.severity\)\} risk`\} value=\{control\.severity\} \/>/);
   assert.match(controlsPage, /Required elements/);
   assert.match(controlsPage, /SEC basis/);
   assert.match(controlsPage, /riskAccentClass\(control\.severity\)/);
@@ -275,7 +276,7 @@ test("Requirements tab collapses SEC citation details with unique per-card ancho
 
   assert.match(controlsPage, /<details\s+key=\{citation\.id\}\s+id=\{citationAnchor\(control, citation, citationIndex\)\}/);
   assert.match(controlsPage, /return `citation-\$\{control\.controlKey\}-\$\{citation\.id \|\| citationIndex\}`/);
-  assert.match(controlsPage, /<summary className="cursor-pointer list-none rounded-full/);
+  assert.match(controlsPage, /<summary className="cursor-pointer list-none rounded-md/);
   assert.match(controlsPage, /View SEC basis/);
   assert.match(controlsPage, /citation\.sourceChunk\?\.content/);
   assert.doesNotMatch(controlsPage, /source-\$\{citation\.sourceChunk\.id\}/);

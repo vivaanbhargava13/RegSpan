@@ -1,7 +1,10 @@
 import { Suspense } from "react";
+import { Alert } from "@/components/Alert";
 import { ControlsHashScroller } from "@/components/ControlsHashScroller";
+import { EmptyState as SharedEmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
-import { StatusBadge } from "@/components/StatusBadge";
+import { RiskBadge, StatusBadge } from "@/components/StatusBadge";
+import { Surface } from "@/components/Surface";
 import { loadActiveRegulatoryControls } from "@/lib/regulatoryControls";
 import {
   REG_SP_SOURCE_KEY,
@@ -48,6 +51,15 @@ function riskAccentClass(severity: RegulatoryControl["severity"]) {
     case "low":
       return "bg-app-review";
   }
+}
+
+function severityRank(severity: RegulatoryControl["severity"]) {
+  return {
+    critical: 0,
+    high: 1,
+    medium: 2,
+    low: 3,
+  }[severity];
 }
 
 function fallbackControls(): RegulatoryControl[] {
@@ -123,7 +135,7 @@ function citationLabel(citation: RegulatoryControl["citations"][number]) {
     ? `p. ${citation.sourceChunk.pageStart}`
     : `pp. ${citation.sourceChunk.pageStart}-${citation.sourceChunk.pageEnd}`;
   return [
-    citation.sourceChunk.sectionPath ?? citation.sourceChunk.heading ?? "SEC source chunk",
+    citation.sourceChunk.sectionPath ?? citation.sourceChunk.heading ?? "SEC source citation",
     pageLabel,
   ].join(", ");
 }
@@ -146,17 +158,17 @@ function requiredElements(control: RegulatoryControl) {
 
 function EmptyState() {
   return (
-    <div className="app-card px-5 py-8 text-sm text-app-muted">
-      No active Regulation S-P controls are available yet.
-    </div>
+    <SharedEmptyState title="No active Regulation S-P controls">
+      <p>No active Regulation S-P controls are available yet.</p>
+    </SharedEmptyState>
   );
 }
 
 function LoadingState() {
   return (
-    <div className="app-card px-5 py-8 text-sm text-app-muted">
+    <Surface className="text-sm text-app-muted">
       Loading canonical controls...
-    </div>
+    </Surface>
   );
 }
 
@@ -168,63 +180,69 @@ async function ControlsList() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="app-card flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="space-y-5">
+      <Surface className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between" padding="md">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded-full bg-app-accent-soft px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.08em] text-app-accent">
-            {source === "database" ? "DB-backed" : "Fallback"}
-          </span>
+          <StatusBadge showDot={false}>{source === "database" ? "DB-backed" : "Fallback"}</StatusBadge>
           <span className="text-sm font-semibold text-app-text">SEC Release No. 34-100155</span>
         </div>
-        <span className="text-sm text-app-muted">{controls.length} controls in view</span>
-      </div>
+        <span className="text-sm text-app-muted">{controls.length} controls in the control register</span>
+      </Surface>
 
       {error ? (
-        <div className="rounded-lg border border-app-warning/20 bg-app-warning-soft px-4 py-3 text-sm text-app-warning">
-          {error}
-        </div>
+        <Alert tone="warning">{error}</Alert>
       ) : null}
 
-      <section className="space-y-7" aria-label="Reg S-P controls">
-        {controls.map((control) => {
+      <section className="space-y-3" aria-label="Reg S-P controls">
+        {[...controls].sort((left, right) =>
+          severityRank(left.severity) - severityRank(right.severity) ||
+          left.displayOrder - right.displayOrder ||
+          left.name.localeCompare(right.name),
+        ).map((control) => {
           const required = requiredElements(control);
 
           return (
-            <article
+            <Surface
+              as="article"
               key={control.id}
               id={controlAnchor(control)}
-              className="requirement-card app-card relative overflow-hidden border-app-border-strong/70 bg-gradient-to-br from-app-surface to-app-elevated/45 shadow-app-card"
+              className="requirement-card relative overflow-hidden border-app-border-strong/70"
+              padding="none"
             >
-              <div aria-hidden="true" className={`h-1 ${riskAccentClass(control.severity)}`} />
-              <div className="border-b border-app-border bg-gradient-to-r from-app-elevated/95 to-app-surface px-5 py-4 lg:px-6">
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                  <div>
-                    <h2 className="text-lg font-semibold tracking-[-0.02em] text-app-text">
-                      {control.name}
-                    </h2>
-                    <div className="mt-3 flex flex-wrap items-center gap-2">
-                      <span className="rounded-full border border-app-border bg-app-surface px-2.5 py-1 text-xs font-semibold text-app-muted">
-                        {control.category ?? control.regulation}
-                      </span>
-                      <span className="rounded-full border border-app-border bg-app-surface px-2.5 py-1 text-xs font-semibold text-app-muted">
-                        {regulatoryRoleLabel(control.regulatoryRole)}
-                      </span>
+              <div aria-hidden="true" className={`absolute inset-y-0 left-0 w-0.5 ${riskAccentClass(control.severity)}`} />
+              <div className="grid gap-5 px-5 py-5 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.45fr)] lg:px-6">
+                <div className="min-w-0 pl-2">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-app-subtle">
+                        Requirement basis
+                      </p>
+                      <h2 className="mt-1 text-base font-semibold text-app-text lg:text-lg">
+                        {control.name}
+                      </h2>
                     </div>
+                    <a
+                      className="shrink-0 rounded-md px-2 py-1 text-xs font-semibold text-app-accent transition-colors hover:bg-app-accent-soft hover:text-app-accent-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-app-accent"
+                      href={`#${controlAnchor(control)}`}
+                    >
+                      Control link
+                    </a>
                   </div>
-                  <StatusBadge>{`${titleCase(control.severity)} risk`}</StatusBadge>
-                </div>
-              </div>
-
-              <div className="grid gap-5 p-5 lg:grid-cols-[minmax(0,1.1fr)_minmax(280px,0.9fr)] lg:p-6">
-                <div>
-                  <h3 className="text-sm font-semibold text-app-text">Summary</h3>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <RiskBadge label={`${titleCase(control.severity)} risk`} value={control.severity} />
+                    <StatusBadge showDot={false}>{control.category ?? control.regulation}</StatusBadge>
+                    <StatusBadge showDot={false}>{regulatoryRoleLabel(control.regulatoryRole)}</StatusBadge>
+                  </div>
                   <p className="mt-2 text-sm leading-6 text-app-muted">{control.summary}</p>
                 </div>
 
-                <div>
-                  <h3 className="text-sm font-semibold text-app-text">Required elements</h3>
+                <div className="rounded-lg border border-app-border bg-app-elevated/55 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-sm font-semibold text-app-text">Required elements</h3>
+                    <span className="text-xs font-medium text-app-muted">{required.length} required</span>
+                  </div>
                   {required.length > 0 ? (
-                    <ul className="mt-2 space-y-2 text-sm leading-6 text-app-muted">
+                    <ul className="mt-3 space-y-2 text-sm leading-6 text-app-muted">
                       {required.map((element) => (
                         <li key={element.id} className="flex gap-2">
                           <span aria-hidden="true" className="mt-2 size-1.5 shrink-0 rounded-full bg-app-accent" />
@@ -238,8 +256,13 @@ async function ControlsList() {
                 </div>
               </div>
 
-              <div className="border-t border-app-border bg-app-surface/70 px-5 py-4 lg:px-6">
-                <h3 className="text-sm font-semibold text-app-text">SEC basis</h3>
+              <div className="border-t border-app-border bg-app-elevated/40 px-5 py-4 lg:px-6">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                  <h3 className="text-sm font-semibold text-app-text">SEC basis</h3>
+                  <span className="text-xs text-app-muted">
+                    {control.citations.length} source {control.citations.length === 1 ? "citation" : "citations"}
+                  </span>
+                </div>
                 {control.citations.length > 0 ? (
                   <div className="mt-3 flex flex-wrap gap-2">
                     {control.citations.map((citation, citationIndex) => (
@@ -248,7 +271,7 @@ async function ControlsList() {
                         id={citationAnchor(control, citation, citationIndex)}
                         className="citation-disclosure scroll-mt-28"
                       >
-                        <summary className="cursor-pointer list-none rounded-full border border-app-border bg-app-surface px-3 py-1.5 text-xs font-semibold text-app-muted outline-none transition hover:border-app-accent/50 hover:text-app-text focus-visible:ring-4 focus-visible:ring-app-accent-soft">
+                        <summary className="cursor-pointer list-none rounded-md border border-app-border bg-app-surface px-3 py-1.5 text-xs font-semibold text-app-muted outline-none transition-colors hover:border-app-accent/50 hover:text-app-text focus-visible:ring-4 focus-visible:ring-app-accent-soft">
                           {citationLabel(citation)}
                           <span className="ml-2 text-app-subtle">View SEC basis</span>
                         </summary>
@@ -264,7 +287,7 @@ async function ControlsList() {
                   <p className="mt-2 text-sm text-app-muted">No SEC citation attached.</p>
                 )}
               </div>
-            </article>
+            </Surface>
           );
         })}
       </section>
@@ -278,8 +301,8 @@ export default function ControlsPage() {
       <ControlsHashScroller />
       <PageHeader
         eyebrow="Requirements"
-        title="Reg S-P requirements"
-        description="Review the canonical controls RegSpan checks against workspace evidence."
+        title="Control register"
+        description="Review the Regulation S-P requirement basis, required elements, and SEC source citations used for analysis."
       />
 
       <Suspense fallback={<LoadingState />}>

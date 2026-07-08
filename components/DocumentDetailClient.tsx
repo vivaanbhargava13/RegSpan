@@ -3,6 +3,9 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChangeEvent, useEffect, useState } from "react";
+import { Alert } from "@/components/Alert";
+import { Button } from "@/components/Button";
+import { EmptyState } from "@/components/EmptyState";
 import {
   findMockDocument,
   mapSupabaseDocument,
@@ -11,7 +14,8 @@ import {
   type SupabaseDocumentRecord,
 } from "@/components/mockDocuments";
 import { PageHeader } from "@/components/PageHeader";
-import { StatusBadge } from "@/components/StatusBadge";
+import { LifecycleBadge, StatusBadge } from "@/components/StatusBadge";
+import { Surface } from "@/components/Surface";
 import { getBrowserSupabaseClient } from "@/components/supabaseClient";
 import type { DocumentChunk } from "@/lib/types/ingestion";
 import { getCurrentWorkspace, type CurrentWorkspace } from "@/lib/workspaces";
@@ -103,6 +107,22 @@ function formatHierarchySummary(summary: HierarchySummary) {
   }`;
 
   return `Generated · ${topLevelLabel} · ${childLabel}`;
+}
+
+function documentLifecycleLabel(status: DocumentStatus) {
+  switch (status) {
+    case "Uploaded":
+    case "Queued":
+      return "Preparing source text";
+    case "Processing":
+      return "Preparing source text";
+    case "Processed":
+      return "Ready for analysis";
+    case "Failed":
+      return "Processing failed";
+    case "Needs Review":
+      return "Needs reviewer confirmation";
+  }
 }
 
 const requirementMatchingStep: TimelineStep = {
@@ -462,10 +482,10 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
 
   if (!hasLoaded) {
     return (
-      <div className="app-card flex items-center gap-3 p-5 text-sm font-semibold text-app-muted">
+      <Surface className="flex items-center gap-3 text-sm font-semibold text-app-muted">
         <span aria-hidden="true" className="size-2 animate-pulse rounded-full bg-app-accent" />
         Loading document review…
-      </div>
+      </Surface>
     );
   }
 
@@ -475,128 +495,68 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
         <Link href="/documents" className="inline-flex items-center gap-2 text-sm font-semibold text-app-accent">
           <span aria-hidden="true">←</span> Back to documents
         </Link>
-        <div className="app-card p-6">
-          <h1 className="text-2xl font-semibold text-app-text">Document not found</h1>
-          <p className="mt-3 text-sm leading-6 text-app-muted">
+        <EmptyState title="Document not found">
+          <p>
             This document is not available in your current workspace.
           </p>
-        </div>
+        </EmptyState>
       </div>
     );
   }
 
   return (
-    <div className="space-y-8">
-      <Link href="/documents" className="inline-flex items-center gap-2 rounded-lg px-1 py-1 text-sm font-semibold text-app-accent transition-colors hover:text-app-accent-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-app-accent">
+    <div className="space-y-6">
+      <Link href="/documents" className="inline-flex items-center gap-2 rounded-md px-1 py-1 text-sm font-semibold text-app-accent transition-colors hover:text-app-accent-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-app-accent">
         <span aria-hidden="true">←</span> Back to documents
       </Link>
 
       <PageHeader
-        eyebrow="Document review"
+        eyebrow="Document record"
         title={document.name}
-        description={`${document.type} · Uploaded ${document.uploaded} · ${document.status}`}
+        description={`${document.type} · Uploaded ${document.uploaded}`}
+        actions={(
+          <Button
+            type="button"
+            variant="appPrimary"
+            onClick={handleReprocess}
+            disabled={Boolean(activeAction)}
+          >
+            {activeAction === "reprocess" ? "Preparing..." : "Prepare again"}
+          </Button>
+        )}
       />
 
       {message ? (
-        <p className="rounded-xl border border-app-success/20 bg-app-success-soft px-4 py-3 text-sm font-medium text-app-success shadow-sm">
-          {message}
-        </p>
+        <Alert tone="success">{message}</Alert>
       ) : null}
 
       {warning ? (
-        <p className="rounded-xl border border-app-warning/20 bg-app-warning-soft px-4 py-3 text-sm font-medium text-app-warning shadow-sm">
-          {warning}
-        </p>
+        <Alert tone="warning">{warning}</Alert>
       ) : null}
 
       {error ? (
-        <p className="rounded-xl border border-app-danger/20 bg-app-danger-soft px-4 py-3 text-sm font-medium text-app-danger shadow-sm">
-          {error}
-        </p>
+        <Alert tone="danger">{error}</Alert>
       ) : null}
 
-      <section className="app-card overflow-hidden">
+      <Surface as="section" className="overflow-hidden" padding="none">
         <div className="border-b border-app-border bg-app-elevated/55 px-5 py-4 lg:px-6">
-          <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex items-center gap-3">
-              <StatusBadge>{document.status}</StatusBadge>
-              <span className="text-xs text-app-muted">Secure document workspace</span>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-wrap items-center gap-2">
+              <LifecycleBadge label={documentLifecycleLabel(document.status)} value={document.status} />
+              <StatusBadge showDot={false}>{document.status}</StatusBadge>
+              <span className="text-xs font-medium text-app-muted">Secure document workspace</span>
             </div>
-          <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:flex-wrap lg:items-center lg:justify-end">
-            <button
-              type="button"
-              disabled={Boolean(activeAction)}
-              onClick={handleReprocess}
-              className="h-9 rounded-xl border border-app-border bg-app-surface px-3.5 text-sm font-semibold text-app-muted shadow-sm transition-colors hover:border-app-accent hover:text-app-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {activeAction === "reprocess" ? "Preparing..." : "Prepare again"}
-            </button>
-            <button
-              type="button"
-              disabled={Boolean(activeAction)}
-              onClick={() => {
-                resetActionState();
-                setIsReplaceOpen(true);
-              }}
-              className="h-9 rounded-xl border border-app-border bg-app-surface px-3.5 text-sm font-semibold text-app-muted shadow-sm transition-colors hover:border-app-accent hover:text-app-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              Replace file
-            </button>
-            <button
-              type="button"
-              disabled={Boolean(activeAction)}
-              onClick={handleDelete}
-              className="h-9 rounded-xl border border-app-danger/20 bg-app-danger-soft px-3.5 text-sm font-semibold text-app-danger transition-colors hover:border-app-danger hover:bg-app-danger/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-danger disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {activeAction === "delete" ? "Deleting..." : "Delete document"}
-            </button>
+            <span className="text-xs font-semibold uppercase tracking-[0.08em] text-app-subtle">
+              Audit record
+            </span>
           </div>
         </div>
-        </div>
 
-        <div className="p-5 lg:p-6">
-
-        {isReplaceOpen ? (
-          <div className="mb-6 rounded-xl border border-app-border bg-app-elevated/65 p-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-              <label className="block flex-1">
-                <span className="text-sm font-semibold text-app-text">Replacement file</span>
-                <input
-                  type="file"
-                  accept="application/pdf,.pdf"
-                  onChange={handleReplacementFileChange}
-                  className="app-field mt-2 block w-full px-3 py-2 text-sm text-app-muted file:mr-3 file:rounded-lg file:border-0 file:bg-app-accent-soft file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-app-accent"
-                />
-              </label>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  disabled={Boolean(activeAction)}
-                  onClick={handleReplace}
-                  className="h-10 rounded-xl bg-app-accent px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-app-accent-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {activeAction === "replace" ? "Replacing..." : "Replace file"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsReplaceOpen(false);
-                    setReplacementFile(null);
-                  }}
-                  className="h-10 rounded-xl border border-app-border bg-app-surface px-4 text-sm font-semibold text-app-muted shadow-sm transition-colors hover:border-app-accent hover:text-app-text"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        ) : null}
-
-        <dl className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <dl className="grid divide-y divide-app-border text-sm sm:grid-cols-2 sm:divide-x sm:divide-y-0 xl:grid-cols-4">
           {[
             { label: "Document type", value: document.type },
             { label: "Uploaded", value: document.uploaded },
-            { label: "Sections", value: formatSectionsLabel(document.chunks) },
+            { label: "Source sections", value: formatSectionsLabel(document.chunks) },
             { label: "Review status", value: document.status },
             ...(chunks.length > 0 ? [{ label: "Evidence sections", value: String(chunks.length) }] : []),
             ...(hierarchySummary !== null
@@ -605,110 +565,176 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
             ...(document.fileSize ? [{ label: "File size", value: `${Math.round(document.fileSize / 1024)} KB` }] : []),
             ...(document.mimeType ? [{ label: "MIME type", value: document.mimeType }] : []),
           ].map((item) => (
-            <div key={item.label} className="rounded-xl border border-app-border bg-app-elevated/65 p-4 shadow-sm">
-              <dt className="text-[10px] font-semibold uppercase tracking-[0.1em] text-app-subtle">{item.label}</dt>
+            <div key={item.label} className="min-w-0 px-5 py-4">
+              <dt className="text-[10px] font-semibold uppercase tracking-[0.1em] text-app-subtle">
+                {item.label}
+              </dt>
               <dd className="mt-2 break-words text-sm font-semibold leading-5 text-app-text">{item.value}</dd>
             </div>
           ))}
         </dl>
+      </Surface>
 
-        {document.storagePath ? (
-          <div className="mt-5 rounded-xl border border-app-border bg-app-elevated/45 p-4">
-            <h2 className="text-sm font-semibold text-app-text">Stored file reference</h2>
-            <p className="mt-2 overflow-x-auto rounded-lg border border-app-border bg-app-surface px-3 py-2 font-mono text-[11px] text-app-muted" title={document.storagePath}>
-              {document.storagePath}
-            </p>
-          </div>
-        ) : null}
-
-        {document.notes ? (
-          <div className="mt-5 rounded-xl border border-app-border bg-app-elevated/65 p-4">
-            <h2 className="text-sm font-semibold text-app-text">Notes</h2>
-            <p className="mt-2 text-sm leading-6 text-app-muted">{document.notes}</p>
-          </div>
-        ) : null}
-        </div>
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
-        <div className="app-card p-5 lg:p-6">
+      <section className="grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+        <Surface as="section" padding="lg">
           <div className="flex items-center justify-between gap-3">
             <h2 className="app-section-title">Document lifecycle</h2>
             <span className="text-xs font-medium text-app-muted">4 stages</span>
           </div>
           <div className="mt-5 space-y-3">
             {getTimeline(document.status, chunks.length).map((item, index) => (
-              <div key={item.label} className="flex gap-3 rounded-xl border border-app-border bg-app-elevated/65 p-4">
-                <span className={`grid size-8 shrink-0 place-items-center rounded-full border text-xs font-bold shadow-sm ${stateClasses[item.state]}`}>
+              <div key={item.label} className="flex gap-3 rounded-lg border border-app-border bg-app-elevated/65 p-4">
+                <span className={`grid size-8 shrink-0 place-items-center rounded-md border text-xs font-bold ${stateClasses[item.state]}`}>
                   {index + 1}
                 </span>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-semibold text-app-text">{item.label}</span>
-                    <span className="rounded-full bg-app-surface px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-app-muted ring-1 ring-inset ring-app-border">{item.status}</span>
+                    <StatusBadge showDot={false}>{item.status}</StatusBadge>
                   </div>
                   <p className="mt-1 text-sm leading-6 text-app-muted">{item.detail}</p>
                 </div>
               </div>
             ))}
           </div>
-        </div>
+        </Surface>
 
         <div className="space-y-4">
-          <div className="app-card p-5 lg:p-6">
+          <Surface as="section" padding="lg">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-app-accent">Evidence workspace</p>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-app-subtle">Source review</p>
                 <h2 className="mt-1 app-section-title">Evidence sections</h2>
               </div>
-              {chunks.length > 0 ? <span className="rounded-full bg-app-accent-soft px-2.5 py-1 text-xs font-semibold text-app-accent">{chunks.length} stored</span> : null}
+              {chunks.length > 0 ? <StatusBadge showDot={false}>{`${chunks.length} stored`}</StatusBadge> : null}
             </div>
             {chunks.length > 0 ? (
-              <div className="mt-5 space-y-4">
+              <div className="mt-5 divide-y divide-app-border rounded-lg border border-app-border">
                 {chunks.map((chunk) => (
-                  <article key={chunk.id} className="group relative overflow-hidden rounded-xl border border-app-border bg-app-elevated/60 p-4 transition-colors hover:border-app-border-strong hover:bg-app-elevated">
-                    <span aria-hidden="true" className="absolute inset-y-0 left-0 w-0.5 bg-app-accent opacity-70" />
+                  <article key={chunk.id} className="bg-app-surface p-4 first:rounded-t-lg last:rounded-b-lg">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                       <div>
-                        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-app-accent">
+                        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-app-subtle">
                           Evidence section {String(chunk.chunk_index + 1).padStart(2, "0")}
                         </span>
                         <h3 className="mt-1 text-sm font-semibold text-app-text">
                           {chunk.section_path || chunk.section_heading || "Unsectioned content"}
                         </h3>
                       </div>
-                      <span className="shrink-0 rounded-lg border border-app-border bg-app-surface px-2.5 py-1 font-mono text-[10px] font-semibold text-app-muted">
+                      <span className="shrink-0 rounded-md border border-app-border bg-app-elevated px-2.5 py-1 font-mono text-[10px] font-semibold text-app-muted">
                         {formatPageRange(chunk.page_start, chunk.page_end)}
                       </span>
                     </div>
-                    <p className="mt-3 rounded-xl border border-app-border bg-app-surface px-3.5 py-3 text-sm leading-6 text-app-muted shadow-sm">
+                    <p className="mt-3 rounded-md border border-app-border bg-app-elevated/60 px-3.5 py-3 text-sm leading-6 text-app-muted">
                       {chunk.content.length > 220 ? `${chunk.content.slice(0, 220)}…` : chunk.content}
                     </p>
                   </article>
                 ))}
               </div>
             ) : (
-              <p className="mt-4 rounded-xl border border-dashed border-app-border-strong bg-app-elevated/55 p-5 text-sm leading-6 text-app-muted">
-                {getChunkEmptyState(document.status)}
-              </p>
+              <EmptyState className="mt-4" title="No evidence sections available">
+                <p>{getChunkEmptyState(document.status)}</p>
+              </EmptyState>
             )}
-          </div>
+          </Surface>
 
-          <div className="app-card p-5 lg:p-6">
+          <Surface as="section" padding="lg">
             <div className="flex items-center justify-between gap-3">
               <h2 className="app-section-title">Analysis readiness</h2>
-              <span className="rounded-full border border-app-border bg-app-elevated px-2.5 py-1 text-[11px] font-semibold text-app-muted">
-                {chunks.length > 0 ? "Ready" : "Waiting"}
-              </span>
+              <StatusBadge>{chunks.length > 0 ? "Ready" : "Pending"}</StatusBadge>
             </div>
-            <p className="mt-4 rounded-xl border border-dashed border-app-border-strong bg-app-elevated/55 p-4 text-sm leading-6 text-app-muted">
+            <p className="mt-4 rounded-lg border border-dashed border-app-border-strong bg-app-elevated/55 p-4 text-sm leading-6 text-app-muted">
               {chunks.length > 0
                 ? "Evidence sections are ready. Run Analysis to compare this client document against the Reg S-P requirements."
                 : "Prepare evidence sections before running Analysis."}
             </p>
-          </div>
+          </Surface>
         </div>
       </section>
+
+      <Surface as="section" padding="lg">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h2 className="app-section-title">Safe document actions</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-app-muted">
+              Replace or remove this document only when the audit record should change for the current workspace.
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="appSecondary"
+              disabled={Boolean(activeAction)}
+              onClick={() => {
+                resetActionState();
+                setIsReplaceOpen(true);
+              }}
+            >
+              Replace file
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              disabled={Boolean(activeAction)}
+              onClick={handleDelete}
+            >
+              {activeAction === "delete" ? "Deleting..." : "Delete document"}
+            </Button>
+          </div>
+        </div>
+
+        {isReplaceOpen ? (
+          <div className="mt-5 rounded-lg border border-app-border bg-app-elevated/65 p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <label className="block flex-1">
+                <span className="text-sm font-semibold text-app-text">Replacement file</span>
+                <input
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  onChange={handleReplacementFileChange}
+                  className="app-field mt-2 block w-full px-3 py-2 text-sm text-app-muted file:mr-3 file:rounded-md file:border-0 file:bg-app-accent-soft file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-app-accent"
+                />
+              </label>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="appPrimary"
+                  disabled={Boolean(activeAction)}
+                  onClick={handleReplace}
+                >
+                  {activeAction === "replace" ? "Replacing..." : "Replace file"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="appSecondary"
+                  onClick={() => {
+                    setIsReplaceOpen(false);
+                    setReplacementFile(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {document.storagePath ? (
+          <div className="mt-5 rounded-lg border border-app-border bg-app-elevated/45 p-4">
+            <h3 className="text-sm font-semibold text-app-text">Stored file reference</h3>
+            <p className="mt-2 overflow-x-auto rounded-md border border-app-border bg-app-surface px-3 py-2 font-mono text-[11px] text-app-muted" title={document.storagePath}>
+              {document.storagePath}
+            </p>
+          </div>
+        ) : null}
+
+        {document.notes ? (
+          <div className="mt-5 rounded-lg border border-app-border bg-app-elevated/65 p-4">
+            <h3 className="text-sm font-semibold text-app-text">Notes</h3>
+            <p className="mt-2 text-sm leading-6 text-app-muted">{document.notes}</p>
+          </div>
+        ) : null}
+      </Surface>
     </div>
   );
 }
