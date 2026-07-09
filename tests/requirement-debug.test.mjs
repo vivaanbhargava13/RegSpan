@@ -568,6 +568,53 @@ test("generic safeguards do not cover disposal but disposal evidence does", asyn
   assert.equal(disposal.grade, "direct");
 });
 
+test("safeguards support with nearby limitation is partial support, not negative evidence", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { gradeRetrievedChunk }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementMatching.ts"),
+  ]);
+  const requirement = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "customer_information_safeguards",
+  );
+
+  const graded = gradeRetrievedChunk(requirement, organizationChunk(
+    [
+      "Customer information repositories require access approval, periodic access review, encryption, authentication, and least privilege controls.",
+      "This policy does not fully define customer information safeguards ownership.",
+    ].join(" "),
+  ));
+
+  assert.equal(graded.grade, "partial");
+  assert.equal(graded.evidence_relationship, "partially_supports");
+  assert.equal(graded.negative_evidence, false);
+  assert.equal(graded.control_absent_or_out_of_scope, false);
+  assert.deepEqual(graded.covered_elements, ["customer_information_scope", "safeguards_controls"]);
+  assert.match(graded.supporting_quote, /Customer information repositories require access approval/);
+  assert.doesNotMatch(graded.supporting_quote ?? "", /does not fully define/);
+});
+
+test("adjacent limitation language does not contaminate a safeguards support quote", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { gradeRetrievedChunk }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementMatching.ts"),
+  ]);
+  const requirement = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "customer_information_safeguards",
+  );
+
+  const graded = gradeRetrievedChunk(requirement, organizationChunk(
+    [
+      "Customer information repositories require access approval, periodic access review, encryption, authentication, and least privilege controls.",
+      "This policy does not fully define customer notification timing.",
+    ].join(" "),
+  ));
+
+  assert.notEqual(graded.evidence_relationship, "negative_evidence");
+  assert.equal(graded.negative_evidence, false);
+  assert.match(graded.supporting_quote, /Customer information repositories require access approval/);
+  assert.doesNotMatch(graded.supporting_quote ?? "", /customer notification timing/);
+});
+
 test("generic logging does not cover written compliance records but recordkeeping evidence does", async () => {
   const [{ REG_SP_REQUIREMENTS }, { gradeRetrievedChunk }] = await Promise.all([
     loadTsModule("lib/regSpRequirements.ts"),

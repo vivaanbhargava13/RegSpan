@@ -593,7 +593,7 @@ export function remediationForFinding(
   if (status === "needs_review") {
     return `Add or point to the procedure that defines ${needsReviewDetailForRequirement(requirement, missingRequired)}. A reviewer should confirm whether another policy already contains this detail.`;
   }
-  return `${base} Create or update a written policy or procedure that defines responsibility, timing, required steps, and records to retain.`;
+  return `Add or point to written procedures that define ${needsReviewDetailForRequirement(requirement, missingRequired)}. Include responsibility, timing, required steps, handoffs, approvals, and records to retain where applicable.`;
 }
 
 function reviewedDocumentLabel(chunk: GradedEvidenceChunk | undefined) {

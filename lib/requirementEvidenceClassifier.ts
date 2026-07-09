@@ -152,6 +152,49 @@ function sentenceContaining(rawText: string, signals: string[]) {
   return rawText.includes(matched) ? matched : null;
 }
 
+function evidenceSentences(rawText: string) {
+  return (rawText.match(/[^.!?]+[.!?]?/g) ?? [rawText])
+    .flatMap((sentence) => sentence.split("\n"))
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+}
+
+function detectSentenceScopedNegativeEvidence(
+  input: RequirementEvidenceClassifierInput,
+) {
+  const signals = [...input.requirement.directSignals];
+  for (const sentence of evidenceSentences(input.chunkContent)) {
+    const match = detectNegativeEvidence(sentence, signals);
+    if (match.isNegativeEvidence) {
+      return { ...match, sentence };
+    }
+  }
+
+  const metadataMatch = detectNegativeEvidence([
+    input.chunkMetadata.sectionPath,
+    input.chunkMetadata.evidenceReason,
+  ].filter(Boolean).join(" "), signals);
+  return { ...metadataMatch, sentence: null };
+}
+
+function positiveSupportSentence(
+  input: RequirementEvidenceClassifierInput,
+  signals: string[],
+) {
+  const normalizedSignals = uniqueStrings(signals.map(normalize)).filter(Boolean);
+  for (const sentence of evidenceSentences(input.chunkContent)) {
+    const normalizedSentence = normalize(sentence);
+    if (!normalizedSignals.some((signal) => normalizedSentence.includes(signal))) {
+      continue;
+    }
+    if (detectNegativeEvidence(sentence, input.requirement.directSignals).isNegativeEvidence) {
+      continue;
+    }
+    return sentence;
+  }
+  return null;
+}
+
 export function buildRequirementEvaluationGuidance(requirement: RegSpRequirement) {
   const sharedGuidance = [
     "Classify only the provided retrieved chunk, not the whole document.",
@@ -215,9 +258,7 @@ export function classifyRequirementEvidenceHeuristically(
     input.chunkMetadata.evidenceReason,
     chunkContent,
   ].filter(Boolean).join(" "));
-  const negativeEvidence = detectNegativeEvidence(text, [
-    ...requirement.directSignals,
-  ]);
+  const negativeEvidence = detectSentenceScopedNegativeEvidence(input);
   const direct = countSignalMatches(text, requirement.directSignals);
   const action = countSignalMatches(text, requirement.actionSignals);
   const partial = countSignalMatches(text, requirement.partialSignals);
@@ -245,6 +286,40 @@ export function classifyRequirementEvidenceHeuristically(
       ])
     );
   const hasDirectSupportSignals = hasExplicitAction && hasVendorIncidentHandlingContext && direct.count >= 2;
+  const positiveSupportQuote = positiveSupportSentence(input, [
+    ...direct.matched,
+    ...action.matched,
+    ...partial.matched,
+    ...background.matched,
+    ...(requirement.coverageElements ?? []).flatMap((element) =>
+      coverage.covered.includes(element.id) ? element.signals : []
+    ),
+  ]);
+
+  if (negativeEvidence.isNegativeEvidence && coverage.covered.length > 0 && positiveSupportQuote) {
+    const matched = [
+      ...direct.matched,
+      ...action.matched.slice(0, 2),
+      ...partial.matched,
+      ...background.matched.slice(0, 1),
+    ];
+    return {
+      relationship: "partially_supports",
+      confidence: "medium",
+      requirement_supported: false,
+      control_absent_or_out_of_scope: false,
+      covered_elements: coverage.covered,
+      missing_elements: coverage.missingRequired,
+      vague_elements: coverage.vague,
+      reason:
+        heuristicClassificationReason(
+          "Partial support signals matched; nearby limitation language was not treated as overriding the supported elements",
+          matched,
+        ),
+      supporting_quote: positiveSupportQuote,
+      classifier_provider: provider,
+    };
+  }
 
   if (negativeEvidence.isNegativeEvidence) {
     return {
@@ -256,8 +331,8 @@ export function classifyRequirementEvidenceHeuristically(
       missing_elements: coverage.missingRequired,
       vague_elements: coverage.vague,
       reason:
-        `Negative evidence: chunk states this requirement is absent, excluded, delegated elsewhere, or out of scope (${negativeEvidence.matchedPhrase} near ${negativeEvidence.matchedSignal}).`,
-      supporting_quote: sentenceContaining(chunkContent, [
+        `Negative evidence: cited text states this requirement is absent, excluded, delegated elsewhere, or out of scope (${negativeEvidence.matchedPhrase} near ${negativeEvidence.matchedSignal}).`,
+      supporting_quote: negativeEvidence.sentence ?? sentenceContaining(chunkContent, [
         negativeEvidence.matchedPhrase ?? "",
         negativeEvidence.matchedSignal ?? "",
       ]),
@@ -380,16 +455,7 @@ function reasonInfersAbsence(reason: string) {
 }
 
 function chunkHasExplicitAbsenceLanguage(input: RequirementEvidenceClassifierInput) {
-  const text = normalize([
-    input.chunkMetadata.filename,
-    input.chunkMetadata.sectionPath,
-    input.chunkMetadata.evidenceReason,
-    input.chunkContent,
-  ].filter(Boolean).join(" "));
-
-  return detectNegativeEvidence(text, [
-    ...input.requirement.directSignals,
-  ]).isNegativeEvidence;
+  return detectSentenceScopedNegativeEvidence(input).isNegativeEvidence;
 }
 
 function parseOpenAiClassification(
@@ -460,6 +526,30 @@ export function postProcessOpenAiClassification(
       reason:
         `Downgraded from negative_evidence because absence must be explicit for this requirement and cannot be inferred from silence or adjacent controls. ${parsed.reason}`,
       supporting_quote: null,
+    };
+  }
+
+  if (
+    parsed.relationship === "negative_evidence"
+    && parsedCoveredElements.length > 0
+    && (!supportingQuote || !detectNegativeEvidence(supportingQuote, input.requirement.directSignals).isNegativeEvidence)
+  ) {
+    return {
+      relationship: "partially_supports",
+      confidence: parsed.confidence === "high" ? "medium" : parsed.confidence,
+      requirement_supported: false,
+      control_absent_or_out_of_scope: false,
+      covered_elements: parsedCoveredElements,
+      missing_elements: uniqueStrings([
+        ...parsedMissingElements,
+        ...(input.requirement.requiredElementsForCovered ?? []).filter(
+          (elementId) => !parsedCoveredElements.includes(elementId),
+        ),
+      ]),
+      vague_elements: parsedVagueElements,
+      reason:
+        `Downgraded from negative_evidence because the cited client text supports required elements and the supporting quote is not explicit absence language. ${parsed.reason}`,
+      supporting_quote: supportingQuote,
     };
   }
 
