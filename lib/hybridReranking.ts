@@ -1,6 +1,7 @@
 import { detectNegativeEvidence } from "./negativeEvidence";
 
 export type RerankableRequirement = {
+  id?: string;
   title: string;
   description: string;
   retrievalQuery?: string;
@@ -144,6 +145,84 @@ function sectionText(chunk: RerankableChunk) {
   return normalize(chunk.section_path);
 }
 
+function inheritedSectionText(chunk: RerankableChunk) {
+  return normalize([
+    chunk.section_path,
+    chunk.embedding_input,
+  ].filter(Boolean).join(" "));
+}
+
+function preferredSectionSignals(requirement: RerankableRequirement) {
+  const text = normalize([
+    requirement.id,
+    requirement.title,
+    requirement.description,
+    requirement.retrievalQuery,
+  ].filter(Boolean).join(" "));
+
+  if (text.includes("customer notification content")) {
+    return {
+      preferred: [
+        "customer notification content requirements",
+        "customer notification decision standard",
+        "customer notification timing and approval path",
+      ],
+      disfavored: ["vendor", "service provider", "supplier", "third party"],
+    };
+  }
+
+  if (text.includes("customer notification") || text.includes("notice trigger") || text.includes("notice timing")) {
+    return {
+      preferred: [
+        "customer notification decision standard",
+        "customer notification timing and approval path",
+        "customer notification content requirements",
+      ],
+      disfavored: ["vendor", "service provider", "supplier", "third party"],
+    };
+  }
+
+  if (text.includes("safeguards")) {
+    return {
+      preferred: [
+        "access management and privileged access review",
+        "monitoring logging and alert review",
+        "safeguards",
+      ],
+      disfavored: [],
+    };
+  }
+
+  if (text.includes("disposal")) {
+    return {
+      preferred: [
+        "disposal of consumer and customer information",
+        "electronic media and backup disposal procedures",
+      ],
+      disfavored: [],
+    };
+  }
+
+  if (text.includes("law enforcement") || text.includes("regulator")) {
+    return {
+      preferred: ["law enforcement and regulator coordination"],
+      disfavored: [],
+    };
+  }
+
+  if (text.includes("recovery") || text.includes("remediation")) {
+    return {
+      preferred: [
+        "incident recovery and remediation validation",
+        "post-incident review and lessons learned",
+      ],
+      disfavored: ["vendor", "service provider", "supplier", "third party"],
+    };
+  }
+
+  return { preferred: [], disfavored: [] };
+}
+
 function clampScore(score: number) {
   return Math.max(0, Math.round(score * 100) / 100);
 }
@@ -160,11 +239,12 @@ export function rerankRequirementChunk<T extends RerankableChunk>(
   const profile = buildRequirementKeywordProfile(requirement);
   const text = chunkRerankText(chunk);
   const section = sectionText(chunk);
+  const inheritedSection = inheritedSectionText(chunk);
   const semanticScore = Number.isFinite(chunk.similarity) ? chunk.similarity * 100 : 0;
   const direct = countMatches(text, profile.directSignals);
   const action = countMatches(text, profile.actionSignals);
   const topic = countMatches(text, profile.topicSignals);
-  const negativeEvidence = detectNegativeEvidence(text, [
+  const negativeEvidence = detectNegativeEvidence(normalize(chunk.content_preview), [
     ...profile.directSignals,
     ...profile.actionSignals,
     ...profile.topicSignals,
@@ -175,6 +255,9 @@ export function rerankRequirementChunk<T extends RerankableChunk>(
     ...profile.topicSignals,
   ]);
   const negative = countMatches(text, profile.negativeSignals);
+  const sectionPreferences = preferredSectionSignals(requirement);
+  const preferredSection = countMatches(inheritedSection, sectionPreferences.preferred);
+  const disfavoredSection = countMatches(inheritedSection, sectionPreferences.disfavored);
   const evidenceReason = normalize(chunk.evidence_reason);
 
   let score = semanticScore;
@@ -185,6 +268,8 @@ export function rerankRequirementChunk<T extends RerankableChunk>(
     score += Math.min(action.count, 4) * 6;
     score += Math.min(topic.count, 5) * 3;
     score += Math.min(sectionMatches.count, 3) * 5;
+    score += Math.min(preferredSection.count, 3) * 18;
+    score -= Math.min(disfavoredSection.count, 2) * 14;
   }
   if (chunk.evidence_role === "organization_evidence") {
     score += 4;
@@ -210,6 +295,8 @@ export function rerankRequirementChunk<T extends RerankableChunk>(
     action.count > 0 ? `action signals: ${action.matched.slice(0, 3).join(", ")}` : null,
     topic.count > 0 ? `topic signals: ${topic.matched.slice(0, 3).join(", ")}` : null,
     sectionMatches.count > 0 ? `section/path signals: ${sectionMatches.matched.slice(0, 2).join(", ")}` : null,
+    preferredSection.count > 0 ? `preferred sections: ${preferredSection.matched.slice(0, 2).join(", ")}` : null,
+    disfavoredSection.count > 0 ? `less relevant sections: ${disfavoredSection.matched.slice(0, 2).join(", ")}` : null,
     chunk.evidence_role ? `role ${chunk.evidence_role}` : null,
     chunk.source_type ? `source ${chunk.source_type}` : null,
     evidenceReason ? `classifier ${evidenceReason}` : null,

@@ -82,6 +82,25 @@ function isExplicitNegativeEvidence(chunk: GradedEvidenceChunk) {
     && chunk.control_absent_or_out_of_scope;
 }
 
+function hasExactSourceQuote(chunk: GradedEvidenceChunk) {
+  const quote = chunk.supporting_quote?.trim();
+  return Boolean(quote && chunk.content_preview.includes(quote));
+}
+
+function isSourceGroundedDirectSupport(chunk: GradedEvidenceChunk) {
+  return isDirectSupport(chunk)
+    && hasExactSourceQuote(chunk)
+    && (chunk.missing_elements ?? []).length === 0;
+}
+
+function isSourceGroundedPartialSupport(chunk: GradedEvidenceChunk) {
+  return isPartialSupport(chunk) && hasExactSourceQuote(chunk);
+}
+
+function isSourceGroundedNegativeEvidence(chunk: GradedEvidenceChunk) {
+  return isExplicitNegativeEvidence(chunk) && hasExactSourceQuote(chunk);
+}
+
 function normalize(value: string | null | undefined) {
   return (value ?? "")
     .toLowerCase()
@@ -536,6 +555,28 @@ function coverageForChunks(requirement: RegSpRequirement, chunks: GradedEvidence
   };
 }
 
+function directlyContradictedRequiredElements(
+  requirement: RegSpRequirement,
+  supportChunks: GradedEvidenceChunk[],
+  negativeChunks: GradedEvidenceChunk[],
+) {
+  const supportedRequired = new Set(
+    supportChunks
+      .flatMap((chunk) => chunk.covered_elements ?? [])
+      .filter((elementId) => requirement.requiredElementsForCovered.includes(elementId)),
+  );
+  const contradictedRequired = new Set(
+    negativeChunks
+      .flatMap((chunk) => [
+        ...(chunk.missing_elements ?? []),
+        ...(chunk.vague_elements ?? []),
+      ])
+      .filter((elementId) => requirement.requiredElementsForCovered.includes(elementId)),
+  );
+
+  return [...supportedRequired].filter((elementId) => contradictedRequired.has(elementId));
+}
+
 function confidenceForStatus(status: FindingStatus, evidence: GradedEvidenceChunk[]): FindingConfidence {
   const hasHighConfidenceEvidence = evidence.some(
     (chunk) => chunk.classifier_confidence === "high",
@@ -782,11 +823,14 @@ function evidenceForStorage(
   chunks: GradedEvidenceChunk[],
   negativeScopeByChunkId: Map<string, NegativeEvidenceScope>,
 ): GeneratedFindingEvidence[] {
-  return chunks.slice(0, 6).map((chunk) => ({
+  return chunks
+    .filter((chunk) => chunk.evidence_relationship === "background_context" || hasExactSourceQuote(chunk))
+    .slice(0, 3)
+    .map((chunk) => ({
     chunk_id: chunk.chunk_id,
     document_id: chunk.document_id,
     relationship: chunk.evidence_relationship,
-    quote: chunk.supporting_quote,
+    quote: hasExactSourceQuote(chunk) ? chunk.supporting_quote : null,
     reason: evidenceReasonForStorage(requirement, chunk, negativeScopeByChunkId),
     confidence: chunk.classifier_confidence,
     filename: chunk.filename,
@@ -802,10 +846,10 @@ export function aggregateFindingForRequirement(
   gradedChunks: GradedEvidenceChunk[],
 ): GeneratedRequirementFinding {
   const organizationChunks = organizationEvidence(gradedChunks);
-  const direct = organizationChunks.filter(isDirectSupport);
-  const partial = organizationChunks.filter(isPartialSupport);
+  const direct = organizationChunks.filter(isSourceGroundedDirectSupport);
+  const partial = organizationChunks.filter(isSourceGroundedPartialSupport);
   const background = organizationChunks.filter(isBackgroundContext);
-  const negative = organizationChunks.filter(isExplicitNegativeEvidence);
+  const negative = organizationChunks.filter(isSourceGroundedNegativeEvidence);
   const negativeScopeByChunkId = new Map(
     negative.map((chunk) => [chunk.chunk_id, classifyNegativeEvidenceScope(chunk)]),
   );
@@ -827,13 +871,22 @@ export function aggregateFindingForRequirement(
   const hasDirectSupport = strongestDirect.length > 0;
   const hasComplementarySupport = supportChunksWithCoveredElements.length >= 2;
   const hasMeaningfulElementSupport = coverage.coveredRequired.length > 0;
+  const contradictedElements = directlyContradictedRequiredElements(
+    requirement,
+    supportingEvidence,
+    strongestOrganizationNegative,
+  );
   const hasAmbiguousEvidence = hasTrueAmbiguity({
     documentScopeLimitations: strongestDocumentScopeLimitations,
     background: strongestBackground,
   });
 
   let status: FindingStatus;
-  if (coverage.hasFullRequiredCoverage && (hasDirectSupport || hasComplementarySupport) && strongestOrganizationNegative.length > 0) {
+  if (
+    coverage.hasFullRequiredCoverage
+    && (hasDirectSupport || hasComplementarySupport)
+    && contradictedElements.length > 0
+  ) {
     status = "conflicting";
   } else if (coverage.hasFullRequiredCoverage && (hasDirectSupport || hasComplementarySupport)) {
     status = "covered";

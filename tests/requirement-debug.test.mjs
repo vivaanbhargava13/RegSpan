@@ -83,12 +83,13 @@ function retrievedChunk(contentPreview) {
   };
 }
 
-function organizationChunk(contentPreview) {
+function organizationChunk(contentPreview, overrides = {}) {
   return {
     ...retrievedChunk(contentPreview),
     filename: "Northstar Incident Response Policy.pdf",
     source_type: "client_policy",
     evidence_role: "organization_evidence",
+    ...overrides,
   };
 }
 
@@ -355,6 +356,33 @@ test("OpenAI classifier downgrades adjacent-control absence that is not about th
   assert.match(result.reason, /adjacent controls/);
 });
 
+test("vendor 72-hour notice gap does not become incident assessment negative evidence", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { classifyRequirementEvidenceHeuristically, classifierInputForChunk }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementEvidenceClassifier.ts"),
+  ]);
+  const incidentAssessment = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "unauthorized_access_detection_escalation",
+  );
+  const vendorNotice = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "vendor_incident_handling",
+  );
+  const text = "Service providers must escalate incidents promptly, but the policy does not establish a 72-hour notice expectation.";
+
+  const incidentResult = classifyRequirementEvidenceHeuristically(
+    classifierInputForChunk(incidentAssessment, organizationChunk(text)),
+  );
+  const vendorResult = classifyRequirementEvidenceHeuristically(
+    classifierInputForChunk(vendorNotice, organizationChunk(text)),
+  );
+
+  assert.notEqual(incidentResult.relationship, "negative_evidence");
+  assert.equal(incidentResult.control_absent_or_out_of_scope, false);
+  assert.equal(vendorResult.relationship, "negative_evidence");
+  assert.deepEqual(vendorResult.missing_elements, ["notice_to_firm"]);
+  assert.equal(vendorResult.supporting_quote, text);
+});
+
 test("OpenAI classifier rejects invented supporting quotes", async () => {
   const [{ REG_SP_REQUIREMENTS }, { postProcessOpenAiClassification, classifierInputForChunk }] = await Promise.all([
     loadTsModule("lib/regSpRequirements.ts"),
@@ -377,9 +405,67 @@ test("OpenAI classifier rejects invented supporting quotes", async () => {
     supporting_quote: "The organization has a robust customer notice workflow.",
   }, classifierInputForChunk(requirement, chunk));
 
-  assert.equal(result.relationship, "supports");
-  assert.equal(result.requirement_supported, true);
+  assert.equal(result.relationship, "background_context");
+  assert.equal(result.requirement_supported, false);
   assert.equal(result.supporting_quote, null);
+  assert.match(result.reason, /must include an exact source quote/);
+});
+
+test("generated classifier reasons cannot replace exact source quotes", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { postProcessOpenAiClassification, classifierInputForChunk }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementEvidenceClassifier.ts"),
+  ]);
+  const requirement = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "customer_notification_unauthorized_access",
+  );
+  const chunk = organizationChunk("Legal may notify affected customers after unauthorized access.");
+
+  const result = postProcessOpenAiClassification({
+    relationship: "partially_supports",
+    confidence: "medium",
+    requirement_supported: false,
+    control_absent_or_out_of_scope: false,
+    covered_elements: ["notice_trigger"],
+    missing_elements: ["notice_timing"],
+    vague_elements: [],
+    reason: "Legal may notify affected customers after unauthorized access and the timing element is missing.",
+    supporting_quote: null,
+  }, classifierInputForChunk(requirement, chunk));
+
+  assert.equal(result.relationship, "background_context");
+  assert.equal(result.supporting_quote, null);
+  assert.equal(result.covered_elements.length, 0);
+  assert.match(result.reason, /must include an exact source quote/);
+});
+
+test("synopsis and embedding input cannot satisfy findings without raw chunk evidence", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { classifyRequirementEvidenceHeuristically, classifierInputForChunk }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementEvidenceClassifier.ts"),
+  ]);
+  const requirement = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "customer_notification_content",
+  );
+  const chunk = organizationChunk("This section provides general communications background.", {
+    section_path: "Customer notification content requirements",
+    embedding_input: [
+      "Section: Customer notification content requirements",
+      "Retrieval synopsis: Notices include incident description, information involved, fraud alerts, credit reports, and contact information.",
+      "",
+      "This section provides general communications background.",
+    ].join("\n"),
+  });
+
+  const result = classifyRequirementEvidenceHeuristically(
+    classifierInputForChunk(requirement, chunk),
+  );
+
+  assert.notEqual(result.relationship, "supports");
+  assert.notEqual(result.relationship, "partially_supports");
+  assert.equal(result.relationship, "background_context");
+  assert.equal(result.requirement_supported, false);
+  assert.equal(result.covered_elements.length, 0);
 });
 
 test("requirement debug has no old satisfied display/status text", async () => {

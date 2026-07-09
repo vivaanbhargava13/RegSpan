@@ -132,6 +132,38 @@ test("rerank_score can use inherited embedding context when raw text lacks headi
   assert.match(inheritedContext.rerank_reason, /direct signals|action signals|topic signals/);
 });
 
+test("customer notification content reranks direct notice-content sections over vendor sections", async () => {
+  const { rerankRequirementCandidates } = await loadTsModule("lib/hybridReranking.ts");
+  const contentRequirement = {
+    id: "customer_notification_content",
+    title: "Customer notification content",
+    description: "Define the required contents of customer notices to affected individuals.",
+    retrievalQuery: "customer notification content requirements incident description information involved protective steps contact information",
+    directSignals: ["incident description", "information involved", "fraud alert", "credit report"],
+    actionSignals: ["include", "describe", "explain"],
+    topicSignals: ["notice", "affected individuals", "sensitive customer information"],
+    partialSignals: ["notification", "template"],
+    backgroundSignals: ["communications"],
+  };
+  const [top] = rerankRequirementCandidates(contentRequirement, [
+    candidate({
+      chunk_id: "vendor-section",
+      section_path: "Service provider oversight expectations",
+      content_preview: "Service providers must escalate incidents promptly and cooperate with investigation support.",
+      similarity: 0.62,
+    }),
+    candidate({
+      chunk_id: "notice-content-section",
+      section_path: "Customer notification content requirements",
+      content_preview: "Notices include an incident description, information involved, fraud alert guidance, credit report resources, and contact information.",
+      similarity: 0.57,
+    }),
+  ], 2);
+
+  assert.equal(top.chunk_id, "notice-content-section");
+  assert.match(top.rerank_reason, /preferred sections/);
+});
+
 test("reranked chunks retain source type evidence role and reason fields", async () => {
   const { rerankRequirementCandidates } = await loadTsModule("lib/hybridReranking.ts");
   const [result] = rerankRequirementCandidates(requirement, [candidate()], 1);

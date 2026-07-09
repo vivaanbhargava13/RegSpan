@@ -66,7 +66,7 @@ const absencePatterns = [
 function normalize(value: string | null | undefined) {
   return (value ?? "")
     .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, " ")
+    .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -81,6 +81,11 @@ function uniqueSignals(signals: string[]) {
     }
     seen.add(normalized);
     unique.push(normalized);
+    const singularHour = normalized.replace(/\bhours\b/g, "hour");
+    if (singularHour !== normalized && !seen.has(singularHour)) {
+      seen.add(singularHour);
+      unique.push(singularHour);
+    }
   }
   return unique;
 }

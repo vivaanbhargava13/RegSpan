@@ -94,6 +94,8 @@ function negativeChunk(overrides = {}) {
     control_absent_or_out_of_scope: true,
     negative_evidence: true,
     classifier_confidence: "high",
+    covered_elements: [],
+    missing_elements: ["notice_trigger", "notice_timing"],
     negative_evidence_reason: "The firm does not establish customer notification.",
     grade_reason: "The firm does not establish customer notification.",
     supporting_quote: "The firm does not establish customer notification.",
@@ -176,6 +178,36 @@ test("no organization evidence produces a missing finding", () => {
   assert.doesNotMatch(finding.summary, /noncompliant/i);
 });
 
+test("support partial and negative rows require exact source quotes to count", () => {
+  const unquotedSupport = chunk({
+    supporting_quote: null,
+    grade_reason: "Generated reason says the notice trigger and timing are covered.",
+  });
+  const paraphrasedPartial = chunk({
+    grade: "partial",
+    evidence_relationship: "partially_supports",
+    requirement_supported: false,
+    covered_elements: ["notice_trigger"],
+    missing_elements: ["notice_timing"],
+    supporting_quote: "The firm has a mature customer notification program.",
+    grade_reason: "Generated reason says customer notification is mentioned.",
+  });
+  const unquotedNegative = negativeChunk({
+    supporting_quote: null,
+    grade_reason: "Generated reason says customer notification is not established.",
+  });
+
+  const finding = aggregateFindingForRequirement(requirement, [
+    unquotedSupport,
+    paraphrasedPartial,
+    unquotedNegative,
+  ]);
+
+  assert.equal(finding.status, "missing");
+  assert.equal(finding.evidence.length, 0);
+  assert.match(finding.rationale, /did not find clear policy or procedure language/);
+});
+
 test("true organization-level negative evidence produces conflicting or missing findings", () => {
   const negative = negativeChunk();
 
@@ -187,6 +219,28 @@ test("true organization-level negative evidence produces conflicting or missing 
   assert.match(conflicting.summary, /conflict/);
   assert.match(conflicting.rationale, /appears to contradict/);
   assert.equal(conflicting.evidence[1].reason.startsWith("The reviewed document appears to say this requirement is not addressed:"), true);
+});
+
+test("unrelated negative evidence cannot make a requirement conflicting", () => {
+  const vendorTimingGap = negativeChunk({
+    chunk_id: "99999999-9999-4999-8999-999999999999",
+    section_path: "Service provider oversight expectations",
+    content_preview:
+      "Service providers must escalate incidents promptly, but the policy does not establish a 72-hour notice expectation.",
+    supporting_quote:
+      "Service providers must escalate incidents promptly, but the policy does not establish a 72-hour notice expectation.",
+    grade_reason:
+      "The cited text does not establish a 72-hour notice expectation for service providers.",
+    negative_evidence_reason:
+      "The cited text does not establish a 72-hour notice expectation for service providers.",
+    missing_elements: ["service_provider_notice_timing"],
+  });
+
+  const finding = aggregateFindingForRequirement(requirement, [chunk(), vendorTimingGap]);
+
+  assert.equal(finding.status, "covered");
+  assert.notEqual(finding.status, "conflicting");
+  assert.doesNotMatch(finding.rationale, /appears to contradict/);
 });
 
 test("strong support with weak document-scope limitation stays covered", () => {
@@ -208,10 +262,7 @@ test("strong support with weak document-scope limitation stays covered", () => {
   assert.notEqual(finding.status, "conflicting");
   assert.equal(finding.severity, "high");
   assert.doesNotMatch(finding.rationale, /scope limitation|do not cover this requirement/i);
-  assert.equal(
-    finding.evidence.some((evidence) => evidence.reason.startsWith("This document limits what it covers for this requirement.")),
-    true,
-  );
+  assert.equal(finding.evidence.some((evidence) => evidence.relationship === "supports"), true);
 });
 
 test("generic Reg S-P compliance statements are missing, not needs review", () => {
@@ -291,6 +342,7 @@ test("multiple complementary supports can cover required elements", () => {
     covered_elements: ["notice_timing"],
     missing_elements: ["notice_trigger"],
     supporting_quote: "notice must be provided without unreasonable delay",
+    content_preview: "The incident response procedure states that notice must be provided without unreasonable delay.",
     grade_reason: "The cited text covers notice timing.",
   });
 
@@ -299,6 +351,83 @@ test("multiple complementary supports can cover required elements", () => {
   assert.equal(finding.status, "covered");
   assert.match(finding.rationale, /defines when customer notice is required and defines the timing for customer notice/);
   assert.doesNotMatch(finding.rationale, /Reviewed evidence covers:/);
+});
+
+test("background context does not count toward covered status", () => {
+  const finding = aggregateFindingForRequirement(requirement, [
+    chunk({
+      grade: "background",
+      evidence_relationship: "background_context",
+      requirement_supported: false,
+      covered_elements: ["notice_trigger", "notice_timing"],
+      missing_elements: [],
+      supporting_quote: "The firm complies with Regulation S-P.",
+      content_preview: "The firm complies with Regulation S-P.",
+      grade_reason: "Generated context mentions coverage, but the source text is generic.",
+    }),
+  ]);
+
+  assert.equal(finding.status, "missing");
+  assert.notEqual(finding.status, "covered");
+});
+
+test("response recovery remains partial when remediation tracking is missing", () => {
+  const recoveryRequirement = {
+    ...requirement,
+    id: "remediation_recovery_validation",
+    title: "Response recovery and remediation validation",
+    description: "Define recovery, remediation tracking, and validation after incidents.",
+    coverageElements: [
+      { id: "recovery_steps", label: "Defines recovery steps", requiredForCovered: true, signals: ["recovery"] },
+      { id: "remediation_tracking", label: "Tracks remediation", requiredForCovered: true, signals: ["remediation tracking"] },
+      { id: "validation_testing", label: "Validates remediation", requiredForCovered: true, signals: ["validation"] },
+    ],
+    requiredElementsForCovered: ["recovery_steps", "remediation_tracking", "validation_testing"],
+  };
+  const finding = aggregateFindingForRequirement(recoveryRequirement, [
+    chunk({
+      grade: "partial",
+      evidence_relationship: "partially_supports",
+      requirement_supported: false,
+      covered_elements: ["recovery_steps", "validation_testing"],
+      missing_elements: ["remediation_tracking"],
+      supporting_quote: "The incident team restores affected systems and validates recovery before closure.",
+      content_preview: "The incident team restores affected systems and validates recovery before closure.",
+      grade_reason: "The cited text covers recovery and validation but not remediation tracking.",
+    }),
+  ]);
+
+  assert.equal(finding.status, "partial");
+  assert.match(finding.remediation, /remediation or corrective-action tracking/);
+});
+
+test("disposal remains partial unless all required disposal elements are source-supported", () => {
+  const disposalRequirement = {
+    ...requirement,
+    id: "disposal_consumer_customer_information",
+    title: "Disposal of consumer and customer information",
+    description: "Require secure disposal of consumer and customer information.",
+    coverageElements: [
+      { id: "disposal_scope", label: "Applies to consumer or customer information", requiredForCovered: true, signals: ["customer information"] },
+      { id: "secure_disposal_method", label: "Requires secure disposal methods", requiredForCovered: true, signals: ["secure disposal"] },
+    ],
+    requiredElementsForCovered: ["disposal_scope", "secure_disposal_method"],
+  };
+  const finding = aggregateFindingForRequirement(disposalRequirement, [
+    chunk({
+      grade: "partial",
+      evidence_relationship: "partially_supports",
+      requirement_supported: false,
+      covered_elements: ["disposal_scope"],
+      missing_elements: ["secure_disposal_method"],
+      supporting_quote: "Customer information is retained according to the records schedule.",
+      content_preview: "Customer information is retained according to the records schedule.",
+      grade_reason: "The cited text identifies customer information but not secure disposal methods.",
+    }),
+  ]);
+
+  assert.equal(finding.status, "partial");
+  assert.match(finding.rationale, /secure disposal/);
 });
 
 test("covered and partial evidence explanations use natural language", () => {
@@ -518,6 +647,7 @@ test("document-scope limitation with some support is partial, not needs review",
     covered_elements: ["notice_trigger"],
     missing_elements: ["notice_timing"],
     supporting_quote: "The firm notifies affected customers after unauthorized access.",
+    content_preview: "The firm notifies affected customers after unauthorized access.",
     grade_reason: "The cited text covers the notification trigger but not timing.",
   });
   const limitation = negativeChunk({
