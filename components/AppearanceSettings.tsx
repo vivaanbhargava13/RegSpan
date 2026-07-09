@@ -1,5 +1,7 @@
 "use client";
 
+import { Button } from "@/components/Button";
+import { Surface } from "@/components/Surface";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useThemePreference } from "@/components/themePreference";
 
@@ -7,28 +9,27 @@ export function AppearanceSettings() {
   const { theme, resetTheme } = useThemePreference();
 
   return (
-    <article className="app-card p-6">
-      <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+    <Surface as="section" className="space-y-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-app-text">Appearance</h2>
-          <p className="mt-3 text-sm leading-6 text-app-muted">
-            Choose the interface theme for this browser. Light mode is the default for a crisp review workspace.
+          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-app-subtle">
+            Appearance
           </p>
-          <p className="mt-4 text-sm font-medium text-app-subtle">
+          <h2 className="mt-1 text-base font-semibold text-app-text">Interface theme</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-app-muted">
+            Choose the interface theme for this browser. Light mode remains the default review workspace.
+          </p>
+          <p className="mt-3 text-xs font-semibold text-app-subtle">
             Current theme: <span className="font-semibold capitalize text-app-text">{theme}</span>
           </p>
         </div>
         <ThemeToggle showLabel />
       </div>
-      <div className="mt-5">
-        <button
-          type="button"
-          onClick={resetTheme}
-          className="h-10 rounded-xl border border-app-border bg-app-elevated px-4 text-sm font-semibold text-app-muted shadow-sm transition-colors hover:border-app-border-strong hover:text-app-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent"
-        >
+      <div className="border-t border-app-border pt-4">
+        <Button type="button" variant="appSecondary" onClick={resetTheme}>
           Reset to default
-        </button>
+        </Button>
       </div>
-    </article>
+    </Surface>
   );
 }

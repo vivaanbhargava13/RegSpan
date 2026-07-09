@@ -62,7 +62,10 @@ function validateSelectedPdf(file: File) {
 }
 
 function formatSectionsLabel(label: string) {
-  return label.replace(/\bchunks\b/gi, "sections").replace(/\bPending\b/i, "Not prepared yet");
+  return label
+    .replace(/\bchunks\b/gi, "source excerpts")
+    .replace(/\bsections\b/gi, "source excerpts")
+    .replace(/\bPending\b/i, "Not prepared yet");
 }
 
 function formatPageRange(pageStart: number | null, pageEnd: number | null) {
@@ -119,7 +122,7 @@ function documentLifecycleLabel(status: DocumentStatus) {
     case "Processed":
       return "Ready for analysis";
     case "Failed":
-      return "Processing failed";
+      return "Source text preparation failed";
     case "Needs Review":
       return "Needs reviewer confirmation";
   }
@@ -128,7 +131,7 @@ function documentLifecycleLabel(status: DocumentStatus) {
 const requirementMatchingStep: TimelineStep = {
   label: "Ready for analysis",
   status: "Pending",
-  detail: "Run analysis after evidence sections are ready.",
+  detail: "Run analysis after client source excerpts are ready.",
   state: "pending",
 };
 
@@ -136,8 +139,8 @@ function getTimeline(status: DocumentStatus, chunkCount: number): TimelineStep[]
   if (status === "Uploaded") {
     return [
       { label: "Uploaded", status: "Complete", detail: "File and document details are saved.", state: "complete" },
-      { label: "Prepare source text", status: "Ready", detail: "Start processing to prepare source text from the stored PDF.", state: "pending" },
-      { label: "Evidence sections", status: "Pending", detail: "Evidence sections will be prepared after source text is available.", state: "pending" },
+      { label: "Prepare source text", status: "Ready", detail: "Start source text preparation from the stored PDF.", state: "pending" },
+      { label: "Client source excerpts", status: "Pending", detail: "Client source excerpts will be prepared after source text is available.", state: "pending" },
       requirementMatchingStep,
     ];
   }
@@ -150,15 +153,15 @@ function getTimeline(status: DocumentStatus, chunkCount: number): TimelineStep[]
         status: "Complete",
         detail: chunkCount > 0
           ? "Source text is ready for evidence review."
-          : "Source-text preparation completed, but no evidence sections are currently available.",
+          : "Source-text preparation completed, but no client source excerpts are currently available.",
         state: "complete",
       },
       {
-        label: "Evidence sections",
+        label: "Client source excerpts",
         status: chunkCount > 0 ? "Complete" : "Needs review",
         detail: chunkCount > 0
-          ? "Evidence sections are ready for analysis."
-          : "Reprocess this document to prepare evidence sections.",
+          ? "Client source excerpts are ready for analysis."
+          : "Reprocess this document to prepare client source excerpts.",
         state: chunkCount > 0 ? "complete" : "review",
       },
       { label: "Ready for analysis", status: "Ready", detail: "This document can be included when you run Analysis.", state: "complete" },
@@ -169,7 +172,7 @@ function getTimeline(status: DocumentStatus, chunkCount: number): TimelineStep[]
     return [
       { label: "Uploaded", status: "Complete", detail: "File and document details are saved.", state: "complete" },
       { label: "Prepare source text", status: "Preparing", detail: "RegSpan is preparing source text from this PDF.", state: "current" },
-      { label: "Evidence sections", status: "Pending", detail: "Evidence sections will be available after source text is prepared.", state: "pending" },
+      { label: "Client source excerpts", status: "Pending", detail: "Client source excerpts will be available after source text is prepared.", state: "pending" },
       requirementMatchingStep,
     ];
   }
@@ -178,7 +181,7 @@ function getTimeline(status: DocumentStatus, chunkCount: number): TimelineStep[]
     return [
       { label: "Uploaded", status: "Complete", detail: "File and document details are saved.", state: "complete" },
       { label: "Prepare source text", status: "Needs review", detail: "Prepared source text requires reviewer attention.", state: "review" },
-      { label: "Evidence sections", status: "Needs review", detail: chunkCount > 0 ? "Review the evidence sections before continuing." : "No evidence sections are available for review.", state: "review" },
+      { label: "Client source excerpts", status: "Needs review", detail: chunkCount > 0 ? "Review the client source excerpts before continuing." : "No client source excerpts are available for review.", state: "review" },
       requirementMatchingStep,
     ];
   }
@@ -187,7 +190,7 @@ function getTimeline(status: DocumentStatus, chunkCount: number): TimelineStep[]
     return [
       { label: "Uploaded", status: "Complete", detail: "File and document details are saved.", state: "complete" },
       { label: "Prepare source text", status: "Failed", detail: "RegSpan could not prepare usable text from this PDF.", state: "blocked" },
-      { label: "Evidence sections", status: "Blocked", detail: "Evidence sections are unavailable because processing failed.", state: "blocked" },
+      { label: "Client source excerpts", status: "Blocked", detail: "Client source excerpts are unavailable because source text preparation failed.", state: "blocked" },
       requirementMatchingStep,
     ];
   }
@@ -195,25 +198,25 @@ function getTimeline(status: DocumentStatus, chunkCount: number): TimelineStep[]
   return [
     { label: "Uploaded", status: "Complete", detail: "File and document details are saved.", state: "complete" },
     { label: "Prepare source text", status: "Queued", detail: "The document is queued for source text preparation.", state: "current" },
-    { label: "Evidence sections", status: "Pending", detail: "Evidence sections will be prepared after source text is available.", state: "pending" },
+    { label: "Client source excerpts", status: "Pending", detail: "Client source excerpts will be prepared after source text is available.", state: "pending" },
     requirementMatchingStep,
   ];
 }
 
 function getChunkEmptyState(status: DocumentStatus) {
   if (status === "Processed") {
-    return "Source-text preparation completed, but no evidence sections are available. Prepare the document again.";
+    return "Source-text preparation completed, but no client source excerpts are available. Prepare the document again.";
   }
   if (status === "Processing") {
-    return "Source text and evidence sections are currently being prepared.";
+    return "Source text and client source excerpts are currently being prepared.";
   }
   if (status === "Queued") {
-    return "This document is queued. Evidence sections will appear after source text is prepared.";
+    return "This document is queued. Client source excerpts will appear after source text is prepared.";
   }
   if (status === "Failed") {
-    return "Evidence sections are unavailable because processing failed. Reprocess the document to try again.";
+    return "Client source excerpts are unavailable because source text preparation failed. Reprocess the document to try again.";
   }
-  return "Start processing this document to prepare source text and evidence sections.";
+  return "Start preparing this document to create source text and client source excerpts.";
 }
 
 const stateClasses: Record<TimelineState, string> = {
@@ -291,7 +294,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
 
           if (chunksResult.error || hierarchyResult.error) {
             setWarning(
-              "Document metadata loaded, but processed evidence is unavailable. Reprocess this document or confirm local setup is complete.",
+              "Document metadata loaded, but prepared source excerpts are unavailable. Prepare this document again or confirm local setup is complete.",
             );
           }
 
@@ -543,7 +546,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-wrap items-center gap-2">
               <LifecycleBadge label={documentLifecycleLabel(document.status)} value={document.status} />
-              <StatusBadge showDot={false}>{document.status}</StatusBadge>
+              <StatusBadge showDot={false}>{documentLifecycleLabel(document.status)}</StatusBadge>
               <span className="text-xs font-medium text-app-muted">Secure document workspace</span>
             </div>
             <span className="text-xs font-semibold uppercase tracking-[0.08em] text-app-subtle">
@@ -556,9 +559,9 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
           {[
             { label: "Document type", value: document.type },
             { label: "Uploaded", value: document.uploaded },
-            { label: "Source sections", value: formatSectionsLabel(document.chunks) },
-            { label: "Review status", value: document.status },
-            ...(chunks.length > 0 ? [{ label: "Evidence sections", value: String(chunks.length) }] : []),
+            { label: "Source excerpts", value: formatSectionsLabel(document.chunks) },
+            { label: "Review status", value: documentLifecycleLabel(document.status) },
+            ...(chunks.length > 0 ? [{ label: "Client source excerpts", value: String(chunks.length) }] : []),
             ...(hierarchySummary !== null
               ? [{ label: "Hierarchy", value: formatHierarchySummary(hierarchySummary) }]
               : []),
@@ -604,9 +607,11 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-app-subtle">Source review</p>
-                <h2 className="mt-1 app-section-title">Evidence sections</h2>
+                <h2 className="mt-1 app-section-title">Client source excerpts</h2>
               </div>
-              {chunks.length > 0 ? <StatusBadge showDot={false}>{`${chunks.length} stored`}</StatusBadge> : null}
+              {chunks.length > 0 ? (
+                <StatusBadge showDot={false}>{`${chunks.length} source excerpts`}</StatusBadge>
+              ) : null}
             </div>
             {chunks.length > 0 ? (
               <div className="mt-5 divide-y divide-app-border rounded-lg border border-app-border">
@@ -615,7 +620,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                       <div>
                         <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-app-subtle">
-                          Evidence section {String(chunk.chunk_index + 1).padStart(2, "0")}
+                          Source excerpt {String(chunk.chunk_index + 1).padStart(2, "0")}
                         </span>
                         <h3 className="mt-1 text-sm font-semibold text-app-text">
                           {chunk.section_path || chunk.section_heading || "Unsectioned content"}
@@ -632,7 +637,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
                 ))}
               </div>
             ) : (
-              <EmptyState className="mt-4" title="No evidence sections available">
+              <EmptyState className="mt-4" title="No client source excerpts available">
                 <p>{getChunkEmptyState(document.status)}</p>
               </EmptyState>
             )}
@@ -645,8 +650,8 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
             </div>
             <p className="mt-4 rounded-lg border border-dashed border-app-border-strong bg-app-elevated/55 p-4 text-sm leading-6 text-app-muted">
               {chunks.length > 0
-                ? "Evidence sections are ready. Run Analysis to compare this client document against the Reg S-P requirements."
-                : "Prepare evidence sections before running Analysis."}
+                ? "Client source excerpts are ready. Run Analysis to compare this client document against the Reg S-P requirements."
+                : "Prepare client source excerpts before running Analysis."}
             </p>
           </Surface>
         </div>

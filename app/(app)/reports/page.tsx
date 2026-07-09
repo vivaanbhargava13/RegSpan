@@ -1,67 +1,60 @@
 import { Button } from "@/components/Button";
-import { DataTable } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
+import { Surface } from "@/components/Surface";
 import { StatusBadge } from "@/components/StatusBadge";
-
-const reports = [
-  {
-    name: "Reg S-P Readiness Summary",
-    date: "Today",
-    requirementsReviewed: "18 requirements",
-    status: "Team review",
-  },
-  {
-    name: "Vendor Oversight Gap Summary",
-    date: "Yesterday",
-    requirementsReviewed: "6 requirements",
-    status: "Prepared",
-  },
-  {
-    name: "Incident Response Review Memo",
-    date: "Last week",
-    requirementsReviewed: "4 requirements",
-    status: "Prepared",
-  },
-];
 
 export default function ReportsPage() {
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <PageHeader
         eyebrow="Reports"
-        title="Review reports"
-        description="Prepare summaries your team can review before sharing with counsel, auditors, or examiners."
+        title="Reports are exported from Analysis"
+        description="Use Analysis to review findings, client source excerpts, and Reg S-P basis links before copying or exporting the Markdown report."
         actions={
-          <Button href="/findings" variant="appPrimary">Open Analysis export</Button>
+          <Button href="/findings" variant="appPrimary">
+            Open Analysis
+          </Button>
         }
       />
 
-      <div className="app-card relative overflow-hidden p-5 lg:p-6">
-        <div aria-hidden="true" className="absolute inset-y-5 left-0 w-1 rounded-r-full bg-app-accent" />
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="pl-2">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-app-accent">Export readiness</p>
-            <h2 className="mt-2 app-section-title">Use the Analysis report export</h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-app-muted">
-              Copy or export a Markdown report from the Analysis page. The report keeps client source excerpts separate from Reg S-P requirement basis links.
-            </p>
+      <Surface as="section" padding="none" className="overflow-hidden">
+        <div className="border-b border-app-border px-5 py-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-app-subtle">
+                Export location
+              </p>
+              <h2 className="mt-1 text-base font-semibold text-app-text">Analysis report export</h2>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-app-muted">
+                Copy report and Export Markdown remain available inside Analysis so reviewers can confirm
+                status, risk, and source separation before distributing the workpaper.
+              </p>
+            </div>
+            <StatusBadge tone="accent">Analysis</StatusBadge>
           </div>
-          <span className="w-fit rounded-full border border-app-border bg-app-elevated px-3 py-1.5 text-xs font-semibold text-app-muted">Markdown ready</span>
         </div>
-      </div>
-
-      <DataTable columns={["Report name", "Date", "Requirements reviewed", "Status"]}>
-        {reports.map((report) => (
-          <tr key={report.name}>
-            <td className="px-4 py-4 font-medium text-app-text">{report.name}</td>
-            <td className="px-4 py-4 text-app-muted">{report.date}</td>
-            <td className="px-4 py-4 text-app-muted">{report.requirementsReviewed}</td>
-            <td className="px-4 py-4">
-              <StatusBadge>{report.status}</StatusBadge>
-            </td>
-          </tr>
-        ))}
-      </DataTable>
+        <div className="grid gap-0 divide-y divide-app-border md:grid-cols-3 md:divide-x md:divide-y-0">
+          {[
+            {
+              label: "Review findings",
+              body: "Confirm covered, open, high-risk, and needs reviewer confirmation counts.",
+            },
+            {
+              label: "Check evidence",
+              body: "Verify client source excerpts remain separate from the Reg S-P basis.",
+            },
+            {
+              label: "Export workpaper",
+              body: "Use Copy report or Export Markdown from the Analysis toolbar.",
+            },
+          ].map((item) => (
+            <div key={item.label} className="px-5 py-4">
+              <h3 className="text-sm font-semibold text-app-text">{item.label}</h3>
+              <p className="mt-2 text-sm leading-6 text-app-muted">{item.body}</p>
+            </div>
+          ))}
+        </div>
+      </Surface>
     </div>
   );
 }

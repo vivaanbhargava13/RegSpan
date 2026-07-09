@@ -1,7 +1,7 @@
 const cards = [
   {
     title: "Evidence-first outputs",
-    body: "Findings are oriented around cited source material so reviewers can trace each suggested control mapping.",
+    body: "Findings are oriented around cited source material so reviewers can trace each suggested requirement mapping.",
   },
   {
     title: "Human review before final reports",
@@ -9,7 +9,7 @@ const cards = [
   },
   {
     title: "Designed for secure document workflows",
-    body: "The product foundation is shaped for sensitive policy review, access controls, and controlled exports.",
+    body: "The product foundation is shaped for sensitive policy review, access safeguards, and governed exports.",
   },
 ];
 

@@ -8,9 +8,9 @@ export const appNavLinks = [
   { label: "Dashboard", href: "/dashboard", icon: "dashboard" },
   { label: "Documents", href: "/documents", icon: "documents" },
   { label: "Requirements", href: "/controls", icon: "requirements" },
-  { label: "Analysis", href: "/findings", icon: "gaps" },
+  { label: "Analysis", href: "/findings", icon: "analysis" },
   { label: "Reports", href: "/reports", icon: "reports" },
-  { label: "Retrieval", href: "/retrieval-debug", icon: "retrieval" },
+  { label: "Evidence Search", href: "/retrieval-debug", icon: "retrieval" },
   { label: "Internal Debug", href: "/requirement-debug", icon: "matching" },
   { label: "Settings", href: "/settings", icon: "settings" },
 ];
@@ -65,7 +65,7 @@ function NavIcon({ icon }: { icon: string }) {
           <path d="m8.5 12.25 2.25 2.25 4.75-5" />
         </>
       ) : null}
-      {icon === "gaps" ? (
+      {icon === "analysis" ? (
         <>
           <path d="M12 4 3.25 19.25h17.5L12 4Z" />
           <path d="M12 9.25v4.25" />

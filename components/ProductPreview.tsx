@@ -3,26 +3,26 @@ import { MetricCard } from "@/components/MetricCard";
 const metrics = [
   { label: "Reg S-P Readiness", value: "72%" },
   { label: "High-Risk Analysis", value: "4", tone: "danger" as const },
-  { label: "Controls Requiring Review", value: "12", tone: "warning" as const },
-  { label: "Documents Processed", value: "6" },
+  { label: "Requirements Requiring Review", value: "12", tone: "warning" as const },
+  { label: "Ready for Analysis", value: "6" },
   { label: "Open Remediation Tasks", value: "9", tone: "warning" as const },
 ];
 
 const rows = [
   {
-    control: "Incident Response Program",
+    requirement: "Incident Response Program",
     status: "Partial",
     evidence: "2 citations",
     risk: "High",
   },
   {
-    control: "Service Provider Notice",
+    requirement: "Service Provider Notice",
     status: "Missing",
     evidence: "No evidence",
     risk: "High",
   },
   {
-    control: "Disposal Procedures",
+    requirement: "Disposal Procedures",
     status: "Complete",
     evidence: "3 citations",
     risk: "Medium",
@@ -67,7 +67,7 @@ export function ProductPreview() {
             <table className="w-full min-w-[560px] border-collapse text-left text-sm">
               <thead className="bg-canvas text-xs uppercase tracking-normal text-muted">
                 <tr>
-                  <th className="px-4 py-3 font-semibold">Control</th>
+                  <th className="px-4 py-3 font-semibold">Requirement</th>
                   <th className="px-4 py-3 font-semibold">Status</th>
                   <th className="px-4 py-3 font-semibold">Evidence</th>
                   <th className="px-4 py-3 font-semibold">Risk</th>
@@ -75,8 +75,8 @@ export function ProductPreview() {
               </thead>
               <tbody className="divide-y divide-line">
                 {rows.map((row) => (
-                  <tr key={row.control}>
-                    <td className="px-4 py-4 font-medium text-ink">{row.control}</td>
+                  <tr key={row.requirement}>
+                    <td className="px-4 py-4 font-medium text-ink">{row.requirement}</td>
                     <td className="px-4 py-4">
                       <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusClasses[row.status]}`}>
                         {row.status}

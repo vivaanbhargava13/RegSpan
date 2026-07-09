@@ -29,10 +29,10 @@ test("documents page renders clear lifecycle labels and next steps", async () =>
   assert.match(client, /Preparing source text/);
   assert.match(client, /Prepare this document before running analysis/);
   assert.match(client, /Ready for analysis/);
-  assert.match(client, /Processing failed/);
+  assert.match(client, /Source text preparation failed/);
   assert.match(client, /Needs reviewer confirmation/);
   assert.match(client, /Reprocess or replace this document/);
-  assert.match(client, /Source sections/);
+  assert.match(client, /Source excerpts/);
   assert.match(client, /prepare source text for evidence review/);
   assert.doesNotMatch(client, /begin secure extraction, chunking/);
 });

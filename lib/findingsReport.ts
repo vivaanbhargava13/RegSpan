@@ -54,7 +54,7 @@ const REPORT_LEGACY_REQUIREMENT_ID_BY_CONTROL_KEY: Record<string, string> = {
 const reviewDetailByRequirementId: Record<string, string> = {
   written_incident_response_program: "the written incident response program and its customer-information scope",
   unauthorized_access_detection_escalation:
-    "incident assessment, customer-information impact analysis, containment, and control steps",
+    "incident assessment, customer-information impact analysis, containment, and response steps",
   customer_notification_unauthorized_access:
     "the customer-notification trigger, substantial-harm analysis, and timing standard",
   customer_notification_content:
@@ -64,7 +64,7 @@ const reviewDetailByRequirementId: Record<string, string> = {
   vendor_incident_handling:
     "vendor or service-provider notice, cooperation, remediation, and recovery obligations",
   customer_information_safeguards:
-    "safeguards and access controls for customer information",
+    "safeguards and access protections for customer information",
   disposal_consumer_customer_information:
     "secure disposal requirements for consumer or customer information",
   written_compliance_records:
@@ -314,7 +314,7 @@ export function buildMarkdownReport({
     "",
     `Workspace: ${workspaceReportName(workspaceName)}`,
     `Analysis completed: ${formatReportDate(latestRun?.completed_at ?? null)}`,
-    `Documents reviewed: ${processedDocumentCount ?? "Processed documents"}`,
+    `Documents reviewed: ${processedDocumentCount ?? "Ready for analysis"}`,
     `Requirements reviewed: ${totalRequirements}`,
     `Covered: ${covered}`,
     `Open findings: ${open}`,
@@ -325,7 +325,7 @@ export function buildMarkdownReport({
   ];
 
   if (findings.length === 0) {
-    lines.push("", "No findings were returned for the latest analysis.");
+    lines.push("", "No analysis results were returned for the latest analysis.");
   }
 
   for (const finding of findings) {

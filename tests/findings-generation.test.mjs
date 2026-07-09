@@ -378,18 +378,18 @@ test("findings UI keeps covered cards quiet and collapses source excerpts", asyn
 
   assert.match(client, /if \(finding\.status === "covered"\) \{\s+return statusBadge;/);
   assert.doesNotMatch(client, /Risk if missing/);
-  assert.match(client, /Risk if unresolved: \{humanize\(finding\.severity\)\}/);
-  assert.match(client, /high: "border-app-danger\/20 bg-app-danger-soft text-app-danger"/);
-  assert.match(client, /<details className="rounded-xl border border-app-border bg-app-elevated\/35">/);
-  assert.match(client, /Source excerpts/);
+  assert.match(client, /Risk if unresolved: \$\{humanize\(finding\.severity\)\}/);
+  assert.match(client, /<RiskBadge label=\{`Risk if unresolved:/);
+  assert.match(client, /<details className="rounded-md border border-app-border bg-app-elevated\/35">/);
+  assert.match(client, /Client source excerpts/);
   assert.match(client, /View supporting document excerpts/);
   assert.match(client, /Document excerpt/);
   assert.match(client, /Supports this conclusion/);
   assert.match(client, /Partially supports this conclusion/);
-  assert.match(client, /Requirement basis:/);
-  assert.match(client, /Reg S-P basis:/);
-  assert.equal((client.match(/View requirement/g) ?? []).length, 1);
-  assert.match(client, /Requirement basis:\{" "\}\s+<span className="text-app-muted">\{basis\.label\}<\/span>/);
+  assert.match(client, /Requirement basis/);
+  assert.match(client, /Reg S-P basis/);
+  assert.equal((client.match(/View Requirement/g) ?? []).length, 1);
+  assert.match(client, /<p className="mt-2 text-xs font-medium leading-5 text-app-muted">\s*\{basis\.label\}\s*<\/p>/);
   assert.doesNotMatch(client, /Requirement basis:[\s\S]{0,320}<a/);
   assert.match(client, /href=\{basis\.href\}/);
   assert.match(client, /`\/controls#control-\$\{controlKey\}`/);
@@ -416,19 +416,19 @@ test("findings UI uses status accent rails and stronger card separation", async 
   assert.match(client, /missing: "bg-app-danger"/);
   assert.match(client, /conflicting: "bg-app-danger"/);
   assert.match(client, /needs_review: "bg-app-review"/);
-  assert.match(client, /className=\{`h-1 \$\{findingAccentClasses\[finding\.status\]\}`\}/);
-  assert.match(client, /className="app-card overflow-hidden border-app-border-strong\/70 bg-gradient-to-br/);
-  assert.match(client, /<section className="space-y-6" aria-label="Generated findings">/);
+  assert.match(client, /className=\{`absolute inset-y-0 left-0 w-1 \$\{findingAccentClasses\[finding\.status\]\}`\}/);
+  assert.match(client, /<Surface\s+key=\{finding\.id\}\s+as="article"\s+padding="none"/);
+  assert.match(client, /<section className="space-y-4" aria-label="Analysis results">/);
 });
 
 test("findings header keeps requirement basis readable without a duplicate action", async () => {
   const client = await readFile("components/FindingsClient.tsx", "utf8");
 
   assert.match(client, /label: finding\.requirement_name \?\? "Untitled requirement"/);
-  assert.match(client, /Requirement basis:\{" "\}/);
-  assert.match(client, /<span className="text-app-muted">\{basis\.label\}<\/span>/);
+  assert.match(client, /Requirement basis/);
+  assert.match(client, /<p className="mt-2 text-xs font-medium leading-5 text-app-muted">\s*\{basis\.label\}\s*<\/p>/);
   assert.doesNotMatch(client, /label: finding\.requirement_name \?\? "View requirement"/);
-  assert.match(client, /<p className="mt-3 text-xs font-semibold text-app-subtle">\s*Reg S-P basis:/);
+  assert.match(client, /<h3 className="text-xs font-bold uppercase tracking-\[0\.1em\] text-app-subtle">\s*Reg S-P basis/);
 });
 
 test("strong support with partial procedure scope limitation is not conflicting", () => {
@@ -584,14 +584,14 @@ test("findings UI shows generation and empty states", async () => {
 
   assert.match(client, /Run analysis/);
   assert.match(client, /Reviewing documents/);
-  assert.match(client, /No processed evidence yet/);
+  assert.match(client, /No documents ready for analysis yet/);
   assert.match(client, /No findings generated yet/);
-  assert.match(client, /Process at least one document before running analysis/);
-  assert.match(client, /Source excerpts/);
+  assert.match(client, /Prepare at least one document before running analysis/);
+  assert.match(client, /Client source excerpts/);
   assert.match(client, /\/api\/findings\/generate/);
   assert.match(client, /\/api\/findings/);
   assert.match(client, /High risk open/);
-  assert.match(client, /View requirement/);
+  assert.match(client, /View Requirement/);
   assert.match(client, /finding\.status !== "covered"/);
   assert.match(client, /Risk if unresolved:/);
   assert.match(client, /DEFAULT_VISIBLE_EVIDENCE_COUNT = 4/);

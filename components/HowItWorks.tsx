@@ -4,11 +4,11 @@ const steps = [
     body: "Collect cybersecurity, privacy, vendor, and incident response documents in one review flow.",
   },
   {
-    title: "Map evidence to Reg S-P controls",
-    body: "Associate cited policy language with control areas for structured reviewer analysis.",
+    title: "Map evidence to Reg S-P requirements",
+    body: "Associate cited policy language with requirement areas for structured reviewer analysis.",
   },
   {
-    title: "Review AI-suggested gaps",
+    title: "Review AI-suggested findings",
     body: "Surface missing, partial, and conflicting evidence for human review before reporting.",
   },
   {

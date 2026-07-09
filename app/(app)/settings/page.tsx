@@ -1,5 +1,6 @@
 import { AppearanceSettings } from "@/components/AppearanceSettings";
 import { PageHeader } from "@/components/PageHeader";
+import { Card } from "@/components/Surface";
 
 const sections = [
   {
@@ -16,7 +17,7 @@ const sections = [
   },
   {
     title: "Data retention",
-    body: "Define retention windows for documents, review notes, gaps, and exported reports later.",
+    body: "Define retention windows for documents, review notes, findings, and exported reports later.",
   },
   {
     title: "Data handling",
@@ -26,24 +27,24 @@ const sections = [
 
 export default function SettingsPage() {
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <PageHeader
         eyebrow="Settings"
         title="Workspace settings"
-        description="Manage appearance, workspace details, and data handling notes."
+        description="Manage workspace-level preferences and operational notes for the review environment."
       />
 
       <AppearanceSettings />
 
       <section className="grid gap-4 md:grid-cols-2">
         {sections.map((section, index) => (
-          <article key={section.title} className="app-card p-5 lg:p-6">
-            <div className="mb-4 grid size-9 place-items-center rounded-xl bg-app-accent-soft font-mono text-[11px] font-semibold text-app-accent">
+          <Card key={section.title} as="article" className="min-w-0">
+            <div className="mb-4 grid size-8 place-items-center rounded-md border border-app-border bg-app-elevated font-mono text-[11px] font-semibold text-app-subtle">
               {String(index + 1).padStart(2, "0")}
             </div>
-            <h2 className="app-section-title">{section.title}</h2>
-            <p className="mt-3 text-sm leading-6 text-app-muted">{section.body}</p>
-          </article>
+            <h3 className="text-sm font-semibold text-app-text">{section.title}</h3>
+            <p className="mt-2 text-sm leading-6 text-app-muted">{section.body}</p>
+          </Card>
         ))}
       </section>
     </div>

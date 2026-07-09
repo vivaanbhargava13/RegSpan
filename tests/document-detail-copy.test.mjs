@@ -6,11 +6,11 @@ test("document detail copy describes user-facing processing states", async () =>
   const source = await readFile("components/DocumentDetailClient.tsx", "utf8");
 
   assert.match(source, /Prepare source text/);
-  assert.match(source, /Evidence sections/);
+  assert.match(source, /Client source excerpts/);
   assert.match(source, /Ready for analysis/);
   assert.match(source, /RegSpan could not prepare usable text from this PDF/);
-  assert.match(source, /Reprocess the document to prepare source text for analysis/);
-  assert.match(source, /Evidence sections are ready\. Run Analysis/);
+  assert.match(source, /Reprocess this document to prepare client source excerpts/);
+  assert.match(source, /Client source excerpts are ready\. Run Analysis/);
   assert.doesNotMatch(source, /secure ingestion worker|Document chunks were generated|Chunking|Extracted chunks|Processed chunks|Requirement matching/i);
 
   for (const staleCopy of [

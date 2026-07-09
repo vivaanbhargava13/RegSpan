@@ -234,8 +234,8 @@ test("findings generation and Requirements tab prefer DB controls with fallback"
   assert.match(generator, /evidence_role === "organization_evidence"/);
   assert.match(controlsPage, /loadActiveRegulatoryControls/);
   assert.match(controlsPage, /fallbackControls/);
-  assert.match(controlsPage, /Loading canonical controls/);
-  assert.match(controlsPage, /No active Regulation S-P controls/);
+  assert.match(controlsPage, /Loading Reg S-P requirements/);
+  assert.match(controlsPage, /No active Regulation S-P requirements/);
   assert.match(controlsPage, /control\.elements/);
   assert.match(controlsPage, /control\.citations/);
   assert.match(controlsPage, /id=\{controlAnchor\(control\)\}/);
@@ -254,7 +254,7 @@ test("Requirements tab renders human requirement cards without visible raw keys"
     readFile("app/globals.css", "utf8"),
   ]);
 
-  assert.match(controlsPage, /title="Control register"/);
+  assert.match(controlsPage, /title="Requirements library"/);
   assert.match(controlsPage, /<h2 className="mt-1 text-base font-semibold[^"]*">\s+\{control\.name\}/);
   assert.match(controlsPage, /regulatoryRoleLabel\(control\.regulatoryRole\)/);
   assert.match(controlsPage, /<RiskBadge label=\{`\$\{titleCase\(control\.severity\)\} risk`\} value=\{control\.severity\} \/>/);

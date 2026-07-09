@@ -29,7 +29,10 @@ function logDocumentsDebug(message: string, details?: Record<string, unknown>) {
 }
 
 function formatSectionsLabel(label: string) {
-  return label.replace(/\bchunks\b/gi, "sections").replace(/\bPending\b/i, "Not prepared yet");
+  return label
+    .replace(/\bchunks\b/gi, "source excerpts")
+    .replace(/\bsections\b/gi, "source excerpts")
+    .replace(/\bPending\b/i, "Not prepared yet");
 }
 
 function documentLifecycleLabel(status: MockDocument["status"]) {
@@ -42,7 +45,7 @@ function documentLifecycleLabel(status: MockDocument["status"]) {
     case "Processed":
       return "Ready for analysis";
     case "Failed":
-      return "Processing failed";
+      return "Source text preparation failed";
     case "Needs Review":
       return "Needs reviewer confirmation";
   }
@@ -390,7 +393,7 @@ export function DocumentsClient() {
     }, 1000);
 
     window.setTimeout(() => {
-      updateStoredDocument(newDocument.id, { status: "Processed", chunks: "18 sections" });
+      updateStoredDocument(newDocument.id, { status: "Processed", chunks: "18 source excerpts" });
     }, 3000);
   }
 
@@ -575,7 +578,7 @@ export function DocumentsClient() {
                 "Type",
                 "Review status",
                 "Uploaded",
-                "Source sections",
+                "Source excerpts",
                 "Actions",
               ]}
               minWidth={isSelectMode ? "min-w-[900px]" : "min-w-[760px]"}
@@ -649,7 +652,7 @@ export function DocumentsClient() {
                       <p className="text-xs leading-5 text-app-muted">{documentLifecycleNextStep(document.status)}</p>
                     </div>
                     <div className="mt-3 flex items-center justify-between gap-3 text-xs text-app-muted">
-                      <span>Source sections: {formatSectionsLabel(document.chunks)}</span>
+                      <span>Source excerpts: {formatSectionsLabel(document.chunks)}</span>
                       <Link className="shrink-0 rounded-md px-2 py-1 text-sm font-semibold text-app-accent transition-colors hover:bg-app-accent-soft hover:text-app-accent-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-app-accent" href={`/documents/${document.id}`}>
                         Review
                       </Link>

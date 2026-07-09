@@ -87,15 +87,16 @@ test("dashboard UI exposes real-data empty states and linked metric cards", asyn
   const client = await readFile("components/DashboardClient.tsx", "utf8");
 
   assert.match(client, /No documents uploaded yet/);
-  assert.match(client, /Documents are waiting to be processed/);
-  assert.match(client, /No findings analysis yet/);
-  assert.match(client, /Findings analysis is currently running/);
+  assert.match(client, /Documents need source text preparation/);
+  assert.match(client, /No analysis results yet/);
+  assert.match(client, /Analysis is currently running/);
   assert.match(client, /The latest run failed/);
   assert.match(client, /href="\/findings"/);
   assert.match(client, /href="\/documents"/);
   assert.match(client, /Compliance score/);
   assert.match(client, /High-risk open/);
   assert.match(client, /Needs review/);
+  assert.match(client, /Ready for analysis/);
 });
 
 test("dashboard metric tooltips are locally anchored above metric cards", async () => {

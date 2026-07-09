@@ -34,7 +34,7 @@ function regulatoryRoleLabel(role: RegulatoryControl["regulatoryRole"]) {
     case "direct_reg_s_p":
       return "Direct Reg S-P requirement";
     case "supporting_control":
-      return "Supporting implementation control";
+      return "Supporting implementation requirement";
     case "future_scope":
       return "Future-scope requirement";
   }
@@ -69,7 +69,7 @@ function fallbackControls(): RegulatoryControl[] {
     name: requirement.title,
     regulation: "Reg S-P",
     sourceKey: REG_SP_SOURCE_KEY,
-    category: requirement.mvpScope === "mvp" ? "Core requirement" : "Supporting control",
+    category: requirement.mvpScope === "mvp" ? "Core requirement" : "Supporting requirement",
     summary: requirement.description,
     regulatoryRole: requirement.regulatoryRole,
     severity: requirement.riskSeverity,
@@ -113,15 +113,15 @@ async function loadControlsForPage(): Promise<ControlLoadResult> {
     return {
       controls: fallbackControls(),
       source: "fallback",
-      error: "No active DB-backed controls are seeded yet, so RegSpan is showing the built-in framework.",
+      error: "Configured Reg S-P requirements are not available yet, so RegSpan is showing the built-in requirements library.",
     };
   } catch (error) {
     return {
       controls: fallbackControls(),
       source: "fallback",
       error: error instanceof Error
-        ? `DB-backed controls could not be loaded: ${error.message}`
-        : "DB-backed controls could not be loaded.",
+        ? `Configured Reg S-P requirements could not be loaded: ${error.message}`
+        : "Configured Reg S-P requirements could not be loaded.",
     };
   }
 }
@@ -158,8 +158,8 @@ function requiredElements(control: RegulatoryControl) {
 
 function EmptyState() {
   return (
-    <SharedEmptyState title="No active Regulation S-P controls">
-      <p>No active Regulation S-P controls are available yet.</p>
+    <SharedEmptyState title="No active Regulation S-P requirements">
+      <p>No active Regulation S-P requirements are available yet.</p>
     </SharedEmptyState>
   );
 }
@@ -167,7 +167,7 @@ function EmptyState() {
 function LoadingState() {
   return (
     <Surface className="text-sm text-app-muted">
-      Loading canonical controls...
+      Loading Reg S-P requirements...
     </Surface>
   );
 }
@@ -183,17 +183,17 @@ async function ControlsList() {
     <div className="space-y-5">
       <Surface className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between" padding="md">
         <div className="flex flex-wrap items-center gap-2">
-          <StatusBadge showDot={false}>{source === "database" ? "DB-backed" : "Fallback"}</StatusBadge>
+          <StatusBadge showDot={false}>{source === "database" ? "Configured requirements" : "Built-in requirements"}</StatusBadge>
           <span className="text-sm font-semibold text-app-text">SEC Release No. 34-100155</span>
         </div>
-        <span className="text-sm text-app-muted">{controls.length} controls in the control register</span>
+        <span className="text-sm text-app-muted">{controls.length} requirements in the requirements library</span>
       </Surface>
 
       {error ? (
         <Alert tone="warning">{error}</Alert>
       ) : null}
 
-      <section className="space-y-3" aria-label="Reg S-P controls">
+      <section className="space-y-3" aria-label="Reg S-P requirements">
         {[...controls].sort((left, right) =>
           severityRank(left.severity) - severityRank(right.severity) ||
           left.displayOrder - right.displayOrder ||
@@ -225,7 +225,7 @@ async function ControlsList() {
                       className="shrink-0 rounded-md px-2 py-1 text-xs font-semibold text-app-accent transition-colors hover:bg-app-accent-soft hover:text-app-accent-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-app-accent"
                       href={`#${controlAnchor(control)}`}
                     >
-                      Control link
+                      Requirement link
                     </a>
                   </div>
                   <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -301,7 +301,7 @@ export default function ControlsPage() {
       <ControlsHashScroller />
       <PageHeader
         eyebrow="Requirements"
-        title="Control register"
+        title="Requirements library"
         description="Review the Regulation S-P requirement basis, required elements, and SEC source citations used for analysis."
       />
 

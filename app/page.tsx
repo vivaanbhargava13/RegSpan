@@ -20,7 +20,7 @@ export default function Home() {
           </h1>
           <p className="mt-7 max-w-2xl text-lg leading-8 text-muted sm:text-xl">
             Upload cybersecurity, privacy, vendor, and incident response
-            policies. Map evidence to Reg S-P controls, identify gaps, and
+            policies. Map evidence to Reg S-P requirements, identify findings, and
             export reviewer-ready reports with citations.
           </p>
           <div className="mt-9 flex flex-col gap-3 sm:flex-row">

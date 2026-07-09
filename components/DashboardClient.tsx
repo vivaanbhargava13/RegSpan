@@ -153,7 +153,7 @@ function ReadinessState({ dashboard }: { dashboard: DashboardData }) {
           </Button>
         )}
         eyebrow="Readiness blocker"
-        title="Documents are waiting to be processed"
+        title="Documents need source text preparation"
       >
         <p>
           Prepare source text from uploaded documents before running analysis.
@@ -165,7 +165,7 @@ function ReadinessState({ dashboard }: { dashboard: DashboardData }) {
   if (latestRun?.status === "running") {
     return (
       <Alert tone="info">
-        Findings analysis is currently running. Completed-run metrics will update after it finishes.
+        Analysis is currently running. Completed analysis metrics will update after it finishes.
       </Alert>
     );
   }
@@ -187,10 +187,10 @@ function ReadinessState({ dashboard }: { dashboard: DashboardData }) {
           </Button>
         )}
         eyebrow="Analysis not started"
-        title="No findings analysis yet"
+        title="No analysis results yet"
       >
         <p>
-          Processed documents are available. Run analysis to populate dashboard metrics.
+          Documents are ready for analysis. Run analysis to populate dashboard metrics.
         </p>
       </SharedEmptyState>
     );
@@ -254,7 +254,7 @@ export function DashboardClient() {
       <PageHeader
         eyebrow="Overview"
         title="Reg S-P readiness overview"
-        description="See processed documents, latest findings, and review progress in one place."
+        description="See documents ready for analysis, latest findings, and review progress in one place."
       />
 
       {isLoading ? (
@@ -301,9 +301,9 @@ export function DashboardClient() {
             </DashboardMetricLink>
             <DashboardMetricLink href="/documents">
               <MetricTile
-                label="Documents processed"
+                label="Ready for analysis"
                 value={`${dashboard.documents.processedDocuments}/${dashboard.documents.totalDocuments}`}
-                tooltip="Processed documents divided by all documents currently uploaded to this workspace."
+                tooltip="Documents ready for analysis divided by all documents currently uploaded to this workspace."
                 tooltipPlacement="left"
               />
             </DashboardMetricLink>
@@ -332,7 +332,7 @@ export function DashboardClient() {
                   </dd>
                 </div>
                 <div className="grid gap-1 py-3 last:pb-0 sm:grid-cols-[minmax(0,0.8fr)_1fr]">
-                  <dt className="font-medium text-app-muted">Documents processed</dt>
+                  <dt className="font-medium text-app-muted">Ready for analysis</dt>
                   <dd className="font-semibold text-app-text">
                     {dashboard.documents.processedDocuments} of {dashboard.documents.totalDocuments}
                     {dashboard.documents.percentage !== null ? ` (${dashboard.documents.percentage}%)` : ""}
