@@ -367,6 +367,12 @@ test("vendor 72-hour notice gap does not become incident assessment negative evi
   const vendorNotice = REG_SP_REQUIREMENTS.find(
     (item) => item.id === "vendor_incident_handling",
   );
+  const noticeContent = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "customer_notification_content",
+  );
+  const complianceRecords = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "written_compliance_records",
+  );
   const text = "Service providers must escalate incidents promptly, but the policy does not establish a 72-hour notice expectation.";
 
   const incidentResult = classifyRequirementEvidenceHeuristically(
@@ -375,15 +381,26 @@ test("vendor 72-hour notice gap does not become incident assessment negative evi
   const vendorResult = classifyRequirementEvidenceHeuristically(
     classifierInputForChunk(vendorNotice, organizationChunk(text)),
   );
+  const contentResult = classifyRequirementEvidenceHeuristically(
+    classifierInputForChunk(noticeContent, organizationChunk(text)),
+  );
+  const recordsResult = classifyRequirementEvidenceHeuristically(
+    classifierInputForChunk(complianceRecords, organizationChunk(text)),
+  );
 
   assert.notEqual(incidentResult.relationship, "negative_evidence");
   assert.equal(incidentResult.control_absent_or_out_of_scope, false);
   assert.equal(vendorResult.relationship, "negative_evidence");
   assert.deepEqual(vendorResult.missing_elements, ["notice_to_firm"]);
   assert.equal(vendorResult.supporting_quote, text);
+  assert.notEqual(contentResult.relationship, "negative_evidence");
+  assert.notEqual(contentResult.relationship, "partially_supports");
+  assert.equal(contentResult.control_absent_or_out_of_scope, false);
+  assert.notEqual(recordsResult.relationship, "negative_evidence");
+  assert.equal(recordsResult.control_absent_or_out_of_scope, false);
 });
 
-test("OpenAI classifier rejects invented supporting quotes", async () => {
+test("OpenAI classifier replaces invented supporting quotes with extracted raw source quotes", async () => {
   const [{ REG_SP_REQUIREMENTS }, { postProcessOpenAiClassification, classifierInputForChunk }] = await Promise.all([
     loadTsModule("lib/regSpRequirements.ts"),
     loadTsModule("lib/requirementEvidenceClassifier.ts"),
@@ -405,13 +422,13 @@ test("OpenAI classifier rejects invented supporting quotes", async () => {
     supporting_quote: "The organization has a robust customer notice workflow.",
   }, classifierInputForChunk(requirement, chunk));
 
-  assert.equal(result.relationship, "background_context");
-  assert.equal(result.requirement_supported, false);
-  assert.equal(result.supporting_quote, null);
-  assert.match(result.reason, /must include an exact source quote/);
+  assert.equal(result.relationship, "supports");
+  assert.equal(result.requirement_supported, true);
+  assert.equal(result.supporting_quote, "Affected customers must be notified after unauthorized access to sensitive customer information.");
+  assert.notEqual(result.supporting_quote, "The organization has a robust customer notice workflow.");
 });
 
-test("generated classifier reasons cannot replace exact source quotes", async () => {
+test("generated classifier reasons cannot replace exact source quotes but raw quotes are recovered", async () => {
   const [{ REG_SP_REQUIREMENTS }, { postProcessOpenAiClassification, classifierInputForChunk }] = await Promise.all([
     loadTsModule("lib/regSpRequirements.ts"),
     loadTsModule("lib/requirementEvidenceClassifier.ts"),
@@ -433,10 +450,110 @@ test("generated classifier reasons cannot replace exact source quotes", async ()
     supporting_quote: null,
   }, classifierInputForChunk(requirement, chunk));
 
+  assert.equal(result.relationship, "partially_supports");
+  assert.equal(result.supporting_quote, "Legal may notify affected customers after unauthorized access.");
+  assert.notEqual(result.supporting_quote, result.reason);
+  assert.deepEqual(result.covered_elements, ["notice_trigger"]);
+});
+
+test("support without an extractable raw quote is downgraded", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { postProcessOpenAiClassification, classifierInputForChunk }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementEvidenceClassifier.ts"),
+  ]);
+  const requirement = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "customer_notification_unauthorized_access",
+  );
+  const chunk = organizationChunk("This section lists communications governance contacts.");
+
+  const result = postProcessOpenAiClassification({
+    relationship: "supports",
+    confidence: "high",
+    requirement_supported: true,
+    control_absent_or_out_of_scope: false,
+    covered_elements: requirement.requiredElementsForCovered,
+    missing_elements: [],
+    vague_elements: [],
+    reason: "The generated reason says customer notification after unauthorized access is covered.",
+    supporting_quote: null,
+  }, classifierInputForChunk(requirement, chunk));
+
   assert.equal(result.relationship, "background_context");
   assert.equal(result.supporting_quote, null);
   assert.equal(result.covered_elements.length, 0);
   assert.match(result.reason, /must include an exact source quote/);
+});
+
+test("source quote extraction recovers real evidence across core requirements", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { postProcessOpenAiClassification, classifierInputForChunk }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementEvidenceClassifier.ts"),
+  ]);
+  const cases = [
+    {
+      id: "written_incident_response_program",
+      text:
+        "Meridian maintains a written cyber event response standard for incidents involving customer information approved by the Risk Committee and reviewed annually. The standard assigns decision authority, describes escalation, notice decisions, supplier coordination, evidence custody, corrective action tracking, restoration assurance, recovery responsibilities, and final review.",
+      relationship: "supports",
+      covered: "all",
+      missing: [],
+      expectedQuote: /written cyber event response standard|assigns decision authority/,
+    },
+    {
+      id: "evidence_log_preservation",
+      text: "Responders must collect and preserve data, preserve evidence, maintain chain of custody, and retain forensic evidence and incident records for investigations.",
+      relationship: "supports",
+      covered: "all",
+      missing: [],
+      expectedQuote: /collect and preserve data/,
+    },
+    {
+      id: "disposal_consumer_customer_information",
+      text: "Customer information is retained according to the records schedule before disposal review.",
+      relationship: "partially_supports",
+      covered: ["disposal_scope"],
+      missing: ["secure_disposal_method"],
+      expectedQuote: /Customer information is retained/,
+    },
+    {
+      id: "customer_information_safeguards",
+      text: "Customer information repositories require access approval, periodic access review, encryption, authentication, and least privilege controls.",
+      relationship: "supports",
+      covered: "all",
+      missing: [],
+      expectedQuote: /access approval, periodic access review, encryption/,
+    },
+    {
+      id: "remediation_recovery_validation",
+      text: "The incident team restores affected systems and validates recovery before closure.",
+      relationship: "partially_supports",
+      covered: ["recovery_steps", "validation_testing"],
+      missing: ["remediation_tracking"],
+      expectedQuote: /validates recovery before closure/,
+    },
+  ];
+
+  for (const testCase of cases) {
+    const requirement = REG_SP_REQUIREMENTS.find((item) => item.id === testCase.id);
+    const coveredElements = testCase.covered === "all"
+      ? requirement.requiredElementsForCovered
+      : testCase.covered;
+    const result = postProcessOpenAiClassification({
+      relationship: testCase.relationship,
+      confidence: "high",
+      requirement_supported: testCase.relationship === "supports",
+      control_absent_or_out_of_scope: false,
+      covered_elements: coveredElements,
+      missing_elements: testCase.missing,
+      vague_elements: [],
+      reason: "The model identified support but omitted the exact quote.",
+      supporting_quote: null,
+    }, classifierInputForChunk(requirement, organizationChunk(testCase.text)));
+
+    assert.equal(result.relationship, testCase.relationship);
+    assert.match(result.supporting_quote ?? "", testCase.expectedQuote);
+    assert.equal(testCase.text.includes(result.supporting_quote ?? ""), true);
+  }
 });
 
 test("synopsis and embedding input cannot satisfy findings without raw chunk evidence", async () => {

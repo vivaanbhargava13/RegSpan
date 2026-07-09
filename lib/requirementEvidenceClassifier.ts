@@ -156,6 +156,10 @@ function sentenceContaining(rawText: string, signals: string[]) {
   return rawText.includes(matched) ? matched : null;
 }
 
+function normalizeWhitespace(value: string | null | undefined) {
+  return (value ?? "").replace(/\s+/g, " ").trim();
+}
+
 function evidenceSentences(rawText: string) {
   return (rawText.match(/[^.!?]+[.!?]?/g) ?? [rawText])
     .flatMap((sentence) => sentence.split("\n"))
@@ -199,6 +203,17 @@ function directSignalAbsenceAfterPhrase(sentence: string, signals: string[]) {
     : null;
 }
 
+function negativeScopeSignals(requirement: RegSpRequirement) {
+  const baseSignals = [
+    ...requirement.directSignals,
+    ...(requirement.coverageElements ?? []).flatMap((element) => element.signals),
+  ];
+  if (requirement.id === "customer_notification_unauthorized_access") {
+    baseSignals.push("breach notice", "breach notices", "customer breach notice", "customer breach notices");
+  }
+  return uniqueStrings(baseSignals);
+}
+
 function detectSentenceScopedNegativeEvidence(
   input: RequirementEvidenceClassifierInput,
 ): SentenceScopedNegativeEvidence {
@@ -225,11 +240,7 @@ function detectSentenceScopedNegativeEvidence(
       ) ?? matches[0];
     }
 
-    const directSignals = [
-      ...input.requirement.directSignals,
-      ...input.requirement.actionSignals,
-      ...input.requirement.topicSignals,
-    ];
+    const directSignals = negativeScopeSignals(input.requirement);
     const directSignalMatch = detectNegativeEvidence(sentence, directSignals);
     if (
       directSignalMatch.isNegativeEvidence
@@ -287,6 +298,118 @@ function positiveSupportSentence(
     return sentence;
   }
   return null;
+}
+
+function sourceSentences(rawText: string) {
+  return evidenceSentences(rawText).filter((sentence) => rawText.includes(sentence));
+}
+
+function rawSpanForSentences(rawText: string, firstSentence: string, lastSentence: string) {
+  const start = rawText.indexOf(firstSentence);
+  if (start < 0) return null;
+  const end = rawText.indexOf(lastSentence, start);
+  if (end < 0) return null;
+  const span = rawText.slice(start, end + lastSentence.length).trim();
+  return span && rawText.includes(span) ? span : null;
+}
+
+function quoteSignalGroups(
+  input: RequirementEvidenceClassifierInput,
+  classification: Omit<RequirementEvidenceClassification, "classifier_provider">,
+) {
+  const coverageSignals = (input.requirement.coverageElements ?? [])
+    .filter((element) => (classification.covered_elements ?? []).includes(element.id))
+    .flatMap((element) => element.signals);
+  const negativeSignals = (input.requirement.coverageElements ?? [])
+    .filter((element) => [
+      ...(classification.missing_elements ?? []),
+      ...(classification.vague_elements ?? []),
+    ].includes(element.id))
+    .flatMap((element) => element.signals);
+
+  return {
+    coverage: uniqueStrings(coverageSignals),
+    negative: uniqueStrings(negativeSignals),
+    direct: uniqueStrings(input.requirement.directSignals ?? []),
+    action: uniqueStrings(input.requirement.actionSignals ?? []),
+    partial: uniqueStrings(input.requirement.partialSignals ?? []),
+  };
+}
+
+function scoreQuoteCandidate(
+  candidate: string,
+  input: RequirementEvidenceClassifierInput,
+  classification: Omit<RequirementEvidenceClassification, "classifier_provider">,
+) {
+  const text = normalize(candidate);
+  const signals = quoteSignalGroups(input, classification);
+  let score = 0;
+
+  if (classification.relationship === "negative_evidence") {
+    score += countSignalMatches(text, signals.negative).count * 12;
+    score += detectSentenceScopedNegativeEvidence({
+      ...input,
+      chunkContent: candidate,
+    }).isNegativeEvidence ? 20 : 0;
+  } else {
+    score += countSignalMatches(text, signals.coverage).count * 12;
+    score += countSignalMatches(text, signals.direct).count * 8;
+    score += countSignalMatches(text, signals.action).count * 4;
+    score += countSignalMatches(text, signals.partial).count * 2;
+  }
+
+  if (input.requirement.id === "customer_notification_content") {
+    const hasContentSignal = countSignalMatches(text, [
+      ...signals.coverage,
+      ...signals.direct,
+    ]).count > 0;
+    const vendorOnly = /\b(?:vendor|service provider|supplier|third party)\b/i.test(candidate)
+      && !hasContentSignal;
+    if (vendorOnly) score -= 40;
+  }
+
+  return score;
+}
+
+function extractSourceQuote(
+  input: RequirementEvidenceClassifierInput,
+  classification: Omit<RequirementEvidenceClassification, "classifier_provider">,
+) {
+  if (!relationshipRequiresSourceQuote(classification.relationship)) {
+    return null;
+  }
+
+  if (classification.relationship === "negative_evidence") {
+    const negativeEvidence = detectSentenceScopedNegativeEvidence(input);
+    if (negativeEvidence.sentence && input.chunkContent.includes(negativeEvidence.sentence)) {
+      return negativeEvidence.sentence;
+    }
+  }
+
+  const sentences = sourceSentences(input.chunkContent);
+  const candidates: string[] = [];
+  for (let index = 0; index < sentences.length; index += 1) {
+    candidates.push(sentences[index]);
+    const next = sentences[index + 1];
+    if (next) {
+      const span = rawSpanForSentences(input.chunkContent, sentences[index], next);
+      if (span) candidates.push(span);
+    }
+  }
+
+  const ranked = candidates
+    .map((candidate) => ({
+      candidate,
+      score: scoreQuoteCandidate(candidate, input, classification),
+    }))
+    .filter((item) => item.score > 0 && input.chunkContent.includes(item.candidate))
+    .sort((left, right) => {
+      const scoreDelta = right.score - left.score;
+      if (scoreDelta !== 0) return scoreDelta;
+      return left.candidate.length - right.candidate.length;
+    });
+
+  return ranked[0]?.candidate ?? null;
 }
 
 export function buildRequirementEvaluationGuidance(requirement: RegSpRequirement) {
@@ -526,7 +649,7 @@ export function classifyRequirementEvidenceHeuristically(
   const classification = classifyRequirementEvidenceHeuristicallyInternal(input, provider);
   const { classifier_provider: classifierProvider, ...withoutProvider } = classification;
   return {
-    ...downgradeUngroundedEvidence(withoutProvider, input.chunkContent),
+    ...downgradeUngroundedEvidence(withoutProvider, input),
     classifier_provider: classifierProvider,
   };
 }
@@ -558,7 +681,13 @@ function sanitizeSupportingQuote(quote: string | null, chunkContent: string) {
     return null;
   }
   const trimmed = quote.trim();
-  return chunkContent.includes(trimmed) ? trimmed : null;
+  if (chunkContent.includes(trimmed)) return trimmed;
+
+  const normalizedQuote = normalizeWhitespace(trimmed);
+  return sourceSentences(chunkContent).find((sentence) =>
+    normalizeWhitespace(sentence) === normalizedQuote
+    || normalizeWhitespace(sentence).includes(normalizedQuote)
+  ) ?? null;
 }
 
 function relationshipRequiresSourceQuote(relationship: RequirementEvidenceRelationship) {
@@ -569,13 +698,14 @@ function relationshipRequiresSourceQuote(relationship: RequirementEvidenceRelati
 
 function downgradeUngroundedEvidence(
   classification: Omit<RequirementEvidenceClassification, "classifier_provider">,
-  chunkContent: string,
+  input: RequirementEvidenceClassifierInput,
 ): Omit<RequirementEvidenceClassification, "classifier_provider"> {
   if (!relationshipRequiresSourceQuote(classification.relationship)) {
     return classification;
   }
 
-  const supportingQuote = sanitizeSupportingQuote(classification.supporting_quote, chunkContent);
+  const supportingQuote = sanitizeSupportingQuote(classification.supporting_quote, input.chunkContent)
+    ?? extractSourceQuote(input, classification);
   if (supportingQuote) {
     return {
       ...classification,
@@ -594,7 +724,7 @@ function downgradeUngroundedEvidence(
     missing_elements: classification.missing_elements,
     vague_elements: classification.vague_elements,
     reason:
-      `Downgraded because ${classification.relationship} evidence must include an exact source quote from the raw chunk. ${classification.reason}`,
+      `Downgraded because ${classification.relationship} evidence must include an exact source quote from the raw cited text. ${classification.reason}`,
     supporting_quote: null,
   };
 }
@@ -703,7 +833,7 @@ export function postProcessOpenAiClassification(
       reason:
         `Downgraded from negative_evidence because the cited client text supports required elements and the supporting quote is not explicit absence language. ${parsed.reason}`,
       supporting_quote: supportingQuote,
-    }, input.chunkContent);
+    }, input);
   }
 
   const requiredMissing = (input.requirement.requiredElementsForCovered ?? []).filter(
@@ -726,7 +856,7 @@ export function postProcessOpenAiClassification(
     missing_elements: uniqueStrings([...parsedMissingElements, ...requiredMissing]),
     vague_elements: parsedVagueElements,
     supporting_quote: supportingQuote,
-  }, input.chunkContent);
+  }, input);
 }
 
 export function buildRequirementEvidenceClassifierPrompt(input: RequirementEvidenceClassifierInput) {
