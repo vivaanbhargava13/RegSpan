@@ -207,9 +207,47 @@ test("strong support with weak document-scope limitation stays covered", () => {
   assert.equal(finding.severity, "high");
   assert.doesNotMatch(finding.rationale, /scope limitation|do not cover this requirement/i);
   assert.equal(
-    finding.evidence.some((evidence) => evidence.reason.startsWith("This document says it does not cover this requirement.")),
+    finding.evidence.some((evidence) => evidence.reason.startsWith("This document limits what it covers for this requirement.")),
     true,
   );
+});
+
+test("generic Reg S-P compliance statements are missing, not needs review", () => {
+  const finding = aggregateFindingForRequirement(requirement, [
+    chunk({
+      grade: "background",
+      evidence_relationship: "background_context",
+      requirement_supported: false,
+      covered_elements: [],
+      missing_elements: ["notice_trigger", "notice_timing"],
+      supporting_quote: "The firm complies with Regulation S-P.",
+      content_preview: "The firm complies with Regulation S-P.",
+      grade_reason: "The cited text is a generic compliance statement without requirement-specific procedures.",
+    }),
+  ]);
+
+  assert.equal(finding.status, "missing");
+  assert.equal(finding.severity, "high");
+  assert.match(finding.rationale, /did not find clear policy or procedure language/);
+});
+
+test("related but incomplete notification language is partial, not needs review", () => {
+  const finding = aggregateFindingForRequirement(requirement, [
+    chunk({
+      grade: "partial",
+      evidence_relationship: "partially_supports",
+      requirement_supported: false,
+      covered_elements: ["notice_trigger"],
+      missing_elements: ["notice_timing"],
+      supporting_quote: "Legal may notify customers when appropriate.",
+      content_preview: "Legal may notify customers when appropriate.",
+      grade_reason: "The cited text mentions customer notification but does not define the required timing.",
+    }),
+  ]);
+
+  assert.equal(finding.status, "partial");
+  assert.match(finding.rationale, /did not find clear language defining the required timing for notice/);
+  assert.doesNotMatch(finding.rationale, /reviewer should confirm/i);
 });
 
 test("missing required coverage elements prevents covered findings", () => {
@@ -450,14 +488,61 @@ test("strong support with partial procedure scope limitation is not conflicting"
   assert.notEqual(finding.status, "conflicting");
 });
 
-test("document-scope limitation without support needs review", () => {
+test("document-scope limitation without support is missing unless it points to another policy", () => {
   const limitation = negativeChunk({
     filename: "Privacy Procedure.pdf",
     section_path: "Scope and Limitations",
-    negative_evidence_reason: "Outside the scope of this procedure: customer notification is reserved for another policy.",
-    grade_reason: "Outside the scope of this procedure: customer notification is reserved for another policy.",
-    supporting_quote: "Outside the scope of this procedure",
-    content_preview: "Outside the scope of this procedure: customer notification is reserved for another policy.",
+    negative_evidence_reason: "This policy does not define customer notification.",
+    grade_reason: "This policy does not define customer notification.",
+    supporting_quote: "This policy does not define customer notification.",
+    content_preview: "This policy does not define customer notification.",
+  });
+
+  const finding = aggregateFindingForRequirement(requirement, [limitation]);
+
+  assert.equal(classifyNegativeEvidenceScope(limitation), "document_scope_limitation");
+  assert.equal(finding.status, "missing");
+  assert.equal(finding.severity, "high");
+  assert.match(finding.summary, /did not find client policy evidence/);
+  assert.match(finding.rationale, /did not find clear policy or procedure language/);
+});
+
+test("document-scope limitation with some support is partial, not needs review", () => {
+  const support = chunk({
+    grade: "partial",
+    evidence_relationship: "partially_supports",
+    requirement_supported: false,
+    covered_elements: ["notice_trigger"],
+    missing_elements: ["notice_timing"],
+    supporting_quote: "The firm notifies affected customers after unauthorized access.",
+    grade_reason: "The cited text covers the notification trigger but not timing.",
+  });
+  const limitation = negativeChunk({
+    chunk_id: "77777777-7777-4777-8777-777777777777",
+    filename: "Privacy Procedure.pdf",
+    section_path: "Scope and Limitations",
+    negative_evidence_reason: "This policy does not define the 30-day notification timeline.",
+    grade_reason: "This policy does not define the 30-day notification timeline.",
+    supporting_quote: "This policy does not define the 30-day notification timeline.",
+    content_preview: "This policy does not define the 30-day notification timeline.",
+  });
+
+  const finding = aggregateFindingForRequirement(requirement, [support, limitation]);
+
+  assert.equal(classifyNegativeEvidenceScope(limitation), "document_scope_limitation");
+  assert.equal(finding.status, "partial");
+  assert.match(finding.rationale, /did not find clear language defining the required timing for notice/);
+  assert.doesNotMatch(finding.rationale, /reviewer should confirm/i);
+});
+
+test("cross-reference to an unavailable policy needs review", () => {
+  const limitation = negativeChunk({
+    filename: "Privacy Procedure.pdf",
+    section_path: "Scope and Limitations",
+    negative_evidence_reason: "Customer notification timing is defined in the Customer Notice Standard.",
+    grade_reason: "Customer notification timing is defined in the Customer Notice Standard.",
+    supporting_quote: "Customer notification timing is defined in the Customer Notice Standard.",
+    content_preview: "Customer notification timing is defined in the Customer Notice Standard.",
   });
 
   const finding = aggregateFindingForRequirement(requirement, [limitation]);
@@ -466,13 +551,14 @@ test("document-scope limitation without support needs review", () => {
   assert.equal(finding.status, "needs_review");
   assert.equal(finding.severity, "high");
   assert.match(finding.summary, /not enough detail to confirm full coverage/);
-  assert.match(finding.rationale, /limits of that document/);
+  assert.match(finding.rationale, /points to another policy or procedure/);
+  assert.match(finding.rationale, /referenced document is available/);
   assert.match(finding.remediation, /Add or point to the procedure that defines/);
   assert.match(finding.remediation, /A reviewer should confirm whether another policy already contains this detail/);
   assert.doesNotMatch(finding.remediation, /reviewed documents appear to define/i);
 });
 
-test("needs review direct Reg S-P findings retain high unresolved risk", () => {
+test("unclear applicability can need review and retains high unresolved risk", () => {
   const finding = aggregateFindingForRequirement(requirement, [
     chunk({
       grade: "background",
@@ -480,15 +566,16 @@ test("needs review direct Reg S-P findings retain high unresolved risk", () => {
       requirement_supported: false,
       covered_elements: [],
       missing_elements: [],
-      supporting_quote: "Customer communications are reviewed by legal.",
-      grade_reason: "The cited text mentions customer communications but does not define the notification standard.",
+      supporting_quote: "Customer notification obligations apply where applicable under the business unit applicability matrix.",
+      content_preview: "Customer notification obligations apply where applicable under the business unit applicability matrix.",
+      grade_reason: "The cited text raises applicability but does not confirm whether this requirement applies.",
     }),
   ]);
 
   assert.equal(finding.status, "needs_review");
   assert.equal(finding.severity, "high");
   assert.match(finding.summary, /not enough detail to confirm full coverage/);
-  assert.match(finding.rationale, /related policy language/);
+  assert.match(finding.rationale, /applicability question/);
   assert.doesNotMatch(finding.remediation, /reviewed documents appear to define/i);
 });
 

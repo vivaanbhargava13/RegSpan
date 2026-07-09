@@ -121,6 +121,10 @@ export function classifyNegativeEvidenceScope(
     /\bthe\s+control\s+is\s+not\s+required\s+by\s+the\s+(firm|organization|company|enterprise)\b/,
   ];
 
+  if (referencesUnavailablePolicy(chunk)) {
+    return "document_scope_limitation";
+  }
+
   if (organizationNegativePatterns.some((pattern) => pattern.test(text))) {
     return "organization_level_negative";
   }
@@ -135,6 +139,45 @@ export function classifyNegativeEvidenceScope(
   }
 
   return "organization_level_negative";
+}
+
+function referencesUnavailablePolicy(chunk: GradedEvidenceChunk) {
+  const text = chunkInterpretationText(chunk);
+  const referencedDocumentPattern =
+    /\b(?:handled|covered|defined|established|addressed|documented|specified|maintained|reserved|set\s+forth|described)\s+(?:in|by|under|within|for)\s+(?:a\s+|an\s+|the\s+|another\s+|separate\s+|other\s+)?[a-z0-9\s-]{0,80}\b(?:policy|procedure|standard|program|plan|manual|playbook|runbook|matrix|governance\s+document)\b/;
+  const explicitReferencePattern =
+    /\b(?:refer(?:s|red)?\s+to|see|pursuant\s+to|according\s+to|as\s+described\s+in|as\s+set\s+forth\s+in|as\s+specified\s+in)\s+(?:a\s+|an\s+|the\s+)?[a-z0-9\s-]{0,80}\b(?:policy|procedure|standard|program|plan|manual|playbook|runbook|matrix|governance\s+document)\b/;
+  const separateDocumentPattern =
+    /\b(?:separate|another|other)\s+(?:policy|procedure|standard|program|plan|manual|playbook|runbook|matrix|governance\s+document)\b/;
+
+  return referencedDocumentPattern.test(text)
+    || explicitReferencePattern.test(text)
+    || separateDocumentPattern.test(text);
+}
+
+function hasUnclearApplicability(chunk: GradedEvidenceChunk) {
+  const text = chunkInterpretationText(chunk);
+  const applicabilityPatterns = [
+    /\bunclear\s+(?:whether|if|when|how)\b/,
+    /\b(?:if|where|when)\s+applicable\b/,
+    /\bas\s+applicable\b/,
+    /\b(?:applicability|scope)\s+(?:matrix|review|determination|assessment)\b/,
+    /\b(?:applies|applicable)\s+only\s+(?:if|when|where|to)\b/,
+    /\bdepends\s+on\s+(?:applicability|business\s+unit|entity|account|customer|client|product|service)\b/,
+  ];
+
+  return applicabilityPatterns.some((pattern) => pattern.test(text));
+}
+
+function hasTrueAmbiguity({
+  documentScopeLimitations,
+  background,
+}: {
+  documentScopeLimitations: GradedEvidenceChunk[];
+  background: GradedEvidenceChunk[];
+}) {
+  return documentScopeLimitations.some(referencesUnavailablePolicy)
+    || background.some(hasUnclearApplicability);
 }
 
 function textForWeighting(chunk: GradedEvidenceChunk) {
@@ -658,13 +701,23 @@ function whatWeFoundForFinding({
   }
 
   if (status === "needs_review") {
-    if (documentScopeLimitations.length > 0 && !strongestSupport) {
+    if (documentScopeLimitations.some(referencesUnavailablePolicy) && !strongestSupport) {
       if (limitationQuote) {
-        parts.push(`${limitationDocument} says it does not cover this requirement: “${limitationQuote}”`);
+        parts.push(`${limitationDocument} points to another policy or procedure for this requirement: “${limitationQuote}”`);
       } else {
-        parts.push(`${limitationDocument} says it does not cover this requirement.`);
+        parts.push(`${limitationDocument} points to another policy or procedure for this requirement.`);
       }
-      parts.push("That may describe the limits of that document rather than proof that the firm lacks the requirement.");
+      parts.push("A reviewer should confirm whether that referenced document is available and addresses the required elements.");
+    } else if (background.some(hasUnclearApplicability)) {
+      const applicabilityChunk = background.find(hasUnclearApplicability);
+      const applicabilityQuote = quoteSummary(applicabilityChunk);
+      const applicabilityDocument = reviewedDocumentLabel(applicabilityChunk);
+      if (applicabilityQuote) {
+        parts.push(`${applicabilityDocument} raises an applicability question: “${applicabilityQuote}”`);
+      } else {
+        parts.push(`${applicabilityDocument} raises an applicability question for this requirement.`);
+      }
+      parts.push("A reviewer should confirm whether the requirement applies to the reviewed business, product, or customer information.");
     } else if (background.length > 0) {
       parts.push("RegSpan found related policy language, but not enough detail to confirm full coverage.");
     } else {
@@ -695,7 +748,9 @@ function evidenceReasonForStorage(
     return `The reviewed document appears to say this requirement is not addressed: ${reason}`;
   }
   if (negativeScope === "document_scope_limitation") {
-    return `This document says it does not cover this requirement. RegSpan treats that as a document-scope limitation, not a contradiction by itself. ${reason}`;
+    return referencesUnavailablePolicy(chunk)
+      ? `This document points to another policy or procedure for this requirement. ${reason}`
+      : `This document limits what it covers for this requirement. RegSpan does not treat that as a contradiction by itself. ${reason}`;
   }
   if (chunk.evidence_relationship === "supports") {
     const covered = renderedElementList(requirement, chunk.covered_elements ?? [], "found");
@@ -772,21 +827,21 @@ export function aggregateFindingForRequirement(
   const hasDirectSupport = strongestDirect.length > 0;
   const hasComplementarySupport = supportChunksWithCoveredElements.length >= 2;
   const hasMeaningfulElementSupport = coverage.coveredRequired.length > 0;
+  const hasAmbiguousEvidence = hasTrueAmbiguity({
+    documentScopeLimitations: strongestDocumentScopeLimitations,
+    background: strongestBackground,
+  });
 
   let status: FindingStatus;
   if (coverage.hasFullRequiredCoverage && (hasDirectSupport || hasComplementarySupport) && strongestOrganizationNegative.length > 0) {
     status = "conflicting";
   } else if (coverage.hasFullRequiredCoverage && (hasDirectSupport || hasComplementarySupport)) {
     status = "covered";
-  } else if (strongestPartial.length > 0 && strongestOrganizationNegative.length > 0) {
-    status = "needs_review";
   } else if (strongestPartial.length > 0 || hasMeaningfulElementSupport) {
     status = "partial";
   } else if (strongestOrganizationNegative.length > 0) {
     status = "missing";
-  } else if (strongestDocumentScopeLimitations.length > 0) {
-    status = "needs_review";
-  } else if (strongestBackground.length > 0) {
+  } else if (hasAmbiguousEvidence) {
     status = "needs_review";
   } else {
     status = "missing";
