@@ -336,6 +336,111 @@ function quoteSignalGroups(
   };
 }
 
+function quoteWordCount(value: string) {
+  return value.match(/[A-Za-z0-9]+/g)?.length ?? 0;
+}
+
+function hasAbsenceLanguage(value: string) {
+  return /\b(?:does not|doesn['’]?t|do not|does not fully|does not establish|does not define|does not state|does not list|does not require|does not address|does not include|without\s+(?:formal\s+|documented\s+|written\s+|clear\s+|specific\s+)?(?:program|plan|procedure|policy|standard|requirement|notification|reporting|validation|preservation|process|timeline|timing|details)|lacks?|missing|excluded|outside the scope|out of scope|reserved for|delegated to|not intended)\b/i.test(value);
+}
+
+function looksLikeHeadingOnly(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return true;
+  if (/[,.;:!?]/.test(trimmed)) return false;
+  if (trimmed.includes("\n")) return false;
+  if (quoteWordCount(trimmed) > 7) return false;
+  return !/\b(?:must|shall|should|will|may|maintains?|requires?|defines?|describes?|assigns?|applies?|includes?|provides?|protects?|notifies?|records?|retains?|validates?|confirms?|tracks?|restores?|reviews?|approves?|encrypts?|monitors?|preserves?|collects?)\b/i.test(trimmed);
+}
+
+function hasDanglingEnding(value: string) {
+  return /\b(?:and|or|but|with|including|such as|assigns|requires|defines|includes|provides)\s*$/i.test(value.trim());
+}
+
+function quoteSupportedElementIds(
+  input: RequirementEvidenceClassifierInput,
+  _classification: Omit<RequirementEvidenceClassification, "classifier_provider">,
+  quote: string,
+) {
+  const text = normalize(quote);
+  return (input.requirement.coverageElements ?? [])
+    .filter((element) =>
+      element.signals.some((signal) => {
+        const normalizedSignal = normalize(signal);
+        return normalizedSignal && text.includes(normalizedSignal);
+      }),
+    )
+    .map((element) => element.id);
+}
+
+function hasDirectQuoteAlignment(
+  input: RequirementEvidenceClassifierInput,
+  classification: Omit<RequirementEvidenceClassification, "classifier_provider">,
+  quote: string,
+) {
+  const text = normalize(quote);
+  const groups = quoteSignalGroups(input, classification);
+  const directHits = countSignalMatches(text, groups.direct).count;
+  const actionHits = countSignalMatches(text, groups.action).count;
+  return directHits > 0 && (actionHits > 0 || quoteSupportedElementIds(input, classification, quote).length > 0);
+}
+
+function quoteIsValidForRelationship(
+  input: RequirementEvidenceClassifierInput,
+  classification: Omit<RequirementEvidenceClassification, "classifier_provider">,
+  quote: string,
+) {
+  if (!input.chunkContent.includes(quote)) return false;
+  if (quoteWordCount(quote) < 5 || looksLikeHeadingOnly(quote) || hasDanglingEnding(quote)) return false;
+
+  if (classification.relationship === "negative_evidence") {
+    return detectSentenceScopedNegativeEvidence({
+      ...input,
+      chunkContent: quote,
+    }).isNegativeEvidence;
+  }
+
+  if (hasAbsenceLanguage(quote)) return false;
+
+  if (
+    input.requirement.id === "customer_notification_content"
+    && /\b(?:vendor|service provider|supplier|third party)\b/i.test(quote)
+    && countSignalMatches(normalize(quote), [
+      ...quoteSignalGroups(input, classification).coverage,
+      "notice content",
+      "incident description",
+      "information involved",
+      "sensitive customer information involved",
+      "protective steps",
+      "affected individuals",
+      "fraud alert",
+      "credit report",
+      "identity theft",
+      "contact information",
+    ]).count === 0
+  ) {
+    return false;
+  }
+
+  return quoteSupportedElementIds(input, classification, quote).length > 0
+    || hasDirectQuoteAlignment(input, classification, quote);
+}
+
+function evaluateQuoteCandidate(
+  input: RequirementEvidenceClassifierInput,
+  classification: Omit<RequirementEvidenceClassification, "classifier_provider">,
+  quote: string,
+) {
+  const supportedElements = quoteSupportedElementIds(input, classification, quote);
+  const requiredElements = input.requirement.requiredElementsForCovered ?? [];
+  return {
+    quote,
+    supportedElements,
+    hasFullRequiredCoverage: requiredElements.every((elementId) => supportedElements.includes(elementId)),
+    score: scoreQuoteCandidate(quote, input, classification),
+  };
+}
+
 function scoreQuoteCandidate(
   candidate: string,
   input: RequirementEvidenceClassifierInput,
@@ -352,6 +457,7 @@ function scoreQuoteCandidate(
       chunkContent: candidate,
     }).isNegativeEvidence ? 20 : 0;
   } else {
+    score += quoteSupportedElementIds(input, classification, candidate).length * 25;
     score += countSignalMatches(text, signals.coverage).count * 12;
     score += countSignalMatches(text, signals.direct).count * 8;
     score += countSignalMatches(text, signals.action).count * 4;
@@ -402,7 +508,11 @@ function extractSourceQuote(
       candidate,
       score: scoreQuoteCandidate(candidate, input, classification),
     }))
-    .filter((item) => item.score > 0 && input.chunkContent.includes(item.candidate))
+    .filter((item) =>
+      item.score > 0
+      && input.chunkContent.includes(item.candidate)
+      && quoteIsValidForRelationship(input, classification, item.candidate)
+    )
     .sort((left, right) => {
       const scoreDelta = right.score - left.score;
       if (scoreDelta !== 0) return scoreDelta;
@@ -704,12 +814,62 @@ function downgradeUngroundedEvidence(
     return classification;
   }
 
-  const supportingQuote = sanitizeSupportingQuote(classification.supporting_quote, input.chunkContent)
-    ?? extractSourceQuote(input, classification);
+  const sanitizedQuote = sanitizeSupportingQuote(classification.supporting_quote, input.chunkContent);
+  const extractedQuote = extractSourceQuote(input, classification);
+  const supportingQuote = uniqueStrings([sanitizedQuote, extractedQuote])
+    .filter((quote) => quoteIsValidForRelationship(input, classification, quote))
+    .map((quote) => evaluateQuoteCandidate(input, classification, quote))
+    .sort((left, right) => {
+      if (left.hasFullRequiredCoverage !== right.hasFullRequiredCoverage) {
+        return left.hasFullRequiredCoverage ? -1 : 1;
+      }
+      const coverageDelta = right.supportedElements.length - left.supportedElements.length;
+      if (coverageDelta !== 0) return coverageDelta;
+      const scoreDelta = right.score - left.score;
+      if (scoreDelta !== 0) return scoreDelta;
+      return left.quote.length - right.quote.length;
+    })[0];
+
   if (supportingQuote) {
+    if (classification.relationship === "negative_evidence") {
+      return {
+        ...classification,
+        supporting_quote: supportingQuote.quote,
+      };
+    }
+
+    const supportedElements = supportingQuote.supportedElements;
+    if (supportedElements.length === 0) {
+      return {
+        relationship: "background_context",
+        confidence: classification.confidence === "high" ? "medium" : classification.confidence,
+        requirement_supported: false,
+        control_absent_or_out_of_scope: false,
+        covered_elements: [],
+        missing_elements: classification.missing_elements,
+        vague_elements: classification.vague_elements,
+        reason:
+          `Downgraded because ${classification.relationship} evidence must align to at least one required element in the exact source quote. ${classification.reason}`,
+        supporting_quote: null,
+      };
+    }
+
+    const missingRequired = input.requirement.requiredElementsForCovered.filter(
+      (elementId) => !supportedElements.includes(elementId),
+    );
+    const relationship = classification.relationship === "supports" && missingRequired.length > 0
+      ? "partially_supports"
+      : classification.relationship;
+
     return {
       ...classification,
-      supporting_quote: supportingQuote,
+      relationship,
+      requirement_supported: relationship === "supports" && missingRequired.length === 0
+        ? classification.requirement_supported
+        : false,
+      covered_elements: supportedElements,
+      missing_elements: uniqueStrings([...classification.missing_elements, ...missingRequired]),
+      supporting_quote: supportingQuote.quote,
     };
   }
 

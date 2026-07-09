@@ -61,7 +61,8 @@ function chunk(overrides = {}) {
     page_end: 5,
     chunk_index: 7,
     section_path: "Incident Response > Customer Notification",
-    content_preview: "The firm must notify affected customers after unauthorized access.",
+    content_preview:
+      "The firm must provide customer notification to affected customers after unauthorized access without unreasonable delay and within 30 days.",
     similarity: 0.91,
     evidence_reason: "substantive policy evidence",
     embedding_input: null,
@@ -80,7 +81,8 @@ function chunk(overrides = {}) {
     covered_elements: ["notice_trigger", "notice_timing"],
     missing_elements: [],
     vague_elements: [],
-    supporting_quote: "notify affected customers after unauthorized access",
+    supporting_quote:
+      "provide customer notification to affected customers after unauthorized access without unreasonable delay and within 30 days",
     classifier_provider: "heuristic",
     ...overrides,
   };
@@ -156,12 +158,12 @@ test("organization evidence can produce covered and partial findings", () => {
   assert.equal(covered.severity, "high");
   assert.equal(covered.confidence, "high");
   assert.equal(covered.summary, "Appears covered based on reviewed documents.");
-  assert.match(covered.rationale, /states: “notify affected customers/);
+  assert.match(covered.rationale, /states: “provide customer notification/);
   assert.equal(partial.status, "partial");
   assert.equal(partial.severity, "high");
   assert.equal(partial.summary, "Partially covered based on reviewed documents.");
   assert.match(partial.rationale, /mentions this area/);
-  assert.match(partial.remediation, /do not clearly define the full notification trigger and timing/);
+  assert.match(partial.remediation, /do not clearly define the decision standard .*required timing for notice/);
   assert.doesNotMatch(partial.remediation, /missing owner, timing, approval, escalation/);
 });
 
@@ -299,7 +301,7 @@ test("related but incomplete notification language is partial, not needs review"
   ]);
 
   assert.equal(finding.status, "partial");
-  assert.match(finding.rationale, /did not find clear language defining the required timing for notice/);
+  assert.match(finding.rationale, /did not find clear language defining .*required timing for notice/);
   assert.doesNotMatch(finding.rationale, /reviewer should confirm/i);
 });
 
@@ -311,7 +313,7 @@ test("missing required coverage elements prevents covered findings", () => {
       requirement_supported: false,
       covered_elements: ["notice_trigger"],
       missing_elements: ["notice_timing"],
-      supporting_quote: "notify affected customers after unauthorized access",
+      supporting_quote: "customer notification to affected customers after unauthorized access",
       grade_reason: "The cited text covers the notification trigger but not timing.",
     }),
   ]);
@@ -331,7 +333,7 @@ test("multiple complementary supports can cover required elements", () => {
     requirement_supported: false,
     covered_elements: ["notice_trigger"],
     missing_elements: ["notice_timing"],
-    supporting_quote: "notify affected customers after unauthorized access",
+    supporting_quote: "customer notification to affected customers after unauthorized access",
     grade_reason: "The cited text covers the notification trigger.",
   });
   const timing = chunk({
@@ -439,7 +441,7 @@ test("covered and partial evidence explanations use natural language", () => {
       requirement_supported: false,
       covered_elements: ["notice_trigger"],
       missing_elements: ["notice_timing"],
-      supporting_quote: "notify affected customers after unauthorized access",
+      supporting_quote: "customer notification to affected customers after unauthorized access",
       grade_reason: "The cited text covers the notification trigger but not timing.",
     }),
   ]);
@@ -795,7 +797,10 @@ test("finding evidence preserves citation metadata", () => {
   assert.equal(finding.evidence[0].page_end, 5);
   assert.equal(finding.evidence[0].section_path, "Incident Response > Customer Notification");
   assert.equal(finding.evidence[0].chunk_index, 7);
-  assert.equal(finding.evidence[0].quote, "notify affected customers after unauthorized access");
+  assert.equal(
+    finding.evidence[0].quote,
+    "provide customer notification to affected customers after unauthorized access without unreasonable delay and within 30 days",
+  );
 });
 
 test("finding evidence uses raw quote rather than retrieval synopsis text", () => {

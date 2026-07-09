@@ -87,7 +87,8 @@ function chunk(overrides = {}) {
     page_end: 4,
     chunk_index: 1,
     section_path: "Incident Response",
-    content_preview: "The firm assesses the nature and scope of unauthorized access and contains the incident.",
+    content_preview:
+      "The firm assesses the nature and scope of unauthorized access, identifies affected customer information systems, and takes steps to contain and control the incident.",
     similarity: 0.91,
     evidence_reason: "substantive policy evidence",
     embedding_input: null,
@@ -106,7 +107,8 @@ function chunk(overrides = {}) {
     covered_elements: ["assesses_scope", "customer_information_systems", "containment_control"],
     missing_elements: [],
     vague_elements: [],
-    supporting_quote: "assesses the nature and scope of unauthorized access",
+    supporting_quote:
+      "assesses the nature and scope of unauthorized access, identifies affected customer information systems, and takes steps to contain and control the incident",
     classifier_provider: "heuristic",
     ...overrides,
   };

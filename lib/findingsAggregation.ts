@@ -87,6 +87,21 @@ function hasExactSourceQuote(chunk: GradedEvidenceChunk) {
   return Boolean(quote && chunk.content_preview.includes(quote));
 }
 
+function quoteSupportedElementIds(requirement: RegSpRequirement, chunk: GradedEvidenceChunk) {
+  const quote = chunk.supporting_quote?.trim();
+  if (!quote) return [];
+  const text = normalize(quote);
+  return (requirement.coverageElements ?? [])
+    .filter((element) => requirement.requiredElementsForCovered.includes(element.id))
+    .filter((element) =>
+      element.signals.some((signal) => {
+        const normalizedSignal = normalize(signal);
+        return normalizedSignal && text.includes(normalizedSignal);
+      }),
+    )
+    .map((element) => element.id);
+}
+
 function isSourceGroundedDirectSupport(chunk: GradedEvidenceChunk) {
   return isDirectSupport(chunk)
     && hasExactSourceQuote(chunk)
@@ -539,7 +554,7 @@ function partialRemediationForRequirement(requirement: RegSpRequirement, missing
 }
 
 function coverageForChunks(requirement: RegSpRequirement, chunks: GradedEvidenceChunk[]) {
-  const coveredRequired = uniqueStrings(chunks.flatMap((chunk) => chunk.covered_elements ?? []))
+  const coveredRequired = uniqueStrings(chunks.flatMap((chunk) => quoteSupportedElementIds(requirement, chunk)))
     .filter((elementId) => requirement.requiredElementsForCovered.includes(elementId));
   const vagueRequired = uniqueStrings(chunks.flatMap((chunk) => chunk.vague_elements ?? []))
     .filter((elementId) => requirement.requiredElementsForCovered.includes(elementId));
@@ -867,7 +882,9 @@ export function aggregateFindingForRequirement(
   const strongestBackground = sortByEvidenceWeight(requirement, background);
   const supportingEvidence = [...strongestDirect, ...strongestPartial];
   const coverage = coverageForChunks(requirement, supportingEvidence);
-  const supportChunksWithCoveredElements = supportingEvidence.filter((chunk) => (chunk.covered_elements ?? []).length > 0);
+  const supportChunksWithCoveredElements = supportingEvidence.filter(
+    (chunk) => quoteSupportedElementIds(requirement, chunk).length > 0,
+  );
   const hasDirectSupport = strongestDirect.length > 0;
   const hasComplementarySupport = supportChunksWithCoveredElements.length >= 2;
   const hasMeaningfulElementSupport = coverage.coveredRequired.length > 0;

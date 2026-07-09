@@ -389,6 +389,7 @@ test("vendor 72-hour notice gap does not become incident assessment negative evi
   );
 
   assert.notEqual(incidentResult.relationship, "negative_evidence");
+  assert.notEqual(incidentResult.relationship, "partially_supports");
   assert.equal(incidentResult.control_absent_or_out_of_scope, false);
   assert.equal(vendorResult.relationship, "negative_evidence");
   assert.deepEqual(vendorResult.missing_elements, ["notice_to_firm"]);
@@ -397,7 +398,93 @@ test("vendor 72-hour notice gap does not become incident assessment negative evi
   assert.notEqual(contentResult.relationship, "partially_supports");
   assert.equal(contentResult.control_absent_or_out_of_scope, false);
   assert.notEqual(recordsResult.relationship, "negative_evidence");
+  assert.notEqual(recordsResult.relationship, "partially_supports");
   assert.equal(recordsResult.control_absent_or_out_of_scope, false);
+});
+
+test("heading-only quotes cannot satisfy written incident response evidence", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { postProcessOpenAiClassification, classifierInputForChunk }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementEvidenceClassifier.ts"),
+  ]);
+  const requirement = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "written_incident_response_program",
+  );
+  const chunk = organizationChunk("Written incident response program");
+
+  const result = postProcessOpenAiClassification({
+    relationship: "supports",
+    confidence: "high",
+    requirement_supported: true,
+    control_absent_or_out_of_scope: false,
+    covered_elements: requirement.requiredElementsForCovered,
+    missing_elements: [],
+    vague_elements: [],
+    reason: "The heading says this is the written incident response program.",
+    supporting_quote: "Written incident response program",
+  }, classifierInputForChunk(requirement, chunk));
+
+  assert.equal(result.relationship, "background_context");
+  assert.equal(result.requirement_supported, false);
+  assert.equal(result.supporting_quote, null);
+});
+
+test("substantive written incident response evidence is recovered below a heading", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { postProcessOpenAiClassification, classifierInputForChunk }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementEvidenceClassifier.ts"),
+  ]);
+  const requirement = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "written_incident_response_program",
+  );
+  const sourceQuote =
+    "The firm maintains a written cyber event response standard for customer information that assigns response and recovery responsibilities.";
+  const chunk = organizationChunk(`Written incident response program\n${sourceQuote}`);
+
+  const result = postProcessOpenAiClassification({
+    relationship: "supports",
+    confidence: "high",
+    requirement_supported: true,
+    control_absent_or_out_of_scope: false,
+    covered_elements: requirement.requiredElementsForCovered,
+    missing_elements: [],
+    vague_elements: [],
+    reason: "The chunk supports the written incident response requirement.",
+    supporting_quote: "Written incident response program",
+  }, classifierInputForChunk(requirement, chunk));
+
+  assert.equal(result.relationship, "supports");
+  assert.equal(result.requirement_supported, true);
+  assert.notEqual(result.supporting_quote, "Written incident response program");
+  assert.match(result.supporting_quote, /written cyber event response standard/);
+  assert.match(result.supporting_quote, /response and recovery responsibilities/);
+});
+
+test("limitation-only quotes are not partial support", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { postProcessOpenAiClassification, classifierInputForChunk }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementEvidenceClassifier.ts"),
+  ]);
+  const requirement = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "customer_notification_content",
+  );
+  const text = "This policy does not define customer notification content requirements.";
+
+  const result = postProcessOpenAiClassification({
+    relationship: "partially_supports",
+    confidence: "medium",
+    requirement_supported: false,
+    control_absent_or_out_of_scope: false,
+    covered_elements: ["incident_description"],
+    missing_elements: ["information_involved", "protective_steps"],
+    vague_elements: [],
+    reason: "The text discusses notice content but is incomplete.",
+    supporting_quote: text,
+  }, classifierInputForChunk(requirement, organizationChunk(text)));
+
+  assert.equal(result.relationship, "background_context");
+  assert.equal(result.supporting_quote, null);
+  assert.deepEqual(result.covered_elements, []);
 });
 
 test("OpenAI classifier replaces invented supporting quotes with extracted raw source quotes", async () => {
@@ -408,7 +495,9 @@ test("OpenAI classifier replaces invented supporting quotes with extracted raw s
   const requirement = REG_SP_REQUIREMENTS.find(
     (item) => item.id === "customer_notification_unauthorized_access",
   );
-  const chunk = organizationChunk("Affected customers must be notified after unauthorized access to sensitive customer information.");
+  const chunk = organizationChunk(
+    "Affected customers must be notified after unauthorized access to sensitive customer information that is reasonably likely to cause substantial harm or inconvenience, without unreasonable delay and no later than 30 days.",
+  );
 
   const result = postProcessOpenAiClassification({
     relationship: "supports",
@@ -424,7 +513,10 @@ test("OpenAI classifier replaces invented supporting quotes with extracted raw s
 
   assert.equal(result.relationship, "supports");
   assert.equal(result.requirement_supported, true);
-  assert.equal(result.supporting_quote, "Affected customers must be notified after unauthorized access to sensitive customer information.");
+  assert.equal(
+    result.supporting_quote,
+    "Affected customers must be notified after unauthorized access to sensitive customer information that is reasonably likely to cause substantial harm or inconvenience, without unreasonable delay and no later than 30 days.",
+  );
   assert.notEqual(result.supporting_quote, "The organization has a robust customer notice workflow.");
 });
 
@@ -453,7 +545,7 @@ test("generated classifier reasons cannot replace exact source quotes but raw qu
   assert.equal(result.relationship, "partially_supports");
   assert.equal(result.supporting_quote, "Legal may notify affected customers after unauthorized access.");
   assert.notEqual(result.supporting_quote, result.reason);
-  assert.deepEqual(result.covered_elements, ["notice_trigger"]);
+  assert.deepEqual(result.covered_elements, ["unauthorized_access_or_use"]);
 });
 
 test("support without an extractable raw quote is downgraded", async () => {
