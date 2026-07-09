@@ -121,6 +121,57 @@ test("policy-style headings infer parent and sibling context", () => {
   assert.equal(vendor?.parent_heading, "Document");
 });
 
+test("sentence-case main-body compliance headings become section metadata", () => {
+  const expectedHeadings = [
+    "Written incident response program",
+    "Assessment of unauthorized access or use",
+    "Customer notification decision standard",
+    "Customer notification content requirements",
+    "Service provider oversight expectations",
+    "Vendor cooperation, investigation, and remediation support",
+    "Access management and privileged access review",
+    "Monitoring, logging, and alert review",
+    "Disposal of consumer and customer information",
+    "Electronic media and backup disposal procedures",
+    "Law enforcement and regulator coordination",
+    "Post-incident review and lessons learned",
+    "Testing, tabletop exercises, and quality review",
+    "Policy maintenance and annual review",
+  ];
+  const result = build(expectedHeadings.map((heading, index) => ({
+    pageNumber: index + 1,
+    text: [
+      heading,
+      "",
+      `Procedure page ${index + 1}. The firm maintains written procedures, reviewer records, and evidence for ${heading.toLowerCase()} in the compliance program.`,
+    ].join("\n"),
+  })));
+
+  for (const heading of expectedHeadings) {
+    const chunk = result.chunks.find((candidate) => candidate.section_heading === heading);
+    assert.ok(chunk, `Expected chunk metadata for ${heading}`);
+    assert.equal(chunk.parent_heading, "Document");
+    assert.equal(chunk.section_path, heading);
+    assert.notEqual(chunk.section_path, "Document Overview");
+    assert.match(chunk.metadata.embedding_input, new RegExp(`Section: ${heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+    assert.match(chunk.metadata.deterministic_retrieval_context, new RegExp(heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+});
+
+test("ordinary policy sentences are not promoted as sentence-case headings", () => {
+  const result = build([{ pageNumber: 1, text: [
+    "Customer Notification",
+    "",
+    "Customer notification procedures are reviewed annually",
+    "",
+    "The response team maintains customer notification records and reviewer approvals.",
+  ].join("\n") }]);
+
+  assert.equal(result.chunks.length, 1);
+  assert.equal(result.chunks[0].section_heading, "Customer Notification");
+  assert.match(result.chunks[0].content, /Customer notification procedures are reviewed annually/);
+});
+
 test("short bullet and numbered lists stay together", () => {
   const result = build([{ pageNumber: 1, text: [
     "2. Response Procedures",
@@ -277,6 +328,49 @@ test("page-bounded child chunks inherit earlier-page section headings and paths"
   assert.doesNotMatch(pageTwelveChunk.content, /^Customer Notification/);
 });
 
+test("page-bounded sentence-case policy chunks inherit heading metadata without rewriting source text", () => {
+  const result = build([
+    {
+      pageNumber: 20,
+      text: [
+        "Assessment of unauthorized access or use",
+        "",
+        "The incident response owner evaluates suspected unauthorized access to customer information systems, documents affected repositories, and records the assessment outcome.",
+      ].join("\n"),
+    },
+    {
+      pageNumber: 21,
+      text: "Assessment evidence identifies the affected systems, customer information categories, containment steps, legal review, and notification decision record.",
+    },
+    {
+      pageNumber: 22,
+      text: "Reviewers retain the assessment file with approvals, supporting evidence, and follow-up tasks for quality review.",
+    },
+  ]);
+
+  const continuationChunk = result.chunks.find((chunk) => chunk.page_start === 22);
+
+  assert.ok(continuationChunk);
+  assert.equal(continuationChunk.section_heading, "Assessment of unauthorized access or use");
+  assert.equal(continuationChunk.parent_heading, "Document");
+  assert.equal(continuationChunk.section_path, "Assessment of unauthorized access or use");
+  assert.equal(continuationChunk.metadata.heading_page, 20);
+  assert.equal(continuationChunk.metadata.section_start_page, 20);
+  assert.match(
+    continuationChunk.metadata.embedding_input,
+    /Section: Assessment of unauthorized access or use/,
+  );
+  assert.match(
+    continuationChunk.metadata.deterministic_retrieval_context,
+    /Assessment of unauthorized access or use/,
+  );
+  assert.doesNotMatch(continuationChunk.content, /^Assessment of unauthorized access or use/);
+  assert.equal(
+    result.chunks.some((chunk) => chunk.section_path === "Document Overview" && /Assessment evidence|Reviewers retain/.test(chunk.content)),
+    false,
+  );
+});
+
 test("compatible short context sections merge without altering source text", () => {
   const result = build([{ pageNumber: 1, text: [
     "Purpose",
@@ -402,6 +496,23 @@ test("playbook phase hierarchy survives heading-only parents", () => {
   );
   assert.equal(result.chunks[1].section_path, "APPENDIX A > Coordination");
   assert.equal(result.chunks.some((chunk) => chunk.content.trim() === chunk.section_heading), false);
+});
+
+test("appendix headings still work after sentence-case heading promotion", () => {
+  const result = build([
+    { pageNumber: 30, text: [
+      "APPENDIX B",
+      "",
+      "Service Provider Notice",
+      "",
+      "Response teams should establish service provider notice and cooperation procedures before an incident occurs.",
+    ].join("\n") },
+  ]);
+
+  assert.equal(result.chunks.length, 1);
+  assert.equal(result.chunks[0].section_path, "APPENDIX B > Service Provider Notice");
+  assert.equal(result.chunks[0].section_heading, "Service Provider Notice");
+  assert.equal(result.chunks[0].parent_heading, "APPENDIX B");
 });
 
 test("repeated confidentiality footers are learned from incident policy pages", () => {

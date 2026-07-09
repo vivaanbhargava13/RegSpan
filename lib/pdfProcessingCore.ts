@@ -264,6 +264,9 @@ const PLAYBOOK_SUBSECTION_HEADING_PATTERN = /^(?:policies and procedures|cyber t
 const TOP_LEVEL_POLICY_HEADING_PATTERN = /^(?:purpose|scope|definitions|governance|incident response|information security(?: program)?|vendor (?:management|oversight)|privacy|data retention|customer information|customer notification|safeguards(?: program)?|administrative safeguards|technical safeguards|physical safeguards|access control(?:s)?|access management|encryption|records?(?: retention| management)?|policy statement|roles and responsibilities)$/i;
 const CHILD_POLICY_HEADING_PATTERN = /^(?:customer notification|notification timing|notice content|escalation|reporting|testing|training|monitoring|oversight procedures|response procedures|containment|recovery|exceptions|enforcement|access approval|access reviews?|periodic access reviews?|encryption requirements?|vendor notification|service provider notice)$/i;
 const COMPLIANCE_HEADING_KEYWORD_PATTERN = /\b(?:customer|consumer|incident|response|notification|notice|safeguards?|access|encryption|authentication|vendor|service provider|records?|retention|disposal|remediation|recovery|evidence|logs?|privacy|security|compliance)\b/i;
+const COMPLIANCE_SENTENCE_HEADING_KEYWORD_PATTERN = /\b(?:customer|consumer|incident|response|unauthorized access|notification|notice|safeguards?|access|privileged access|monitoring|logging|alert|encryption|authentication|vendor|service provider|records?|retention|disposal|remediation|recovery|investigation|law enforcement|regulator|testing|tabletop|quality|privacy|security|compliance|policy)\b/i;
+const COMPLIANCE_SENTENCE_HEADING_NOUN_PATTERN = /\b(?:program|assessment|standard|requirements?|expectations?|support|management|review|reviews|logging|monitoring|disposal|procedures?|coordination|maintenance|oversight|notification|content|access|remediation|investigation|cooperation|lessons learned|exercises?|tabletop|quality)\b/i;
+const POLICY_SENTENCE_VERB_PATTERN = /\b(?:must|shall|should|will|may|is|are|was|were|be|been|being|has|have|had|maintains?|requires?|defines?|describes?|identifies?|includes?|provides?|ensures?|notifies?|assesses?|documents?|records?|retains?|protects?|applies?|covers?|addresses?|coordinates?|approves?|encrypts?)\b/i;
 const MERGEABLE_SHORT_HEADING_PATTERN = /^(?:document overview|overview|purpose|scope|objectives?|applicability|definitions|roles|responsibilities)$/i;
 const CLASSIFICATION_MARKING_PATTERNS = [
   /^TLP\s*:\s*[A-Z+ -]{3,24}$/i,
@@ -411,6 +414,28 @@ function isTitleCaseHeading(value: string) {
   return titleWords.length / words.length >= 0.75;
 }
 
+function isSentenceCaseComplianceHeading(value: string, precededByBlankLine: boolean) {
+  if (!precededByBlankLine) return false;
+
+  const line = normalizeHeadingArtifacts(value);
+  const stripped = normalizedHeading(line);
+  const words = getWords(stripped);
+  if (
+    !stripped
+    || words.length < 2
+    || words.length > 10
+    || /[.!?;:]$/.test(line)
+    || !/^[A-Z][A-Za-z0-9(]/.test(stripped)
+    || isTitleCaseHeading(line)
+    || POLICY_SENTENCE_VERB_PATTERN.test(stripped)
+  ) {
+    return false;
+  }
+
+  return COMPLIANCE_SENTENCE_HEADING_KEYWORD_PATTERN.test(stripped)
+    && COMPLIANCE_SENTENCE_HEADING_NOUN_PATTERN.test(stripped);
+}
+
 export function isLikelyPolicyHeading(value: string, precededByBlankLine = true) {
   const rawLine = value.trim();
   const line = normalizeHeadingArtifacts(rawLine);
@@ -450,13 +475,15 @@ export function isLikelyPolicyHeading(value: string, precededByBlankLine = true)
     && words.length <= 8
     && isTitleCaseHeading(line)
     && COMPLIANCE_HEADING_KEYWORD_PATTERN.test(stripped);
+  const isSentenceComplianceHeading = isSentenceCaseComplianceHeading(line, precededByBlankLine);
 
   return isKnownPolicyHeading
     || isUppercase
     || isNumberedHeading
     || isShortColonHeading
     || isTitleHeading
-    || isComplianceKeywordHeading;
+    || isComplianceKeywordHeading
+    || isSentenceComplianceHeading;
 }
 
 function inferHeadingLevel(
