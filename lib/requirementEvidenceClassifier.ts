@@ -313,6 +313,24 @@ function rawSpanForSentences(rawText: string, firstSentence: string, lastSentenc
   return span && rawText.includes(span) ? span : null;
 }
 
+function completedSourceQuote(chunkContent: string, quote: string) {
+  if (!chunkContent.includes(quote)) return quote;
+  const quoteStart = chunkContent.indexOf(quote);
+  const quoteEnd = quoteStart + quote.length;
+  const overlapping = sourceSentences(chunkContent).filter((sentence) => {
+    const sentenceStart = chunkContent.indexOf(sentence);
+    const sentenceEnd = sentenceStart + sentence.length;
+    return sentenceStart >= 0 && sentenceStart < quoteEnd && sentenceEnd > quoteStart;
+  });
+
+  if (overlapping.length === 0) return quote;
+  const start = chunkContent.indexOf(overlapping[0]);
+  const last = overlapping[overlapping.length - 1];
+  const end = chunkContent.indexOf(last, start) + last.length;
+  const span = chunkContent.slice(start, end).trim();
+  return span || quote;
+}
+
 function quoteSignalGroups(
   input: RequirementEvidenceClassifierInput,
   classification: Omit<RequirementEvidenceClassification, "classifier_provider">,
@@ -383,11 +401,11 @@ function extraElementSignals(requirementId: string, elementId: string) {
         "logs and evidence",
         "investigation materials",
         "investigation materials retained",
-        "incident record",
-        "incident records",
-        "recordkeeping",
         "retain investigation materials",
         "retaining investigation materials",
+        "incident records retained",
+        "retain incident records",
+        "recordkeeping for evidence",
       ],
     },
     remediation_recovery_validation: {
@@ -438,12 +456,17 @@ function quoteSupportedElementIds(
 ) {
   const text = normalize(quote);
   return (input.requirement.coverageElements ?? [])
-    .filter((element) =>
-      elementSignals(input.requirement.id, element.id, element.signals).some((signal) => {
+    .filter((element) => {
+      const signals = elementSignals(input.requirement.id, element.id, element.signals);
+      const matches = signals.some((signal) => {
         const normalizedSignal = normalize(signal);
         return normalizedSignal && text.includes(normalizedSignal);
-      }),
-    )
+      });
+      if (classifierLegacyRequirementId(input.requirement.id) === "evidence_log_preservation" && element.id === "incident_materials") {
+        return matches && /\b(?:preserv|retain|retaining|retained|logs?|evidence|investigation materials|forensic|recordkeeping)\b/.test(text);
+      }
+      return matches;
+    })
     .map((element) => element.id);
 }
 
@@ -865,13 +888,14 @@ function sanitizeSupportingQuote(quote: string | null, chunkContent: string) {
     return null;
   }
   const trimmed = quote.trim();
-  if (chunkContent.includes(trimmed)) return trimmed;
+  if (chunkContent.includes(trimmed)) return completedSourceQuote(chunkContent, trimmed);
 
   const normalizedQuote = normalizeWhitespace(trimmed);
-  return sourceSentences(chunkContent).find((sentence) =>
+  const matched = sourceSentences(chunkContent).find((sentence) =>
     normalizeWhitespace(sentence) === normalizedQuote
     || normalizeWhitespace(sentence).includes(normalizedQuote)
-  ) ?? null;
+  );
+  return matched ? completedSourceQuote(chunkContent, matched) : null;
 }
 
 function relationshipRequiresSourceQuote(relationship: RequirementEvidenceRelationship) {

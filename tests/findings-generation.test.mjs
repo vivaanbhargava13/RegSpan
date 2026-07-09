@@ -160,7 +160,7 @@ test("organization evidence can produce covered and partial findings", () => {
   assert.equal(covered.severity, "high");
   assert.equal(covered.confidence, "high");
   assert.equal(covered.summary, "Appears covered based on reviewed documents.");
-  assert.match(covered.rationale, /states: “provide customer notification/);
+  assert.match(covered.rationale, /states: “The firm must provide customer notification/);
   assert.equal(partial.status, "partial");
   assert.equal(partial.severity, "high");
   assert.equal(partial.summary, "Partially covered based on reviewed documents.");
@@ -914,6 +914,11 @@ test("incident assessment can be covered by a broader direct quote spanning asse
 
   assert.equal(finding.status, "covered");
   assert.equal(finding.evidence[0].section_path, "Assessment of unauthorized access or use");
+  assert.equal(
+    finding.evidence[0].quote,
+    "The incident team assesses the nature and scope of unauthorized access, identifies affected customer information systems, and takes steps to contain and control the incident.",
+  );
+  assert.doesNotMatch(finding.evidence[0].quote ?? "", /^systems and information types/i);
 });
 
 test("incident evidence preservation recognizes logs and investigation evidence", () => {
@@ -940,6 +945,35 @@ test("incident evidence preservation recognizes logs and investigation evidence"
   const finding = aggregateFindingForRequirement(preservationRequirement, [support]);
 
   assert.equal(finding.status, "covered");
+});
+
+test("incident evidence preservation is not covered by an incident-record sentence without preservation", () => {
+  const preservationRequirement = {
+    ...requirement,
+    id: "incident_evidence_log_preservation",
+    title: "Incident evidence and log preservation",
+    coverageElements: [
+      {
+        id: "incident_materials",
+        label: "Preserves logs, evidence, or investigation records",
+        requiredForCovered: true,
+        signals: ["incident records"],
+      },
+    ],
+    requiredElementsForCovered: ["incident_materials"],
+  };
+  const incidentRecordOnly = chunk({
+    section_path: "Written incident response program",
+    content_preview:
+      "The incident lead opens an incident record, documents known facts, identifies affected systems, and assigns response tasks.",
+    supporting_quote:
+      "The incident lead opens an incident record, documents known facts, identifies affected systems, and assigns response tasks.",
+  });
+
+  const finding = aggregateFindingForRequirement(preservationRequirement, [incidentRecordOnly]);
+
+  assert.equal(finding.status, "missing");
+  assert.equal(finding.evidence.length, 0);
 });
 
 test("recovery evidence curation prefers substantive recovery activity quotes over fragments", () => {
@@ -1029,9 +1063,9 @@ test("safeguards curation prefers access approval, periodic review, and encrypti
   const accessEvidence = chunk({
     section_path: "Access management and privileged access review",
     content_preview:
-      "Customer information repositories require access approval, periodic access review, and encryption for stored records.",
+      "Customer information repositories require access approval, periodic access review, and encryption for approved storage and transmission channels.",
     supporting_quote:
-      "Customer information repositories require access approval, periodic access review, and encryption for stored records",
+      "Customer information repositories require access approval, periodic access review, and encryption for approved",
   });
   const adjacentEvidence = chunk({
     chunk_id: "12121212-1212-4212-8212-121212121212",
@@ -1044,6 +1078,54 @@ test("safeguards curation prefers access approval, periodic review, and encrypti
 
   assert.equal(finding.status, "covered");
   assert.equal(finding.evidence[0].section_path, "Access management and privileged access review");
+  assert.equal(
+    finding.evidence[0].quote,
+    "Customer information repositories require access approval, periodic access review, and encryption for approved storage and transmission channels.",
+  );
+  assert.match(finding.evidence[0].reason, /safeguards for customer information|applies safeguards to customer information/);
+  assert.doesNotMatch(finding.evidence[0].reason, /does not clearly define that the safeguards apply to customer information/);
+});
+
+test("service provider evidence quotes start at a clean sentence instead of a leading fragment", () => {
+  const vendorRequirement = {
+    ...requirement,
+    id: "service_provider_incident_oversight_notice",
+    title: "Service provider incident oversight and notice",
+    coverageElements: [
+      {
+        id: "service_provider_scope",
+        label: "Applies to service providers or vendors handling customer information",
+        requiredForCovered: true,
+        signals: ["vendor", "customer information"],
+      },
+      {
+        id: "notice_to_firm",
+        label: "Requires service-provider notice to the firm",
+        requiredForCovered: true,
+        signals: ["72 hours", "notice"],
+      },
+      {
+        id: "cooperation_remediation",
+        label: "Requires cooperation, investigation, remediation, or recovery support",
+        requiredForCovered: true,
+        signals: ["cooperation", "remediation"],
+      },
+    ],
+    requiredElementsForCovered: ["service_provider_scope", "notice_to_firm", "cooperation_remediation"],
+  };
+  const vendorEvidence = chunk({
+    section_path: "Vendor cooperation, investigation, and remediation support",
+    content_preview:
+      "Vendor contracts covering customer information require notice to the firm within 72 hours or comparable timing commitment. Vendor cooperation is required for investigation, remediation, and recovery support.",
+    supporting_quote:
+      "or comparable timing commitment. Vendor cooperation is required for investigation, remediation, and recovery support.",
+  });
+
+  const finding = aggregateFindingForRequirement(vendorRequirement, [vendorEvidence]);
+
+  assert.equal(finding.status, "covered");
+  assert.match(finding.evidence[0].quote ?? "", /^Vendor contracts covering customer information/);
+  assert.doesNotMatch(finding.evidence[0].quote ?? "", /^or comparable/i);
 });
 
 test("service provider heading-only quotes are not persisted as substantive evidence", () => {
@@ -1179,7 +1261,7 @@ test("finding evidence preserves citation metadata", () => {
   assert.equal(finding.evidence[0].chunk_index, 7);
   assert.equal(
     finding.evidence[0].quote,
-    "provide customer notification to affected customers after unauthorized access without unreasonable delay and within 30 days",
+    "The firm must provide customer notification to affected customers after unauthorized access without unreasonable delay and within 30 days.",
   );
 });
 
@@ -1198,7 +1280,7 @@ test("finding evidence uses raw quote rather than retrieval synopsis text", () =
   ]);
 
   assert.equal(finding.status, "partial");
-  assert.equal(finding.evidence[0].quote, "notifies affected customers after unauthorized access");
+  assert.equal(finding.evidence[0].quote, "The firm notifies affected customers after unauthorized access.");
   assert.doesNotMatch(finding.evidence[0].quote ?? "", /30 days/);
   assert.doesNotMatch(finding.rationale, /not later than 30 days/);
 });

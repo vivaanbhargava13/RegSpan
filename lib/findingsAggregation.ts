@@ -101,6 +101,37 @@ function quoteWordCount(value: string) {
   return value.match(/[A-Za-z0-9]+/g)?.length ?? 0;
 }
 
+function evidenceSentences(rawText: string) {
+  return (rawText.match(/[^.!?]+[.!?]?/g) ?? [rawText])
+    .flatMap((sentence) => sentence.split("\n"))
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+}
+
+function sourceSentences(rawText: string) {
+  return evidenceSentences(rawText).filter((sentence) => rawText.includes(sentence));
+}
+
+function completedSourceQuote(chunk: GradedEvidenceChunk) {
+  const quote = chunk.supporting_quote?.trim();
+  if (!quote || !chunk.content_preview.includes(quote)) return quote ?? null;
+
+  const quoteStart = chunk.content_preview.indexOf(quote);
+  const quoteEnd = quoteStart + quote.length;
+  const overlapping = sourceSentences(chunk.content_preview).filter((sentence) => {
+    const sentenceStart = chunk.content_preview.indexOf(sentence);
+    const sentenceEnd = sentenceStart + sentence.length;
+    return sentenceStart >= 0 && sentenceStart < quoteEnd && sentenceEnd > quoteStart;
+  });
+
+  if (overlapping.length === 0) return quote;
+  const start = chunk.content_preview.indexOf(overlapping[0]);
+  const last = overlapping[overlapping.length - 1];
+  const end = chunk.content_preview.indexOf(last, start) + last.length;
+  const span = chunk.content_preview.slice(start, end).trim();
+  return span || quote;
+}
+
 function looksLikeHeadingOnly(value: string) {
   const trimmed = value.trim();
   if (!trimmed) return true;
@@ -118,7 +149,7 @@ function hasDanglingEnding(value: string) {
 }
 
 function hasSubstantiveExactSourceQuote(chunk: GradedEvidenceChunk) {
-  const quote = chunk.supporting_quote?.trim();
+  const quote = completedSourceQuote(chunk);
   return Boolean(
     quote
     && chunk.content_preview.includes(quote)
@@ -179,6 +210,11 @@ const additionalElementSignals: Partial<Record<RegSpRequirementId, Record<string
       "preserving evidence",
       "investigation materials",
       "preserve investigation materials",
+      "retain investigation materials",
+      "retaining investigation materials",
+      "incident records retained",
+      "retain incident records",
+      "recordkeeping for evidence",
     ],
   },
   incident_evidence_log_preservation: {
@@ -192,11 +228,11 @@ const additionalElementSignals: Partial<Record<RegSpRequirementId, Record<string
       "investigation materials",
       "investigation materials retained",
       "preserve investigation materials",
-      "incident record",
-      "incident records",
-      "recordkeeping",
       "retain investigation materials",
       "retaining investigation materials",
+      "incident records retained",
+      "retain incident records",
+      "recordkeeping for evidence",
     ],
   },
   customer_information_safeguards: {
@@ -277,6 +313,13 @@ function elementSignals(requirement: RegSpRequirement, elementId: string) {
 
 function elementSignalMatches(requirement: RegSpRequirement, elementId: string, text: string) {
   const signals = elementSignals(requirement, elementId);
+  if (copyRequirementId(requirement) === "evidence_log_preservation" && elementId === "incident_materials") {
+    return signals.some((signal) => {
+      const normalizedSignal = normalize(signal);
+      return normalizedSignal && text.includes(normalizedSignal);
+    }) && /\b(?:preserv|retain|retaining|retained|logs?|evidence|investigation materials|forensic|recordkeeping)\b/.test(text);
+  }
+
   if (copyRequirementId(requirement) === "disposal_consumer_customer_information" && elementId === "secure_disposal_method") {
     return signals.some((signal) => {
       const normalizedSignal = normalize(signal);
@@ -292,7 +335,7 @@ function elementSignalMatches(requirement: RegSpRequirement, elementId: string, 
 }
 
 function quoteSupportedElementIds(requirement: RegSpRequirement, chunk: GradedEvidenceChunk) {
-  const quote = chunk.supporting_quote?.trim();
+  const quote = completedSourceQuote(chunk);
   if (!quote || !hasSubstantiveExactSourceQuote(chunk)) return [];
   const text = normalize(quote);
   return (requirement.coverageElements ?? [])
@@ -915,7 +958,7 @@ function addUniqueChunk(
 
 function curationWeight(requirement: RegSpRequirement, chunk: GradedEvidenceChunk) {
   let weight = evidenceWeight(requirement, chunk);
-  const quote = chunk.supporting_quote?.trim();
+  const quote = completedSourceQuote(chunk);
   if (quote) {
     weight += Math.min(quoteWordCount(quote), 80) * 0.5;
   }
@@ -1067,7 +1110,7 @@ function reviewedDocumentLabel(chunk: GradedEvidenceChunk | undefined) {
 }
 
 function quoteSummary(chunk: GradedEvidenceChunk | undefined) {
-  const quote = chunk?.supporting_quote?.trim();
+  const quote = chunk ? completedSourceQuote(chunk)?.trim() : null;
   if (!quote) return null;
   return quote.length > 180 ? `${quote.slice(0, 177).trim()}…` : quote;
 }
@@ -1257,7 +1300,7 @@ function evidenceForStorage(
     chunk_id: chunk.chunk_id,
     document_id: chunk.document_id,
     relationship: chunk.evidence_relationship,
-    quote: hasSubstantiveExactSourceQuote(chunk) ? chunk.supporting_quote : null,
+    quote: hasSubstantiveExactSourceQuote(chunk) ? completedSourceQuote(chunk) : null,
     reason: evidenceReasonForStorage(requirement, chunk, negativeScopeByChunkId),
     confidence: chunk.classifier_confidence,
     filename: chunk.filename,
