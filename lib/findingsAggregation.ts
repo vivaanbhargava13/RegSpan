@@ -32,6 +32,21 @@ export type GeneratedRequirementFinding = {
   evidence: GeneratedFindingEvidence[];
 };
 
+type ElementCoverageRelationship = "supports" | "partially_supports" | "negative_evidence" | "missing";
+
+type ElementCoverageLedgerEntry = {
+  required_element_id: string;
+  relationship: ElementCoverageRelationship;
+  supportChunk: GradedEvidenceChunk | null;
+  negativeChunk: GradedEvidenceChunk | null;
+  quote: string | null;
+  chunk_id: string | null;
+  section_path: string | null;
+  page_start: number | null;
+  page_end: number | null;
+  confidence: FindingConfidence;
+};
+
 const highImpactRequirements = new Set<RegSpRequirementId>([
   "written_incident_response_program",
   "incident_assessment_containment_control",
@@ -82,38 +97,222 @@ function isExplicitNegativeEvidence(chunk: GradedEvidenceChunk) {
     && chunk.control_absent_or_out_of_scope;
 }
 
-function hasExactSourceQuote(chunk: GradedEvidenceChunk) {
+function quoteWordCount(value: string) {
+  return value.match(/[A-Za-z0-9]+/g)?.length ?? 0;
+}
+
+function looksLikeHeadingOnly(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return true;
+  if (/[;:!?]/.test(trimmed)) return false;
+  if (trimmed.includes("\n")) return false;
+  if (/\b(?:does not|doesn['’]?t|do not|outside the scope|out of scope|lacks?|missing|defined in|established in|handled in|covered in|addressed in|documented in|specified in|reserved for)\b/i.test(trimmed)) {
+    return false;
+  }
+  const hasOperativeVerb = /\b(?:must|shall|should|will|may|maintains?|requires?|defines?|defined|describes?|assigns?|applies?|includes?|provides?|protects?|notifies?|records?|retains?|validates?|confirms?|tracks?|restores?|reviews?|approves?|encrypts?|monitors?|preserves?|collects?|identifies?|assesses?|contains?)\b/i.test(trimmed);
+  return !hasOperativeVerb && (quoteWordCount(trimmed) <= 10 || trimmed.includes("/"));
+}
+
+function hasDanglingEnding(value: string) {
+  return /\b(?:and|or|but|with|including|such as|assigns|requires|defines|includes|provides)\s*$/i.test(value.trim());
+}
+
+function hasSubstantiveExactSourceQuote(chunk: GradedEvidenceChunk) {
   const quote = chunk.supporting_quote?.trim();
-  return Boolean(quote && chunk.content_preview.includes(quote));
+  return Boolean(
+    quote
+    && chunk.content_preview.includes(quote)
+    && quoteWordCount(quote) >= 5
+    && !looksLikeHeadingOnly(quote)
+    && !hasDanglingEnding(quote),
+  );
+}
+
+const additionalElementSignals: Partial<Record<RegSpRequirementId, Record<string, string[]>>> = {
+  incident_assessment_containment_control: {
+    assesses_scope: [
+      "assess unauthorized access",
+      "assessment of unauthorized access",
+      "assesses unauthorized access",
+      "assess the nature and scope",
+    ],
+    customer_information_systems: [
+      "affected customer information",
+      "affected systems",
+      "information types",
+      "customer information repositories",
+    ],
+    containment_control: [
+      "containment",
+      "contain and control",
+      "contain the incident",
+      "control the incident",
+    ],
+  },
+  unauthorized_access_detection_escalation: {
+    assesses_scope: [
+      "assess unauthorized access",
+      "assessment of unauthorized access",
+      "assesses unauthorized access",
+      "assess the nature and scope",
+    ],
+    customer_information_systems: [
+      "affected customer information",
+      "affected systems",
+      "information types",
+      "customer information repositories",
+    ],
+    containment_control: [
+      "containment",
+      "contain and control",
+      "contain the incident",
+      "control the incident",
+    ],
+  },
+  evidence_log_preservation: {
+    incident_materials: [
+      "preserving relevant logs",
+      "preserve relevant logs",
+      "logs and evidence",
+      "relevant logs and evidence",
+      "preserving logs",
+      "preserving evidence",
+      "investigation materials",
+      "preserve investigation materials",
+    ],
+  },
+  incident_evidence_log_preservation: {
+    incident_materials: [
+      "preserving relevant logs",
+      "preserve relevant logs",
+      "logs and evidence",
+      "relevant logs and evidence",
+      "preserving logs",
+      "preserving evidence",
+      "investigation materials",
+      "investigation materials retained",
+      "preserve investigation materials",
+      "incident record",
+      "incident records",
+      "recordkeeping",
+      "retain investigation materials",
+      "retaining investigation materials",
+    ],
+  },
+  customer_information_safeguards: {
+    safeguards_controls: [
+      "access approval",
+      "periodic access review",
+      "privileged access review",
+      "failed authentication",
+      "unusual downloads",
+      "high-risk transfers",
+      "encrypted",
+      "encryption",
+    ],
+  },
+  safeguards_customer_information: {
+    safeguards_controls: [
+      "access approval",
+      "periodic access review",
+      "privileged access review",
+      "failed authentication",
+      "unusual downloads",
+      "high-risk transfers",
+      "encrypted",
+      "encryption",
+    ],
+  },
+  customer_notification_unauthorized_access: {
+    notice_trigger: [
+      "notify customers",
+      "notify affected customers",
+      "may notify customers",
+      "customer notice",
+    ],
+    notice_trigger_standard: [
+      "notify customers",
+      "notify affected customers",
+      "may notify customers",
+      "customer notice",
+    ],
+  },
+  remediation_recovery_validation: {
+    recovery_steps: [
+      "recovery activities",
+      "restoring affected services",
+      "restore affected services",
+      "restoring services",
+    ],
+    validation_testing: [
+      "validating user access",
+      "validating access",
+      "validation",
+    ],
+  },
+  response_recovery_remediation_validation: {
+    recovery_steps: [
+      "recovery activities",
+      "restoring affected services",
+      "restore affected services",
+      "restoring services",
+    ],
+    validation_testing: [
+      "validating user access",
+      "validating access",
+      "validation",
+    ],
+  },
+};
+
+function elementSignals(requirement: RegSpRequirement, elementId: string) {
+  const element = requirement.coverageElements.find((candidate) => candidate.id === elementId);
+  const requirementId = copyRequirementId(requirement);
+  return uniqueStrings([
+    ...(element?.signals ?? []),
+    ...(additionalElementSignals[requirement.id]?.[elementId] ?? []),
+    ...(additionalElementSignals[requirementId]?.[elementId] ?? []),
+  ]);
+}
+
+function elementSignalMatches(requirement: RegSpRequirement, elementId: string, text: string) {
+  const signals = elementSignals(requirement, elementId);
+  if (copyRequirementId(requirement) === "disposal_consumer_customer_information" && elementId === "secure_disposal_method") {
+    return signals.some((signal) => {
+      const normalizedSignal = normalize(signal);
+      if (!normalizedSignal || normalizedSignal === "disposal") return false;
+      return text.includes(normalizedSignal);
+    });
+  }
+
+  return signals.some((signal) => {
+    const normalizedSignal = normalize(signal);
+    return normalizedSignal && text.includes(normalizedSignal);
+  });
 }
 
 function quoteSupportedElementIds(requirement: RegSpRequirement, chunk: GradedEvidenceChunk) {
   const quote = chunk.supporting_quote?.trim();
-  if (!quote) return [];
+  if (!quote || !hasSubstantiveExactSourceQuote(chunk)) return [];
   const text = normalize(quote);
   return (requirement.coverageElements ?? [])
     .filter((element) => requirement.requiredElementsForCovered.includes(element.id))
-    .filter((element) =>
-      element.signals.some((signal) => {
-        const normalizedSignal = normalize(signal);
-        return normalizedSignal && text.includes(normalizedSignal);
-      }),
-    )
+    .filter((element) => elementSignalMatches(requirement, element.id, text))
     .map((element) => element.id);
 }
 
 function isSourceGroundedDirectSupport(chunk: GradedEvidenceChunk) {
   return isDirectSupport(chunk)
-    && hasExactSourceQuote(chunk)
+    && hasSubstantiveExactSourceQuote(chunk)
     && (chunk.missing_elements ?? []).length === 0;
 }
 
 function isSourceGroundedPartialSupport(chunk: GradedEvidenceChunk) {
-  return isPartialSupport(chunk) && hasExactSourceQuote(chunk);
+  return isPartialSupport(chunk) && hasSubstantiveExactSourceQuote(chunk);
 }
 
 function isSourceGroundedNegativeEvidence(chunk: GradedEvidenceChunk) {
-  return isExplicitNegativeEvidence(chunk) && hasExactSourceQuote(chunk);
+  return isExplicitNegativeEvidence(chunk) && hasSubstantiveExactSourceQuote(chunk);
 }
 
 function normalize(value: string | null | undefined) {
@@ -234,6 +433,94 @@ function signalWeight(requirement: RegSpRequirement, chunk: GradedEvidenceChunk)
   return signals.filter((signal) => text.includes(signal)).length;
 }
 
+function requirementSectionPreferences(requirement: RegSpRequirement) {
+  switch (copyRequirementId(requirement)) {
+    case "customer_notification_content":
+      return {
+        preferred: [
+          "customer notification content requirements",
+          "customer notification decision standard",
+          "customer notification timing and approval path",
+        ],
+        disfavored: ["vendor", "service provider", "supplier", "third party"],
+      };
+    case "customer_notification_unauthorized_access":
+      return {
+        preferred: [
+          "customer notification decision standard",
+          "customer notification timing and approval path",
+          "customer notification content requirements",
+        ],
+        disfavored: ["vendor", "service provider", "supplier", "third party"],
+      };
+    case "unauthorized_access_detection_escalation":
+      return {
+        preferred: [
+          "written incident response program",
+          "assessment of unauthorized access or use",
+        ],
+        disfavored: ["vendor", "service provider", "supplier", "third party"],
+      };
+    case "evidence_log_preservation":
+      return {
+        preferred: [
+          "written incident response program",
+          "monitoring logging and alert review",
+          "post-incident review and lessons learned",
+        ],
+        disfavored: ["vendor", "service provider", "supplier", "third party"],
+      };
+    case "customer_information_safeguards":
+      return {
+        preferred: [
+          "access management and privileged access review",
+          "monitoring logging and alert review",
+          "encryption",
+          "transmission",
+          "storage safeguards",
+        ],
+        disfavored: ["incident response", "disposal"],
+      };
+    case "disposal_consumer_customer_information":
+      return {
+        preferred: [
+          "disposal of consumer and customer information",
+          "electronic media and backup disposal procedures",
+        ],
+        disfavored: ["incident response", "vendor", "service provider", "supplier"],
+      };
+    case "remediation_recovery_validation":
+      return {
+        preferred: [
+          "incident recovery and remediation validation",
+          "post-incident review and lessons learned",
+        ],
+        disfavored: ["vendor", "service provider", "supplier", "third party"],
+      };
+    case "vendor_incident_handling":
+      return {
+        preferred: [
+          "service provider oversight expectations",
+          "vendor cooperation investigation and remediation support",
+        ],
+        disfavored: [],
+      };
+    default:
+      return { preferred: [], disfavored: [] };
+  }
+}
+
+function sectionPreferenceWeight(requirement: RegSpRequirement, chunk: GradedEvidenceChunk) {
+  const text = normalize([
+    chunk.section_path,
+    chunk.filename,
+  ].filter(Boolean).join(" "));
+  const preferences = requirementSectionPreferences(requirement);
+  const preferredHits = preferences.preferred.filter((section) => text.includes(normalize(section))).length;
+  const disfavoredHits = preferences.disfavored.filter((section) => text.includes(normalize(section))).length;
+  return preferredHits * 45 - disfavoredHits * 35;
+}
+
 function evidenceWeight(requirement: RegSpRequirement, chunk: GradedEvidenceChunk) {
   const text = textForWeighting(chunk);
   let weight = chunk.rerank_score ?? 0;
@@ -244,6 +531,8 @@ function evidenceWeight(requirement: RegSpRequirement, chunk: GradedEvidenceChun
     weight += classifyNegativeEvidenceScope(chunk) === "organization_level_negative" ? 90 : 25;
   }
   weight += signalWeight(requirement, chunk) * 8;
+  weight += quoteSupportedElementIds(requirement, chunk).length * 80;
+  weight += sectionPreferenceWeight(requirement, chunk);
   if (chunk.classifier_confidence === "high") weight += 10;
   if (text.includes("incident response policy") || text.includes("response standard")) weight += 18;
   if (text.includes("privacy policy") || text.includes("safeguards program")) weight += 12;
@@ -553,43 +842,164 @@ function partialRemediationForRequirement(requirement: RegSpRequirement, missing
   }
 }
 
-function coverageForChunks(requirement: RegSpRequirement, chunks: GradedEvidenceChunk[]) {
-  const coveredRequired = uniqueStrings(chunks.flatMap((chunk) => quoteSupportedElementIds(requirement, chunk)))
-    .filter((elementId) => requirement.requiredElementsForCovered.includes(elementId));
-  const vagueRequired = uniqueStrings(chunks.flatMap((chunk) => chunk.vague_elements ?? []))
-    .filter((elementId) => requirement.requiredElementsForCovered.includes(elementId));
-  const missingRequired = requirement.requiredElementsForCovered.filter(
-    (elementId) => !coveredRequired.includes(elementId),
-  );
-
-  return {
-    coveredRequired,
-    missingRequired,
-    vagueRequired,
-    hasFullRequiredCoverage: missingRequired.length === 0,
-  };
+function confidenceFromChunk(chunk: GradedEvidenceChunk | null): FindingConfidence {
+  if (chunk?.classifier_confidence === "high") return "high";
+  if (chunk?.classifier_confidence === "medium") return "medium";
+  return "low";
 }
 
-function directlyContradictedRequiredElements(
+function buildElementCoverageLedger(
   requirement: RegSpRequirement,
   supportChunks: GradedEvidenceChunk[],
-  negativeChunks: GradedEvidenceChunk[],
-) {
-  const supportedRequired = new Set(
-    supportChunks
-      .flatMap((chunk) => chunk.covered_elements ?? [])
-      .filter((elementId) => requirement.requiredElementsForCovered.includes(elementId)),
-  );
-  const contradictedRequired = new Set(
-    negativeChunks
-      .flatMap((chunk) => [
+  organizationNegative: GradedEvidenceChunk[],
+): ElementCoverageLedgerEntry[] {
+  const sortedSupport = sortByEvidenceWeight(requirement, supportChunks)
+    .filter((chunk) => quoteSupportedElementIds(requirement, chunk).length > 0);
+  const sortedNegative = sortByEvidenceWeight(requirement, organizationNegative);
+
+  return requirement.requiredElementsForCovered.map((elementId) => {
+    const supportChunk = sortedSupport.find((chunk) => quoteSupportedElementIds(requirement, chunk).includes(elementId)) ?? null;
+    const negativeChunk = sortedNegative.find((chunk) =>
+      [
         ...(chunk.missing_elements ?? []),
         ...(chunk.vague_elements ?? []),
-      ])
-      .filter((elementId) => requirement.requiredElementsForCovered.includes(elementId)),
-  );
+      ].includes(elementId),
+    ) ?? null;
+    let relationship: ElementCoverageRelationship = "missing";
+    if (supportChunk) {
+      relationship = supportChunk.evidence_relationship === "supports" ? "supports" : "partially_supports";
+    } else if (negativeChunk) {
+      relationship = "negative_evidence";
+    }
 
-  return [...supportedRequired].filter((elementId) => contradictedRequired.has(elementId));
+    return {
+      required_element_id: elementId,
+      relationship,
+      supportChunk,
+      negativeChunk,
+      quote: supportChunk?.supporting_quote?.trim() ?? negativeChunk?.supporting_quote?.trim() ?? null,
+      chunk_id: supportChunk?.chunk_id ?? negativeChunk?.chunk_id ?? null,
+      section_path: supportChunk?.section_path ?? negativeChunk?.section_path ?? null,
+      page_start: supportChunk?.page_start ?? negativeChunk?.page_start ?? null,
+      page_end: supportChunk?.page_end ?? negativeChunk?.page_end ?? null,
+      confidence: confidenceFromChunk(supportChunk ?? negativeChunk),
+    };
+  });
+}
+
+function supportedRequiredElementsFromLedger(ledger: ElementCoverageLedgerEntry[]) {
+  return ledger
+    .filter((entry) => entry.supportChunk)
+    .map((entry) => entry.required_element_id);
+}
+
+function fullySupportedRequiredElementsFromLedger(ledger: ElementCoverageLedgerEntry[]) {
+  return ledger
+    .filter((entry) => entry.relationship === "supports")
+    .map((entry) => entry.required_element_id);
+}
+
+function contradictedRequiredElementsFromLedger(ledger: ElementCoverageLedgerEntry[]) {
+  return ledger
+    .filter((entry) => entry.supportChunk && entry.negativeChunk)
+    .map((entry) => entry.required_element_id);
+}
+
+function addUniqueChunk(
+  selected: GradedEvidenceChunk[],
+  chunk: GradedEvidenceChunk | null | undefined,
+) {
+  if (!chunk || selected.some((candidate) => candidate.chunk_id === chunk.chunk_id)) return;
+  selected.push(chunk);
+}
+
+function curationWeight(requirement: RegSpRequirement, chunk: GradedEvidenceChunk) {
+  let weight = evidenceWeight(requirement, chunk);
+  const quote = chunk.supporting_quote?.trim();
+  if (quote) {
+    weight += Math.min(quoteWordCount(quote), 80) * 0.5;
+  }
+  if (hasSubstantiveExactSourceQuote(chunk)) weight += 25;
+  if (looksLikeHeadingOnly(quote ?? "")) weight -= 200;
+  return weight;
+}
+
+function curateEvidenceChunks({
+  requirement,
+  status,
+  ledger,
+  organizationNegative,
+  documentScopeLimitations,
+  background,
+}: {
+  requirement: RegSpRequirement;
+  status: FindingStatus;
+  ledger: ElementCoverageLedgerEntry[];
+  organizationNegative: GradedEvidenceChunk[];
+  documentScopeLimitations: GradedEvidenceChunk[];
+  background: GradedEvidenceChunk[];
+}) {
+  const selected: GradedEvidenceChunk[] = [];
+  if (status === "conflicting") {
+    const contradictedEntries = [...ledger]
+      .filter((entry) => entry.supportChunk && entry.negativeChunk)
+      .sort((left, right) => {
+        const leftChunk = left.supportChunk;
+        const rightChunk = right.supportChunk;
+        if (!leftChunk || !rightChunk) return 0;
+        return curationWeight(requirement, rightChunk) - curationWeight(requirement, leftChunk);
+      });
+    for (const entry of contradictedEntries) {
+      addUniqueChunk(selected, entry.supportChunk);
+      addUniqueChunk(selected, entry.negativeChunk);
+      if (selected.length >= 3) return selected.slice(0, 3);
+    }
+  }
+
+  const supportedEntries = [...ledger]
+    .filter((entry) => entry.supportChunk)
+    .sort((left, right) => {
+      const leftChunk = left.supportChunk;
+      const rightChunk = right.supportChunk;
+      if (!leftChunk || !rightChunk) return 0;
+      return curationWeight(requirement, rightChunk) - curationWeight(requirement, leftChunk);
+    });
+
+  for (const entry of supportedEntries) {
+    addUniqueChunk(selected, entry.supportChunk);
+    if (selected.length >= 3) return selected;
+  }
+
+  if (status === "partial" && selected.length < 3) {
+    const relevantLimitations = sortByEvidenceWeight(requirement, documentScopeLimitations)
+      .filter((chunk) => chunk.missing_elements?.some((elementId) => requirement.requiredElementsForCovered.includes(elementId)));
+    for (const chunk of relevantLimitations) {
+      addUniqueChunk(selected, chunk);
+      if (selected.length >= 3) return selected;
+    }
+  }
+
+  if (status === "missing") {
+    for (const chunk of sortByEvidenceWeight(requirement, organizationNegative)) {
+      addUniqueChunk(selected, chunk);
+      if (selected.length >= 3) return selected;
+    }
+    const contextualCandidates = sortByEvidenceWeight(requirement, background)
+      .filter((chunk) => sectionPreferenceWeight(requirement, chunk) > 0 || signalWeight(requirement, chunk) > 0);
+    for (const chunk of contextualCandidates) {
+      addUniqueChunk(selected, chunk);
+      if (selected.length >= 3) return selected;
+    }
+  }
+
+  if (status === "needs_review") {
+    for (const chunk of sortByEvidenceWeight(requirement, [...documentScopeLimitations, ...background])) {
+      addUniqueChunk(selected, chunk);
+      if (selected.length >= 3) return selected;
+    }
+  }
+
+  return selected.slice(0, 3);
 }
 
 function confidenceForStatus(status: FindingStatus, evidence: GradedEvidenceChunk[]): FindingConfidence {
@@ -809,14 +1219,16 @@ function evidenceReasonForStorage(
       : `This document limits what it covers for this requirement. RegSpan does not treat that as a contradiction by itself. ${reason}`;
   }
   if (chunk.evidence_relationship === "supports") {
-    const covered = renderedElementList(requirement, chunk.covered_elements ?? [], "found");
+    const covered = renderedElementList(requirement, quoteSupportedElementIds(requirement, chunk), "found");
     return covered.length > 0
       ? `The cited section ${covered}. ${reason}`
       : `The cited section is relevant to the requirement. ${reason}`;
   }
   if (chunk.evidence_relationship === "partially_supports") {
-    const covered = renderedElementList(requirement, chunk.covered_elements ?? [], "partial");
-    const missing = renderedElementList(requirement, chunk.missing_elements ?? [], "missing");
+    const covered = renderedElementList(requirement, quoteSupportedElementIds(requirement, chunk), "partial");
+    const quoteCovered = quoteSupportedElementIds(requirement, chunk);
+    const quoteMissing = requirement.requiredElementsForCovered.filter((elementId) => !quoteCovered.includes(elementId));
+    const missing = renderedElementList(requirement, quoteMissing, "missing");
     return [
       covered.length > 0
         ? `The cited section discusses ${covered}${missing.length > 0 ? "," : "."}`
@@ -839,13 +1251,13 @@ function evidenceForStorage(
   negativeScopeByChunkId: Map<string, NegativeEvidenceScope>,
 ): GeneratedFindingEvidence[] {
   return chunks
-    .filter((chunk) => chunk.evidence_relationship === "background_context" || hasExactSourceQuote(chunk))
+    .filter((chunk) => chunk.evidence_relationship === "background_context" || hasSubstantiveExactSourceQuote(chunk))
     .slice(0, 3)
     .map((chunk) => ({
     chunk_id: chunk.chunk_id,
     document_id: chunk.document_id,
     relationship: chunk.evidence_relationship,
-    quote: hasExactSourceQuote(chunk) ? chunk.supporting_quote : null,
+    quote: hasSubstantiveExactSourceQuote(chunk) ? chunk.supporting_quote : null,
     reason: evidenceReasonForStorage(requirement, chunk, negativeScopeByChunkId),
     confidence: chunk.classifier_confidence,
     filename: chunk.filename,
@@ -881,33 +1293,32 @@ export function aggregateFindingForRequirement(
   const strongestDocumentScopeLimitations = sortByEvidenceWeight(requirement, documentScopeLimitations);
   const strongestBackground = sortByEvidenceWeight(requirement, background);
   const supportingEvidence = [...strongestDirect, ...strongestPartial];
-  const coverage = coverageForChunks(requirement, supportingEvidence);
-  const supportChunksWithCoveredElements = supportingEvidence.filter(
-    (chunk) => quoteSupportedElementIds(requirement, chunk).length > 0,
-  );
-  const hasDirectSupport = strongestDirect.length > 0;
-  const hasComplementarySupport = supportChunksWithCoveredElements.length >= 2;
-  const hasMeaningfulElementSupport = coverage.coveredRequired.length > 0;
-  const contradictedElements = directlyContradictedRequiredElements(
+  const ledger = buildElementCoverageLedger(
     requirement,
     supportingEvidence,
     strongestOrganizationNegative,
   );
+  const coveredRequired = supportedRequiredElementsFromLedger(ledger);
+  const fullyCoveredRequired = fullySupportedRequiredElementsFromLedger(ledger);
+  const incompleteRequired = requirement.requiredElementsForCovered.filter(
+    (elementId) => !fullyCoveredRequired.includes(elementId),
+  );
+  const contradictedElements = contradictedRequiredElementsFromLedger(ledger);
+  const vagueRequired = uniqueStrings(supportingEvidence.flatMap((chunk) => chunk.vague_elements ?? []))
+    .filter((elementId) => requirement.requiredElementsForCovered.includes(elementId));
+  const hasFullRequiredCoverage = fullyCoveredRequired.length === requirement.requiredElementsForCovered.length;
+  const hasMeaningfulElementSupport = coveredRequired.length > 0;
   const hasAmbiguousEvidence = hasTrueAmbiguity({
     documentScopeLimitations: strongestDocumentScopeLimitations,
     background: strongestBackground,
   });
 
   let status: FindingStatus;
-  if (
-    coverage.hasFullRequiredCoverage
-    && (hasDirectSupport || hasComplementarySupport)
-    && contradictedElements.length > 0
-  ) {
+  if (hasFullRequiredCoverage && contradictedElements.length > 0) {
     status = "conflicting";
-  } else if (coverage.hasFullRequiredCoverage && (hasDirectSupport || hasComplementarySupport)) {
+  } else if (hasFullRequiredCoverage) {
     status = "covered";
-  } else if (strongestPartial.length > 0 || hasMeaningfulElementSupport) {
+  } else if (hasMeaningfulElementSupport) {
     status = "partial";
   } else if (strongestOrganizationNegative.length > 0) {
     status = "missing";
@@ -924,27 +1335,44 @@ export function aggregateFindingForRequirement(
     ...strongestDocumentScopeLimitations,
     ...strongestBackground,
   ];
+  const curatedEvidence = curateEvidenceChunks({
+    requirement,
+    status,
+    ledger,
+    organizationNegative: strongestOrganizationNegative,
+    documentScopeLimitations: strongestDocumentScopeLimitations,
+    background: strongestBackground,
+  });
+  const curatedDirect = curatedEvidence.filter(isSourceGroundedDirectSupport);
+  const curatedPartial = curatedEvidence.filter(isSourceGroundedPartialSupport);
+  const curatedBackground = curatedEvidence.filter(isBackgroundContext);
+  const curatedOrganizationNegative = curatedEvidence.filter(
+    (chunk) => negativeScopeByChunkId.get(chunk.chunk_id) === "organization_level_negative",
+  );
+  const curatedDocumentScopeLimitations = curatedEvidence.filter(
+    (chunk) => negativeScopeByChunkId.get(chunk.chunk_id) === "document_scope_limitation",
+  );
   return {
     requirement_id: requirement.id,
     requirement_name: requirement.title,
     status,
     severity: severityForRequirement(requirement),
-    confidence: confidenceForStatus(status, evidence),
+    confidence: confidenceForStatus(status, curatedEvidence.length > 0 ? curatedEvidence : evidence),
     summary: statusSummary(requirement, status),
-    remediation: remediationForFinding(requirement, status, coverage.missingRequired),
+    remediation: remediationForFinding(requirement, status, status === "covered" ? [] : incompleteRequired),
     rationale: whatWeFoundForFinding({
       requirement,
       status,
-      direct,
-      partial,
-      background,
-      organizationNegative,
-      documentScopeLimitations,
+      direct: curatedDirect,
+      partial: curatedPartial,
+      background: curatedBackground.length > 0 ? curatedBackground : strongestBackground,
+      organizationNegative: curatedOrganizationNegative,
+      documentScopeLimitations: curatedDocumentScopeLimitations,
       ignoredReferenceCount,
-      coveredRequired: coverage.coveredRequired,
-      missingRequired: coverage.missingRequired,
-      vagueRequired: coverage.vagueRequired,
+      coveredRequired,
+      missingRequired: status === "covered" ? [] : incompleteRequired,
+      vagueRequired,
     }),
-    evidence: evidenceForStorage(requirement, evidence, negativeScopeByChunkId),
+    evidence: evidenceForStorage(requirement, curatedEvidence, negativeScopeByChunkId),
   };
 }

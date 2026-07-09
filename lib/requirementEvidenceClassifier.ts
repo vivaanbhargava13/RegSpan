@@ -347,14 +347,88 @@ function hasAbsenceLanguage(value: string) {
 function looksLikeHeadingOnly(value: string) {
   const trimmed = value.trim();
   if (!trimmed) return true;
-  if (/[,.;:!?]/.test(trimmed)) return false;
+  if (/[;:!?]/.test(trimmed)) return false;
   if (trimmed.includes("\n")) return false;
-  if (quoteWordCount(trimmed) > 7) return false;
-  return !/\b(?:must|shall|should|will|may|maintains?|requires?|defines?|describes?|assigns?|applies?|includes?|provides?|protects?|notifies?|records?|retains?|validates?|confirms?|tracks?|restores?|reviews?|approves?|encrypts?|monitors?|preserves?|collects?)\b/i.test(trimmed);
+  if (/\b(?:does not|doesn['’]?t|do not|outside the scope|out of scope|lacks?|missing|defined in|established in|handled in|covered in|addressed in|documented in|specified in|reserved for)\b/i.test(trimmed)) {
+    return false;
+  }
+  const hasOperativeVerb = /\b(?:must|shall|should|will|may|maintains?|requires?|defines?|defined|describes?|assigns?|applies?|includes?|provides?|protects?|notifies?|records?|retains?|validates?|confirms?|tracks?|restores?|reviews?|approves?|encrypts?|monitors?|preserves?|collects?|identifies?|assesses?|contains?)\b/i.test(trimmed);
+  return !hasOperativeVerb && (quoteWordCount(trimmed) <= 10 || trimmed.includes("/"));
 }
 
 function hasDanglingEnding(value: string) {
   return /\b(?:and|or|but|with|including|such as|assigns|requires|defines|includes|provides)\s*$/i.test(value.trim());
+}
+
+function classifierLegacyRequirementId(requirementId: string) {
+  const legacyIds: Record<string, string> = {
+    incident_assessment_containment_control: "unauthorized_access_detection_escalation",
+    service_provider_incident_oversight_notice: "vendor_incident_handling",
+    safeguards_customer_information: "customer_information_safeguards",
+    incident_evidence_log_preservation: "evidence_log_preservation",
+    regulator_law_enforcement_notification_coordination: "regulator_law_enforcement_notification",
+    response_recovery_remediation_validation: "remediation_recovery_validation",
+  };
+  return legacyIds[requirementId] ?? requirementId;
+}
+
+function extraElementSignals(requirementId: string, elementId: string) {
+  const signals: Record<string, Record<string, string[]>> = {
+    evidence_log_preservation: {
+      incident_materials: [
+        "preserving relevant logs",
+        "preserve relevant logs",
+        "preserve evidence",
+        "preserving evidence",
+        "logs and evidence",
+        "investigation materials",
+        "investigation materials retained",
+        "incident record",
+        "incident records",
+        "recordkeeping",
+        "retain investigation materials",
+        "retaining investigation materials",
+      ],
+    },
+    remediation_recovery_validation: {
+      recovery_steps: [
+        "recovery activities",
+        "restoring affected services",
+        "restore affected services",
+        "restoring services",
+      ],
+      validation_testing: [
+        "validating user access",
+        "validating access",
+        "validation",
+      ],
+    },
+    unauthorized_access_detection_escalation: {
+      assesses_scope: [
+        "assessment of unauthorized access",
+        "assess the nature and scope",
+      ],
+      customer_information_systems: [
+        "affected customer information",
+        "affected systems",
+        "information types",
+      ],
+      containment_control: [
+        "containment",
+        "contain and control",
+        "contain the incident",
+        "control the incident",
+      ],
+    },
+  };
+  return signals[classifierLegacyRequirementId(requirementId)]?.[elementId] ?? [];
+}
+
+function elementSignals(requirementId: string, elementId: string, baseSignals: string[]) {
+  return uniqueStrings([
+    ...baseSignals,
+    ...extraElementSignals(requirementId, elementId),
+  ]);
 }
 
 function quoteSupportedElementIds(
@@ -365,7 +439,7 @@ function quoteSupportedElementIds(
   const text = normalize(quote);
   return (input.requirement.coverageElements ?? [])
     .filter((element) =>
-      element.signals.some((signal) => {
+      elementSignals(input.requirement.id, element.id, element.signals).some((signal) => {
         const normalizedSignal = normalize(signal);
         return normalizedSignal && text.includes(normalizedSignal);
       }),

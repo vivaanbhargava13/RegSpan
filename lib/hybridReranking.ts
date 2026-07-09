@@ -187,9 +187,12 @@ function preferredSectionSignals(requirement: RerankableRequirement) {
       preferred: [
         "access management and privileged access review",
         "monitoring logging and alert review",
+        "encryption",
+        "transmission",
+        "storage safeguards",
         "safeguards",
       ],
-      disfavored: [],
+      disfavored: ["incident response", "disposal"],
     };
   }
 
@@ -199,7 +202,28 @@ function preferredSectionSignals(requirement: RerankableRequirement) {
         "disposal of consumer and customer information",
         "electronic media and backup disposal procedures",
       ],
-      disfavored: [],
+      disfavored: ["incident response", "vendor", "service provider", "supplier"],
+    };
+  }
+
+  if (text.includes("assessment") || text.includes("containment") || text.includes("unauthorized access")) {
+    return {
+      preferred: [
+        "written incident response program",
+        "assessment of unauthorized access or use",
+      ],
+      disfavored: ["vendor", "service provider", "supplier", "third party"],
+    };
+  }
+
+  if (text.includes("evidence") || text.includes("log preservation") || text.includes("incident records")) {
+    return {
+      preferred: [
+        "written incident response program",
+        "monitoring logging and alert review",
+        "post-incident review and lessons learned",
+      ],
+      disfavored: ["vendor", "service provider", "supplier", "third party"],
     };
   }
 

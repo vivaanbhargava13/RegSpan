@@ -90,6 +90,7 @@ function chunk(overrides = {}) {
 
 function negativeChunk(overrides = {}) {
   return chunk({
+    chunk_id: "33333333-3333-4333-8333-333333333333",
     grade: "irrelevant",
     evidence_relationship: "negative_evidence",
     requirement_supported: false,
@@ -150,7 +151,8 @@ test("organization evidence can produce covered and partial findings", () => {
       grade: "partial",
       evidence_relationship: "partially_supports",
       requirement_supported: false,
-      supporting_quote: "affected customers",
+      content_preview: "The policy says customer notification may be sent to affected customers after unauthorized access.",
+      supporting_quote: "customer notification may be sent to affected customers after unauthorized access",
     }),
   ]);
 
@@ -163,7 +165,7 @@ test("organization evidence can produce covered and partial findings", () => {
   assert.equal(partial.severity, "high");
   assert.equal(partial.summary, "Partially covered based on reviewed documents.");
   assert.match(partial.rationale, /mentions this area/);
-  assert.match(partial.remediation, /do not clearly define the decision standard .*required timing for notice/);
+  assert.match(partial.remediation, /do not clearly define .*required timing for notice/);
   assert.doesNotMatch(partial.remediation, /missing owner, timing, approval, escalation/);
 });
 
@@ -313,36 +315,38 @@ test("missing required coverage elements prevents covered findings", () => {
       requirement_supported: false,
       covered_elements: ["notice_trigger"],
       missing_elements: ["notice_timing"],
-      supporting_quote: "customer notification to affected customers after unauthorized access",
+      content_preview: "The procedure requires customer notification to affected customers after unauthorized access.",
+      supporting_quote: "The procedure requires customer notification to affected customers after unauthorized access.",
       grade_reason: "The cited text covers the notification trigger but not timing.",
     }),
   ]);
 
   assert.equal(finding.status, "partial");
-  assert.match(finding.rationale, /RegSpan did not find clear language defining the required timing for notice/);
+  assert.match(finding.rationale, /RegSpan did not find clear language defining .*required timing for notice/);
   assert.doesNotMatch(finding.rationale, /appears to define this control/i);
   assert.doesNotMatch(finding.rationale, /RegSpan did not find clear evidence for:/);
   assert.doesNotMatch(finding.remediation, /appear to define/i);
-  assert.match(finding.remediation, /do not clearly define the required timing for notice/);
+  assert.match(finding.remediation, /do not clearly define .*required timing for notice/);
 });
 
 test("multiple complementary supports can cover required elements", () => {
   const trigger = chunk({
-    grade: "partial",
-    evidence_relationship: "partially_supports",
-    requirement_supported: false,
+    grade: "direct",
+    evidence_relationship: "supports",
+    requirement_supported: true,
     covered_elements: ["notice_trigger"],
-    missing_elements: ["notice_timing"],
-    supporting_quote: "customer notification to affected customers after unauthorized access",
+    missing_elements: [],
+    content_preview: "The procedure requires customer notification to affected customers after unauthorized access.",
+    supporting_quote: "The procedure requires customer notification to affected customers after unauthorized access.",
     grade_reason: "The cited text covers the notification trigger.",
   });
   const timing = chunk({
     chunk_id: "66666666-6666-4666-8666-666666666666",
-    grade: "partial",
-    evidence_relationship: "partially_supports",
-    requirement_supported: false,
+    grade: "direct",
+    evidence_relationship: "supports",
+    requirement_supported: true,
     covered_elements: ["notice_timing"],
-    missing_elements: ["notice_trigger"],
+    missing_elements: [],
     supporting_quote: "notice must be provided without unreasonable delay",
     content_preview: "The incident response procedure states that notice must be provided without unreasonable delay.",
     grade_reason: "The cited text covers notice timing.",
@@ -353,6 +357,35 @@ test("multiple complementary supports can cover required elements", () => {
   assert.equal(finding.status, "covered");
   assert.match(finding.rationale, /defines when customer notice is required and defines the timing for customer notice/);
   assert.doesNotMatch(finding.rationale, /Reviewed evidence covers:/);
+});
+
+test("partial-only complementary evidence remains partial until full support is established", () => {
+  const trigger = chunk({
+    grade: "partial",
+    evidence_relationship: "partially_supports",
+    requirement_supported: false,
+    covered_elements: ["notice_trigger"],
+    missing_elements: ["notice_timing"],
+    content_preview: "The procedure requires customer notification to affected customers after unauthorized access.",
+    supporting_quote: "The procedure requires customer notification to affected customers after unauthorized access.",
+    grade_reason: "The cited text covers the notification trigger but not timing.",
+  });
+  const timing = chunk({
+    chunk_id: "66666666-6666-4666-8666-666666666666",
+    grade: "partial",
+    evidence_relationship: "partially_supports",
+    requirement_supported: false,
+    covered_elements: ["notice_timing"],
+    missing_elements: ["notice_trigger"],
+    supporting_quote: "notice must be provided without unreasonable delay",
+    content_preview: "The incident response procedure states that notice must be provided without unreasonable delay.",
+    grade_reason: "The cited text covers notice timing but does not establish the full notice standard.",
+  });
+
+  const finding = aggregateFindingForRequirement(requirement, [trigger, timing]);
+
+  assert.equal(finding.status, "partial");
+  assert.notEqual(finding.status, "covered");
 });
 
 test("background context does not count toward covered status", () => {
@@ -441,7 +474,8 @@ test("covered and partial evidence explanations use natural language", () => {
       requirement_supported: false,
       covered_elements: ["notice_trigger"],
       missing_elements: ["notice_timing"],
-      supporting_quote: "customer notification to affected customers after unauthorized access",
+      content_preview: "The procedure requires customer notification to affected customers after unauthorized access.",
+      supporting_quote: "The procedure requires customer notification to affected customers after unauthorized access.",
       grade_reason: "The cited text covers the notification trigger but not timing.",
     }),
   ]);
@@ -481,6 +515,7 @@ test("evidence explanations avoid raw coverage-element grammar artifacts", () =>
       },
       coveredElements: ["safeguards_controls"],
       missingElements: ["customer_information_scope"],
+      quote: "The safeguards program requires access controls and encryption.",
       expected: /does not clearly define that the safeguards apply to customer information/,
     },
     {
@@ -495,12 +530,19 @@ test("evidence explanations avoid raw coverage-element grammar artifacts", () =>
             requiredForCovered: true,
             signals: ["regulator"],
           },
+          {
+            id: "legal_compliance_owner",
+            label: "Assigns legal or compliance ownership",
+            requiredForCovered: true,
+            signals: ["legal owner"],
+          },
         ],
-        requiredElementsForCovered: ["external_notification_decisioning"],
+        requiredElementsForCovered: ["external_notification_decisioning", "legal_compliance_owner"],
       },
-      coveredElements: [],
-      missingElements: ["external_notification_decisioning"],
-      expected: /does not clearly define who decides when external notification is required/,
+      coveredElements: ["external_notification_decisioning"],
+      missingElements: ["legal_compliance_owner"],
+      quote: "Legal reviews the regulator notification decision after incident escalation.",
+      expected: /does not clearly define legal or compliance ownership/,
     },
     {
       requirement: {
@@ -514,12 +556,19 @@ test("evidence explanations avoid raw coverage-element grammar artifacts", () =>
             requiredForCovered: true,
             signals: ["preserve logs"],
           },
+          {
+            id: "integrity_or_chain_of_custody",
+            label: "Maintains evidence integrity or chain of custody",
+            requiredForCovered: true,
+            signals: ["chain of custody"],
+          },
         ],
-        requiredElementsForCovered: ["incident_materials"],
+        requiredElementsForCovered: ["incident_materials", "integrity_or_chain_of_custody"],
       },
-      coveredElements: [],
-      missingElements: ["incident_materials"],
-      expected: /does not clearly define how logs, evidence, or investigation records must be preserved/,
+      coveredElements: ["incident_materials"],
+      missingElements: ["integrity_or_chain_of_custody"],
+      quote: "The procedure requires teams to preserve logs and relevant investigation evidence.",
+      expected: /does not clearly define evidence integrity or chain-of-custody requirements/,
     },
   ];
 
@@ -531,6 +580,8 @@ test("evidence explanations avoid raw coverage-element grammar artifacts", () =>
         requirement_supported: false,
         covered_elements: testCase.coveredElements,
         missing_elements: testCase.missingElements,
+        content_preview: testCase.quote,
+        supporting_quote: testCase.quote,
         grade_reason: "The cited text mentions the topic but leaves details unclear.",
       }),
     ]);
@@ -666,7 +717,7 @@ test("document-scope limitation with some support is partial, not needs review",
 
   assert.equal(classifyNegativeEvidenceScope(limitation), "document_scope_limitation");
   assert.equal(finding.status, "partial");
-  assert.match(finding.rationale, /did not find clear language defining the required timing for notice/);
+  assert.match(finding.rationale, /did not find clear language defining .*required timing for notice/);
   assert.doesNotMatch(finding.rationale, /reviewer should confirm/i);
 });
 
@@ -689,8 +740,337 @@ test("mixed support and limitation evidence produces partial, not missing", () =
   assert.equal(finding.status, "partial");
   assert.notEqual(finding.status, "missing");
   assert.match(finding.rationale, /notifies affected customers|mentions this area/);
-  assert.match(finding.remediation, /do not clearly define the required timing for notice/);
+  assert.match(finding.remediation, /do not clearly define .*required timing for notice/);
   assert.doesNotMatch(finding.remediation, /reviewed documents appear to define/i);
+});
+
+test("covered findings persist only evidence rows that improve required-element coverage", () => {
+  const weakPartial = chunk({
+    chunk_id: "77777777-7777-4777-8777-777777777777",
+    grade: "partial",
+    evidence_relationship: "partially_supports",
+    requirement_supported: false,
+    section_path: "Service provider oversight expectations",
+    content_preview: "Service providers discuss incident communications but do not define the customer notice timing standard.",
+    supporting_quote: "Service providers discuss incident communications but do not define the customer notice timing standard.",
+    covered_elements: [],
+    missing_elements: ["notice_timing"],
+    grade_reason: "The cited text is adjacent but does not improve required-element coverage.",
+  });
+
+  const finding = aggregateFindingForRequirement(requirement, [chunk(), weakPartial]);
+
+  assert.equal(finding.status, "covered");
+  assert.equal(finding.evidence.length, 1);
+  assert.equal(finding.evidence[0].chunk_id, "11111111-1111-4111-8111-111111111111");
+});
+
+test("missing findings do not persist partially-supporting rows that do not improve coverage", () => {
+  const weakPartial = chunk({
+    grade: "partial",
+    evidence_relationship: "partially_supports",
+    requirement_supported: false,
+    section_path: "Safeguards for customer information review",
+    content_preview: "Safeguards for customer information review.",
+    supporting_quote: "Safeguards for customer information review.",
+    covered_elements: [],
+    missing_elements: ["notice_trigger", "notice_timing"],
+    grade_reason: "The cited text is adjacent but does not prove the notification requirement.",
+  });
+
+  const finding = aggregateFindingForRequirement(requirement, [weakPartial]);
+
+  assert.equal(finding.status, "missing");
+  assert.equal(finding.evidence.length, 0);
+});
+
+test("customer notification content curation prefers direct customer-notification sections over vendor sections", () => {
+  const contentRequirement = {
+    ...requirement,
+    id: "customer_notification_content",
+    title: "Customer notification content",
+    coverageElements: [
+      {
+        id: "incident_description",
+        label: "Requires a description of the incident",
+        requiredForCovered: true,
+        signals: ["description of the incident", "what happened"],
+      },
+      {
+        id: "information_involved",
+        label: "Identifies the sensitive customer information involved",
+        requiredForCovered: true,
+        signals: ["information involved"],
+      },
+      {
+        id: "protective_steps",
+        label: "Includes protective steps for affected individuals",
+        requiredForCovered: true,
+        signals: ["protective steps", "identity theft"],
+      },
+    ],
+    requiredElementsForCovered: ["incident_description", "information_involved", "protective_steps"],
+  };
+  const directNoticeGap = negativeChunk({
+    chunk_id: "88888888-8888-4888-8888-888888888888",
+    section_path: "Customer notification content requirements",
+    content_preview: "The notice procedure does not define protective steps or identity theft resources for affected individuals.",
+    supporting_quote: "The notice procedure does not define protective steps or identity theft resources for affected individuals.",
+    missing_elements: ["protective_steps"],
+    grade_reason: "The notice procedure does not define protective steps.",
+    negative_evidence_reason: "The notice procedure does not define protective steps.",
+  });
+  const vendorGap = negativeChunk({
+    chunk_id: "99999999-9999-4999-8999-999999999999",
+    section_path: "Service provider oversight expectations",
+    content_preview: "Service providers must notify the firm within 72 hours but do not define customer notice content.",
+    supporting_quote: "Service providers must notify the firm within 72 hours but do not define customer notice content.",
+    missing_elements: ["incident_description", "information_involved", "protective_steps"],
+    grade_reason: "The vendor section does not define customer notice content.",
+    negative_evidence_reason: "The vendor section does not define customer notice content.",
+  });
+
+  const finding = aggregateFindingForRequirement(contentRequirement, [vendorGap, directNoticeGap]);
+
+  assert.equal(finding.status, "missing");
+  assert.equal(finding.evidence[0].section_path, "Customer notification content requirements");
+});
+
+test("regulator and law-enforcement partial evidence yields partial instead of missing", () => {
+  const regulatorRequirement = {
+    ...requirement,
+    id: "regulator_law_enforcement_notification_coordination",
+    title: "Regulator and law enforcement notification coordination",
+    coverageElements: [
+      {
+        id: "external_notification_decisioning",
+        label: "Defines external notification decisioning",
+        requiredForCovered: true,
+        signals: ["regulator notification decision"],
+      },
+      {
+        id: "legal_compliance_owner",
+        label: "Assigns legal or compliance ownership",
+        requiredForCovered: true,
+        signals: ["legal owner"],
+      },
+    ],
+    requiredElementsForCovered: ["external_notification_decisioning", "legal_compliance_owner"],
+  };
+  const support = chunk({
+    grade: "partial",
+    evidence_relationship: "partially_supports",
+    requirement_supported: false,
+    section_path: "Law enforcement and regulator coordination",
+    content_preview: "Legal reviews the regulator notification decision after incident escalation.",
+    supporting_quote: "Legal reviews the regulator notification decision after incident escalation.",
+    covered_elements: ["external_notification_decisioning"],
+    missing_elements: ["legal_compliance_owner"],
+    grade_reason: "The cited text identifies external notification decisioning but not ownership.",
+  });
+
+  const finding = aggregateFindingForRequirement(regulatorRequirement, [support]);
+
+  assert.equal(finding.status, "partial");
+  assert.equal(finding.evidence[0].relationship, "partially_supports");
+});
+
+test("incident assessment can be covered by a broader direct quote spanning assessment, systems, and containment", () => {
+  const assessmentRequirement = {
+    ...requirement,
+    id: "incident_assessment_containment_control",
+    title: "Incident assessment, containment, and control",
+    coverageElements: [
+      {
+        id: "assesses_scope",
+        label: "Assesses the nature and scope of unauthorized access or use",
+        requiredForCovered: true,
+        signals: ["nature and scope"],
+      },
+      {
+        id: "customer_information_systems",
+        label: "Identifies affected customer information systems or information types",
+        requiredForCovered: true,
+        signals: ["customer information systems"],
+      },
+      {
+        id: "containment_control",
+        label: "Requires containment or control steps",
+        requiredForCovered: true,
+        signals: ["contain and control"],
+      },
+    ],
+    requiredElementsForCovered: ["assesses_scope", "customer_information_systems", "containment_control"],
+  };
+  const support = chunk({
+    section_path: "Assessment of unauthorized access or use",
+    content_preview:
+      "The incident team assesses the nature and scope of unauthorized access, identifies affected customer information systems, and takes steps to contain and control the incident.",
+    supporting_quote:
+      "assesses the nature and scope of unauthorized access, identifies affected customer information systems, and takes steps to contain and control the incident",
+  });
+
+  const finding = aggregateFindingForRequirement(assessmentRequirement, [support]);
+
+  assert.equal(finding.status, "covered");
+  assert.equal(finding.evidence[0].section_path, "Assessment of unauthorized access or use");
+});
+
+test("incident evidence preservation recognizes logs and investigation evidence", () => {
+  const preservationRequirement = {
+    ...requirement,
+    id: "incident_evidence_log_preservation",
+    title: "Incident evidence and log preservation",
+    coverageElements: [
+      {
+        id: "incident_materials",
+        label: "Preserves logs, evidence, or investigation records",
+        requiredForCovered: true,
+        signals: ["preserve logs"],
+      },
+    ],
+    requiredElementsForCovered: ["incident_materials"],
+  };
+  const support = chunk({
+    section_path: "Monitoring, logging, and alert review",
+    content_preview: "The incident response record requires preserving relevant logs and evidence for investigation materials.",
+    supporting_quote: "requires preserving relevant logs and evidence for investigation materials",
+  });
+
+  const finding = aggregateFindingForRequirement(preservationRequirement, [support]);
+
+  assert.equal(finding.status, "covered");
+});
+
+test("recovery evidence curation prefers substantive recovery activity quotes over fragments", () => {
+  const recoveryRequirement = {
+    ...requirement,
+    id: "response_recovery_remediation_validation",
+    title: "Response recovery and remediation validation",
+    coverageElements: [
+      {
+        id: "recovery_steps",
+        label: "Defines recovery after unauthorized access or use",
+        requiredForCovered: true,
+        signals: ["restoring affected services"],
+      },
+      {
+        id: "remediation_tracking",
+        label: "Tracks remediation or corrective actions",
+        requiredForCovered: true,
+        signals: ["corrective action tracking"],
+      },
+      {
+        id: "validation_testing",
+        label: "Validates recovery or remediation",
+        requiredForCovered: true,
+        signals: ["validating user access"],
+      },
+    ],
+    requiredElementsForCovered: ["recovery_steps", "remediation_tracking", "validation_testing"],
+  };
+  const weakFragment = chunk({
+    chunk_id: "23232323-2323-4323-8323-232323232323",
+    grade: "partial",
+    evidence_relationship: "partially_supports",
+    requirement_supported: false,
+    section_path: "Incident recovery and remediation validation",
+    content_preview: "Incident recovery and remediation validation / communications are delayed pending legal review.",
+    supporting_quote: "Incident recovery and remediation validation / communications are delayed pending legal review.",
+    covered_elements: ["recovery_steps", "validation_testing"],
+    missing_elements: ["remediation_tracking"],
+    grade_reason: "The cited text is a fragment and does not establish recovery procedures.",
+  });
+  const substantive = chunk({
+    grade: "partial",
+    evidence_relationship: "partially_supports",
+    requirement_supported: false,
+    section_path: "Incident recovery and remediation validation",
+    content_preview:
+      "Recovery activities include restoring affected services, validating user access, confirming remediation tasks, and documenting remaining open issues.",
+    supporting_quote:
+      "Recovery activities include restoring affected services, validating user access, confirming remediation tasks, and documenting remaining open issues.",
+    covered_elements: ["recovery_steps", "validation_testing"],
+    missing_elements: ["remediation_tracking"],
+    grade_reason: "The cited text supports recovery and validation but not corrective-action tracking.",
+  });
+
+  const finding = aggregateFindingForRequirement(recoveryRequirement, [weakFragment, substantive]);
+
+  assert.equal(finding.status, "partial");
+  assert.equal(
+    finding.evidence[0].quote,
+    "Recovery activities include restoring affected services, validating user access, confirming remediation tasks, and documenting remaining open issues.",
+  );
+  assert.match(finding.remediation, /corrective-action tracking/);
+});
+
+test("safeguards curation prefers access approval, periodic review, and encryption evidence", () => {
+  const safeguardsRequirement = {
+    ...requirement,
+    id: "safeguards_customer_information",
+    title: "Safeguards for customer information",
+    coverageElements: [
+      {
+        id: "customer_information_scope",
+        label: "Applies safeguards to customer records or information",
+        requiredForCovered: true,
+        signals: ["customer information"],
+      },
+      {
+        id: "safeguards_controls",
+        label: "Defines administrative, technical, or physical safeguards",
+        requiredForCovered: true,
+        signals: ["access controls", "encryption"],
+      },
+    ],
+    requiredElementsForCovered: ["customer_information_scope", "safeguards_controls"],
+  };
+  const accessEvidence = chunk({
+    section_path: "Access management and privileged access review",
+    content_preview:
+      "Customer information repositories require access approval, periodic access review, and encryption for stored records.",
+    supporting_quote:
+      "Customer information repositories require access approval, periodic access review, and encryption for stored records",
+  });
+  const adjacentEvidence = chunk({
+    chunk_id: "12121212-1212-4212-8212-121212121212",
+    section_path: "Incident response program",
+    content_preview: "Incident response procedures mention customer information and encryption during response.",
+    supporting_quote: "Incident response procedures mention customer information and encryption during response",
+  });
+
+  const finding = aggregateFindingForRequirement(safeguardsRequirement, [adjacentEvidence, accessEvidence]);
+
+  assert.equal(finding.status, "covered");
+  assert.equal(finding.evidence[0].section_path, "Access management and privileged access review");
+});
+
+test("service provider heading-only quotes are not persisted as substantive evidence", () => {
+  const vendorRequirement = {
+    ...requirement,
+    id: "service_provider_incident_oversight_notice",
+    title: "Service provider incident oversight and notice",
+    coverageElements: [
+      {
+        id: "service_provider_scope",
+        label: "Applies to service providers or vendors handling customer information",
+        requiredForCovered: true,
+        signals: ["service provider", "vendor"],
+      },
+    ],
+    requiredElementsForCovered: ["service_provider_scope"],
+  };
+  const headingOnly = chunk({
+    section_path: "Vendor cooperation, investigation, and remediation support",
+    content_preview: "Vendor cooperation, investigation, and remediation support",
+    supporting_quote: "Vendor cooperation, investigation, and remediation support",
+  });
+
+  const finding = aggregateFindingForRequirement(vendorRequirement, [headingOnly]);
+
+  assert.equal(finding.status, "missing");
+  assert.equal(finding.evidence.length, 0);
 });
 
 test("cross-reference to an unavailable policy needs review", () => {
