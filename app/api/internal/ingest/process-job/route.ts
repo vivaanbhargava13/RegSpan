@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { addOptionalChunkSynopses } from "@/lib/chunkContext";
+import {
+  inferDocumentSourceType,
+  inferEvidenceRole,
+} from "@/lib/documentSource";
 import {
   getCorrelationId,
   isUuid,
@@ -45,6 +50,8 @@ type WorkerDocument = {
   storage_path: string | null;
   mime_type: string | null;
   file_size: number | null;
+  document_type: string | null;
+  notes: string | null;
 };
 
 type WorkerResult = {
@@ -222,7 +229,7 @@ export async function POST(request: Request) {
     stage = "load_document";
     const { data: document, error: documentError } = await supabase
       .from("documents")
-      .select("id, workspace_id, filename, storage_path, mime_type, file_size")
+      .select("id, workspace_id, filename, storage_path, mime_type, file_size, document_type, notes")
       .eq("id", payload.documentId)
       .maybeSingle<WorkerDocument>();
 
@@ -438,13 +445,33 @@ export async function POST(request: Request) {
     );
 
     stage = "build_document_chunks";
+    const documentSourceType = inferDocumentSourceType({
+      filename: document.filename,
+      documentType: document.document_type,
+      notes: document.notes,
+      sectionPath: null,
+      contentPreview: null,
+      evidenceReason: null,
+    });
+    const evidenceRole = inferEvidenceRole({
+      filename: document.filename,
+      documentType: document.document_type,
+      notes: document.notes,
+      sectionPath: null,
+      contentPreview: null,
+      evidenceReason: null,
+    });
     const { chunks, hierarchy } = buildDeterministicChunks({
       pages,
       documentId: payload.documentId,
       workspaceId: payload.workspaceId,
       jobId: payload.jobId,
       filename: document.filename ?? "document.pdf",
+      documentType: document.document_type,
+      sourceType: documentSourceType,
+      evidenceRole,
     });
+    const contextChunks = await addOptionalChunkSynopses({ chunks });
 
     stage = "store_document_chunks";
     const { data: storageData, error: storageError } = await supabase.rpc(
@@ -453,7 +480,7 @@ export async function POST(request: Request) {
         p_job_id: payload.jobId,
         p_document_id: payload.documentId,
         p_workspace_id: payload.workspaceId,
-        p_chunks: chunks,
+        p_chunks: contextChunks,
         p_hierarchy: hierarchy,
       },
     );

@@ -1,10 +1,21 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  inferDocumentSourceType,
+  inferEvidenceRole,
+} from "./documentSource";
+import {
+  buildChunkEmbeddingInput,
+  CHUNK_CONTEXT_VERSION,
+  hashChunkContent,
+} from "./pdfProcessingCore";
 
 export type IngestionDocument = {
   id: string;
   workspace_id: string;
   filename: string;
   status: string | null;
+  document_type?: string | null;
+  notes?: string | null;
 };
 
 export async function getIngestionDocument(
@@ -13,19 +24,46 @@ export async function getIngestionDocument(
 ) {
   return supabase
     .from("documents")
-    .select("id, workspace_id, filename, status")
+    .select("id, workspace_id, filename, status, document_type, notes")
     .eq("id", documentId)
     .maybeSingle<IngestionDocument>();
 }
 
 export function createMockChunks(document: IngestionDocument) {
+  const sourceType = inferDocumentSourceType({
+    filename: document.filename,
+    documentType: document.document_type,
+    notes: document.notes,
+    sectionPath: null,
+    contentPreview: null,
+    evidenceReason: "substantive_requirement_or_procedure",
+  });
+  const evidenceRole = inferEvidenceRole({
+    filename: document.filename,
+    documentType: document.document_type,
+    notes: document.notes,
+    sectionPath: null,
+    contentPreview: null,
+    evidenceReason: "substantive_requirement_or_procedure",
+  });
   const baseMetadata = {
     document_id: document.id,
     workspace_id: document.workspace_id,
     filename: document.filename,
+    document_type: document.document_type ?? null,
+    source_type: sourceType,
+    evidence_role: evidenceRole,
     parent_heading: "Incident Response",
+    section_start_page: 1,
+    heading_page: 1,
     parent_chunk_start: 0,
     parent_chunk_end: 4,
+    evidence_class: "evidence",
+    evidence_reason: "substantive_requirement_or_procedure",
+    chunk_context_version: CHUNK_CONTEXT_VERSION,
+    chunk_annotation_version: null,
+    retrieval_excluded: false,
+    retrieval_included: true,
   };
 
   const chunks = [
@@ -81,31 +119,66 @@ export function createMockChunks(document: IngestionDocument) {
     },
   ];
 
-  return chunks.map((chunk, chunkIndex) => ({
-    workspace_id: document.workspace_id,
-    document_id: document.id,
-    chunk_index: chunkIndex,
-    content: chunk.content,
-    metadata: {
-      ...baseMetadata,
+  return chunks.map((chunk, chunkIndex) => {
+    const embeddingInput = buildChunkEmbeddingInput({
+      filename: document.filename,
+      documentType: document.document_type ?? null,
+      sourceType,
+      evidenceRole,
+      sectionPath: chunk.section_path,
+      sectionHeading: chunk.section_heading,
+      parentHeading: baseMetadata.parent_heading,
+      headingPage: baseMetadata.heading_page,
+      pageStart: chunk.page_start,
+      pageEnd: chunk.page_end,
+      content: chunk.content,
+    });
+    const sourceContentHash = hashChunkContent(chunk.content);
+    const contentHash = hashChunkContent(embeddingInput);
+
+    return {
+      workspace_id: document.workspace_id,
+      document_id: document.id,
+      chunk_index: chunkIndex,
+      content: chunk.content,
+      metadata: {
+        ...baseMetadata,
+        page_start: chunk.page_start,
+        page_end: chunk.page_end,
+        section_heading: chunk.section_heading,
+        section_path: chunk.section_path,
+        deterministic_retrieval_context: [
+          document.filename,
+          document.document_type ?? null,
+          sourceType,
+          evidenceRole,
+          chunk.section_path,
+          chunk.section_heading,
+          baseMetadata.parent_heading,
+          `pages ${chunk.page_start}-${chunk.page_end}`,
+        ].filter(Boolean).join(" | "),
+        chunk_index: chunkIndex,
+        section_chunk_start: chunk.section_chunk_start,
+        section_chunk_end: chunk.section_chunk_end,
+        char_start: 0,
+        char_end: chunk.content.length,
+        token_estimate: Math.max(1, Math.ceil(chunk.content.length / 4)),
+        source_content_hash: sourceContentHash,
+        content_hash: contentHash,
+        embedding_input: embeddingInput,
+      },
       page_start: chunk.page_start,
       page_end: chunk.page_end,
       section_heading: chunk.section_heading,
+      parent_heading: baseMetadata.parent_heading,
       section_path: chunk.section_path,
-      chunk_index: chunkIndex,
       section_chunk_start: chunk.section_chunk_start,
       section_chunk_end: chunk.section_chunk_end,
-    },
-    page_start: chunk.page_start,
-    page_end: chunk.page_end,
-    section_heading: chunk.section_heading,
-    parent_heading: baseMetadata.parent_heading,
-    section_path: chunk.section_path,
-    section_chunk_start: chunk.section_chunk_start,
-    section_chunk_end: chunk.section_chunk_end,
-    parent_chunk_start: baseMetadata.parent_chunk_start,
-    parent_chunk_end: baseMetadata.parent_chunk_end,
-  }));
+      parent_chunk_start: baseMetadata.parent_chunk_start,
+      parent_chunk_end: baseMetadata.parent_chunk_end,
+      content_hash: contentHash,
+    };
+  });
 }
 
 export function createMockHierarchy(document: IngestionDocument) {

@@ -4,11 +4,13 @@ export const PDF_EXTRACTION_VERSION = "pdf-parse-v1";
 export const MAX_PDF_PAGES = 500;
 export const MAX_EXTRACTED_CHARACTERS = 5_000_000;
 export const MIN_EXTRACTED_CHARACTERS = 20;
-export const CHUNKING_VERSION = "section-aware-v2-evidence";
+export const CHUNKING_VERSION = "section-aware-v3-evidence";
+export const CHUNK_CONTEXT_VERSION = "chunk-context-v1";
+export const CHUNK_ANNOTATION_VERSION = "chunk-synopsis-v1";
 export const EVIDENCE_CLASSIFICATION_VERSION = "evidence-v2";
 export const MIN_TARGET_CHUNK_TOKENS = 500;
-export const TARGET_CHUNK_TOKENS = 700;
-export const SOFT_MAX_CHUNK_TOKENS = 900;
+export const TARGET_CHUNK_TOKENS = 450;
+export const SOFT_MAX_CHUNK_TOKENS = 650;
 export const HARD_MAX_CHUNK_TOKENS = 1_200;
 export const CHUNK_OVERLAP_TOKENS = 125;
 export const TARGET_CHUNK_CHARACTERS = TARGET_CHUNK_TOKENS * 4;
@@ -181,6 +183,7 @@ type Section = {
   parentPath: string | null;
   path: string;
   level: number;
+  headingPage: number;
   blocks: TextBlock[];
 };
 
@@ -190,6 +193,7 @@ type SectionGroup = {
   parentPath: string | null;
   path: string;
   level: number;
+  headingPage: number;
   blocks: TextBlock[];
   sourceSectionPaths: string[];
 };
@@ -205,6 +209,7 @@ type ChunkDraft = {
   parentHeading: string;
   parentPath: string | null;
   sectionPath: string;
+  headingPage: number;
   sourceSectionPaths: string[];
 };
 
@@ -248,6 +253,7 @@ const HEADING_MAX_CHARACTERS = 110;
 const HEADING_MAX_WORDS = 14;
 const SHORT_SECTION_MERGE_TOKENS = 220;
 const SHORT_SECTION_COMBINED_TOKENS = 500;
+const MAX_CHUNK_PAGE_SPAN = 2;
 const SOFT_MAX_CHUNK_CHARACTERS = SOFT_MAX_CHUNK_TOKENS * 4;
 const HARD_MAX_CHUNK_CHARACTERS = HARD_MAX_CHUNK_TOKENS * 4;
 const LIST_PATTERN = /^(?:[-*•]|(?:\d+|[A-Za-z])[.)])\s+\S/;
@@ -255,8 +261,9 @@ const NUMBERED_HEADING_PATTERN = /^(?:\d+(?:\.\d+)*\.?|[A-Z]\.|[IVXLCDM]+\.)\s+\
 const MAJOR_PLAYBOOK_HEADING_PATTERN = /^(?:incident response playbook|vulnerability response playbook|appendix\s+[a-z](?:\b.*)?)$/i;
 const PHASE_HEADING_PATTERN = /^(?:preparation activities|detection\s*(?:&|and)\s*analysis|containment|eradication\s*(?:&|and)\s*recovery|coordination|remediation)$/i;
 const PLAYBOOK_SUBSECTION_HEADING_PATTERN = /^(?:policies and procedures|cyber threat intelligence|communications and logistics)$/i;
-const TOP_LEVEL_POLICY_HEADING_PATTERN = /^(?:purpose|scope|definitions|governance|incident response|information security(?: program)?|vendor (?:management|oversight)|privacy|data retention|customer information|policy statement|roles and responsibilities)$/i;
-const CHILD_POLICY_HEADING_PATTERN = /^(?:customer notification|escalation|reporting|testing|training|monitoring|oversight procedures|response procedures|containment|recovery|exceptions|enforcement)$/i;
+const TOP_LEVEL_POLICY_HEADING_PATTERN = /^(?:purpose|scope|definitions|governance|incident response|information security(?: program)?|vendor (?:management|oversight)|privacy|data retention|customer information|customer notification|safeguards(?: program)?|administrative safeguards|technical safeguards|physical safeguards|access control(?:s)?|access management|encryption|records?(?: retention| management)?|policy statement|roles and responsibilities)$/i;
+const CHILD_POLICY_HEADING_PATTERN = /^(?:customer notification|notification timing|notice content|escalation|reporting|testing|training|monitoring|oversight procedures|response procedures|containment|recovery|exceptions|enforcement|access approval|access reviews?|periodic access reviews?|encryption requirements?|vendor notification|service provider notice)$/i;
+const COMPLIANCE_HEADING_KEYWORD_PATTERN = /\b(?:customer|consumer|incident|response|notification|notice|safeguards?|access|encryption|authentication|vendor|service provider|records?|retention|disposal|remediation|recovery|evidence|logs?|privacy|security|compliance)\b/i;
 const MERGEABLE_SHORT_HEADING_PATTERN = /^(?:document overview|overview|purpose|scope|objectives?|applicability|definitions|roles|responsibilities)$/i;
 const CLASSIFICATION_MARKING_PATTERNS = [
   /^TLP\s*:\s*[A-Z+ -]{3,24}$/i,
@@ -438,12 +445,18 @@ export function isLikelyPolicyHeading(value: string, precededByBlankLine = true)
   const isTitleHeading = precededByBlankLine
     && !/[.!?;]$/.test(line)
     && isTitleCaseHeading(line);
+  const isComplianceKeywordHeading = precededByBlankLine
+    && !/[.!?;]$/.test(line)
+    && words.length <= 8
+    && isTitleCaseHeading(line)
+    && COMPLIANCE_HEADING_KEYWORD_PATTERN.test(stripped);
 
   return isKnownPolicyHeading
     || isUppercase
     || isNumberedHeading
     || isShortColonHeading
-    || isTitleHeading;
+    || isTitleHeading
+    || isComplianceKeywordHeading;
 }
 
 function inferHeadingLevel(
@@ -467,8 +480,9 @@ function inferHeadingLevel(
     }
     return headingStack.some((heading) => isMajorPlaybookHeading(heading.heading)) ? 2 : 1;
   }
+  if (CHILD_POLICY_HEADING_PATTERN.test(stripped) && headingStack.length > 0) return 2;
   if (TOP_LEVEL_POLICY_HEADING_PATTERN.test(stripped)) return 1;
-  if (CHILD_POLICY_HEADING_PATTERN.test(stripped)) return headingStack.length > 0 ? 2 : 1;
+  if (CHILD_POLICY_HEADING_PATTERN.test(stripped)) return 1;
 
   const letters = stripped.replace(/[^A-Za-z]/g, "");
   if (letters.length >= 3 && letters === letters.toUpperCase()) return 1;
@@ -728,6 +742,7 @@ function parseSections(pages: PreparedPage[]) {
         parentPath: null,
         path: "Document Overview",
         level: 1,
+        headingPage: pages.find((page) => !page.isToc)?.pageNumber ?? 1,
         blocks: [],
       };
       sections.push(currentSection);
@@ -789,6 +804,7 @@ function parseSections(pages: PreparedPage[]) {
           parentPath: parent?.path ?? null,
           path,
           level,
+          headingPage: page.pageNumber,
           blocks: [],
         };
         sections.push(currentSection);
@@ -997,6 +1013,7 @@ function buildChunkDrafts(groups: SectionGroup[]) {
         parentHeading: group.parentHeading,
         parentPath: group.parentPath,
         sectionPath: group.path,
+        headingPage: group.headingPage,
         sourceSectionPaths: group.sourceSectionPaths,
       });
       current = getOverlapBlocks(current);
@@ -1008,15 +1025,27 @@ function buildChunkDrafts(groups: SectionGroup[]) {
       const currentTokens = current.length > 0
         ? estimateChunkTokens(current.map((item) => item.content).join("\n\n"))
         : 0;
+      const combinedPageSpan = current.length > 0
+        ? Math.max(block.pageEnd, ...current.map((item) => item.pageEnd))
+          - Math.min(block.pageStart, ...current.map((item) => item.pageStart))
+          + 1
+        : block.pageEnd - block.pageStart + 1;
       const shouldSplit = current.length > 0 && (
         combinedContent.length > HARD_MAX_CHUNK_CHARACTERS
+        || combinedPageSpan > MAX_CHUNK_PAGE_SPAN
         || (currentTokens >= MIN_TARGET_CHUNK_TOKENS && combinedContent.length > SOFT_MAX_CHUNK_CHARACTERS)
       );
 
       if (shouldSplit) {
         emitCurrent();
         combinedContent = [...current, block].map((item) => item.content).join("\n\n");
-        if (combinedContent.length > HARD_MAX_CHUNK_CHARACTERS && !hasNewContent) {
+        if (
+          !hasNewContent
+          && (
+            combinedContent.length > HARD_MAX_CHUNK_CHARACTERS
+            || combinedPageSpan > MAX_CHUNK_PAGE_SPAN
+          )
+        ) {
           current = [];
         }
       }
@@ -1162,23 +1191,36 @@ function filterEvidenceDrafts(
 
 export function buildChunkEmbeddingInput(input: {
   filename: string;
+  documentType?: string | null;
+  sourceType?: string | null;
+  evidenceRole?: string | null;
   sectionPath: string;
+  sectionHeading?: string | null;
   parentHeading: string;
+  headingPage?: number | null;
   pageStart: number;
   pageEnd: number;
   content: string;
+  synopsis?: string | null;
 }) {
   const pageLabel = input.pageStart === input.pageEnd
     ? `Page ${input.pageStart}`
     : `Pages ${input.pageStart}-${input.pageEnd}`;
-  return [
+  const context = [
     `Filename: ${input.filename}`,
+    input.documentType ? `Document type: ${input.documentType}` : null,
+    input.sourceType ? `Source type: ${input.sourceType}` : null,
+    input.evidenceRole ? `Evidence role: ${input.evidenceRole}` : null,
     `Section: ${input.sectionPath}`,
+    input.sectionHeading ? `Section heading: ${input.sectionHeading}` : null,
     `Parent heading: ${input.parentHeading}`,
+    input.headingPage ? `Heading page: ${input.headingPage}` : null,
     `Citation: ${pageLabel}`,
+    input.synopsis ? `Retrieval synopsis: ${input.synopsis}` : null,
     "",
     input.content,
-  ].join("\n");
+  ];
+  return context.filter((line): line is string => line !== null).join("\n");
 }
 
 function buildHierarchy(sections: Section[], drafts: ChunkDraft[]) {
@@ -1241,6 +1283,9 @@ export function buildDeterministicChunks(input: {
   workspaceId: string;
   jobId: string;
   filename: string;
+  documentType?: string | null;
+  sourceType?: string | null;
+  evidenceRole?: string | null;
 }) {
   const prepared = preparePagesForChunking(input.pages);
   const sections = parseSections(prepared.pages);
@@ -1278,10 +1323,17 @@ export function buildDeterministicChunks(input: {
     const sectionBound = sectionBounds.get(draft.sectionPath)!;
     const parentBound = parentBounds.get(draft.parentPath ?? draft.parentHeading)!;
     const tokenEstimate = estimateChunkTokens(draft.content);
+    const sourceType = input.sourceType ?? "client_policy";
+    const evidenceRole = input.evidenceRole ?? "organization_evidence";
     const embeddingInput = buildChunkEmbeddingInput({
       filename: input.filename,
+      documentType: input.documentType ?? null,
+      sourceType,
+      evidenceRole,
       sectionPath: draft.sectionPath,
+      sectionHeading: draft.sectionHeading,
       parentHeading: draft.parentHeading,
+      headingPage: draft.headingPage,
       pageStart: draft.pageStart,
       pageEnd: draft.pageEnd,
       content: draft.content,
@@ -1298,11 +1350,26 @@ export function buildDeterministicChunks(input: {
         job_id: input.jobId,
         processing_job_id: input.jobId,
         filename: input.filename,
+        document_type: input.documentType ?? null,
+        source_type: sourceType,
+        evidence_role: evidenceRole,
         page_start: draft.pageStart,
         page_end: draft.pageEnd,
         section_heading: draft.sectionHeading,
         parent_heading: draft.parentHeading,
         section_path: draft.sectionPath,
+        section_start_page: draft.headingPage,
+        heading_page: draft.headingPage,
+        deterministic_retrieval_context: [
+          input.filename,
+          input.documentType ?? null,
+          sourceType,
+          evidenceRole,
+          draft.sectionPath,
+          draft.sectionHeading,
+          draft.parentHeading,
+          `pages ${draft.pageStart}-${draft.pageEnd}`,
+        ].filter(Boolean).join(" | "),
         chunk_index: chunkIndex,
         section_chunk_start: sectionBound.start,
         section_chunk_end: sectionBound.end,
@@ -1323,6 +1390,8 @@ export function buildDeterministicChunks(input: {
         retrieval_excluded: false,
         retrieval_included: true,
         chunking_version: CHUNKING_VERSION,
+        chunk_context_version: CHUNK_CONTEXT_VERSION,
+        chunk_annotation_version: null,
         extraction_version: PDF_EXTRACTION_VERSION,
       },
       page_start: draft.pageStart,

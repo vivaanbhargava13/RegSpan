@@ -106,6 +106,32 @@ test("rerank_score rewards direct action topic and section-path matches", async 
   assert.match(strong.rerank_reason, /section\/path signals/);
 });
 
+test("rerank_score can use inherited embedding context when raw text lacks heading terms", async () => {
+  const { rerankRequirementChunk } = await loadTsModule("lib/hybridReranking.ts");
+  const inheritedContext = rerankRequirementChunk(requirement, candidate({
+    chunk_id: "chunk-context",
+    section_path: "Document Overview",
+    content_preview: "Legal and Privacy review the timing before delivery.",
+    embedding_input: [
+      "Filename: Incident Response Policy.pdf",
+      "Section: Incident Response > Customer Notification",
+      "Parent heading: Incident Response",
+      "Citation: Page 12",
+      "",
+      "Legal and Privacy review the timing before delivery.",
+    ].join("\n"),
+  }));
+  const generic = rerankRequirementChunk(requirement, candidate({
+    chunk_id: "chunk-generic",
+    section_path: "Document Overview",
+    content_preview: "Legal and Privacy review the timing before delivery.",
+    embedding_input: null,
+  }));
+
+  assert.ok(inheritedContext.rerank_score > generic.rerank_score);
+  assert.match(inheritedContext.rerank_reason, /direct signals|action signals|topic signals/);
+});
+
 test("reranked chunks retain source type evidence role and reason fields", async () => {
   const { rerankRequirementCandidates } = await loadTsModule("lib/hybridReranking.ts");
   const [result] = rerankRequirementCandidates(requirement, [candidate()], 1);

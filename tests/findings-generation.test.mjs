@@ -171,6 +171,8 @@ test("no organization evidence produces a missing finding", () => {
   assert.equal(finding.evidence.length, 0);
   assert.match(finding.summary, /did not find client policy evidence/);
   assert.match(finding.rationale, /did not find clear policy or procedure language/);
+  assert.match(finding.remediation, /Add or point to written procedures that define/);
+  assert.doesNotMatch(finding.remediation, /reviewed documents appear to define/i);
   assert.doesNotMatch(finding.summary, /noncompliant/i);
 });
 
@@ -437,6 +439,7 @@ test("findings UI keeps covered cards quiet and collapses source excerpts", asyn
   assert.doesNotMatch(client, /Evidence citations/);
   assert.doesNotMatch(client, /organization evidence/i);
   assert.doesNotMatch(client, /coverage element/i);
+  assert.doesNotMatch(client, /chunk_synopsis|Retrieval synopsis/i);
   assert.doesNotMatch(client, /classifier/i);
   assert.doesNotMatch(client, /heuristic/i);
   assert.doesNotMatch(client, /retrieval/i);
@@ -533,6 +536,29 @@ test("document-scope limitation with some support is partial, not needs review",
   assert.equal(finding.status, "partial");
   assert.match(finding.rationale, /did not find clear language defining the required timing for notice/);
   assert.doesNotMatch(finding.rationale, /reviewer should confirm/i);
+});
+
+test("mixed support and limitation evidence produces partial, not missing", () => {
+  const finding = aggregateFindingForRequirement(requirement, [
+    chunk({
+      grade: "partial",
+      evidence_relationship: "partially_supports",
+      requirement_supported: false,
+      covered_elements: ["notice_trigger"],
+      missing_elements: ["notice_timing"],
+      supporting_quote: "The firm notifies affected customers after unauthorized access.",
+      grade_reason:
+        "The cited text supports the customer-notification trigger; nearby limitation language does not define timing.",
+      content_preview:
+        "The firm notifies affected customers after unauthorized access. This policy does not fully define the 30-day notification timeline.",
+    }),
+  ]);
+
+  assert.equal(finding.status, "partial");
+  assert.notEqual(finding.status, "missing");
+  assert.match(finding.rationale, /notifies affected customers|mentions this area/);
+  assert.match(finding.remediation, /do not clearly define the required timing for notice/);
+  assert.doesNotMatch(finding.remediation, /reviewed documents appear to define/i);
 });
 
 test("cross-reference to an unavailable policy needs review", () => {
@@ -640,6 +666,26 @@ test("finding evidence preserves citation metadata", () => {
   assert.equal(finding.evidence[0].section_path, "Incident Response > Customer Notification");
   assert.equal(finding.evidence[0].chunk_index, 7);
   assert.equal(finding.evidence[0].quote, "notify affected customers after unauthorized access");
+});
+
+test("finding evidence uses raw quote rather than retrieval synopsis text", () => {
+  const finding = aggregateFindingForRequirement(requirement, [
+    chunk({
+      embedding_input:
+        "Retrieval synopsis: This excerpt says customer notice must be sent not later than 30 days.",
+      content_preview: "The firm notifies affected customers after unauthorized access.",
+      supporting_quote: "notifies affected customers after unauthorized access",
+      covered_elements: ["notice_trigger"],
+      missing_elements: ["notice_timing"],
+      evidence_relationship: "partially_supports",
+      requirement_supported: false,
+    }),
+  ]);
+
+  assert.equal(finding.status, "partial");
+  assert.equal(finding.evidence[0].quote, "notifies affected customers after unauthorized access");
+  assert.doesNotMatch(finding.evidence[0].quote ?? "", /30 days/);
+  assert.doesNotMatch(finding.rationale, /not later than 30 days/);
 });
 
 test("findings generation schema and routes preserve workspace/security boundaries", async () => {

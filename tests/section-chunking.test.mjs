@@ -52,9 +52,15 @@ test("numbered headings create meaningful section paths and hierarchy", () => {
     notificationChunk.metadata.embedding_input,
     /Section: 1\. Incident Response > 1\.1 Customer Notification/,
   );
+  assert.match(notificationChunk.metadata.embedding_input, /Evidence role: organization_evidence/);
+  assert.match(notificationChunk.metadata.embedding_input, /Heading page: 1/);
   assert.equal(notificationChunk.metadata.evidence_class, "evidence");
   assert.equal(notificationChunk.metadata.evidence_reason, "substantive_requirement_or_procedure");
   assert.equal(notificationChunk.metadata.classification_version, "evidence-v2");
+  assert.equal(notificationChunk.metadata.chunk_context_version, "chunk-context-v1");
+  assert.equal(notificationChunk.metadata.chunk_annotation_version, null);
+  assert.equal(notificationChunk.metadata.source_type, "client_policy");
+  assert.equal(notificationChunk.metadata.evidence_role, "organization_evidence");
   assert.equal(notificationChunk.metadata.retrieval_included, true);
   assert.equal(notificationChunk.metadata.retrieval_excluded, false);
   assert.equal("evidence_classification" in notificationChunk.metadata, false);
@@ -179,6 +185,49 @@ test("long sections split at paragraph boundaries with bounded overlap", () => {
   assert.equal(hasParagraphOverlap, true);
 });
 
+test("long policy sections split into precise page-bounded chunks when headings are present", () => {
+  const pages = Array.from({ length: 9 }, (_, index) => {
+    const pageNumber = index + 1;
+    if (pageNumber < 6) {
+      return {
+        pageNumber,
+        text: [
+          "Document Overview",
+          "",
+          `Overview page ${pageNumber}. This policy gives background for the compliance program and review process.`,
+        ].join("\n"),
+      };
+    }
+
+    return {
+      pageNumber,
+      text: [
+        pageNumber === 6 ? "Access Management" : "",
+        "",
+        `Access procedure page ${pageNumber}. Customer information repositories require access approval, periodic access review, encryption, authentication, and least privilege controls before personnel may use production records.`,
+        "",
+        `Review evidence page ${pageNumber}. Access reviewers document approvals, remove inappropriate access, and retain review records for compliance testing.`,
+      ].join("\n"),
+    };
+  });
+
+  const result = build(pages);
+  const accessChunks = result.chunks.filter(
+    (chunk) => chunk.section_path === "Access Management",
+  );
+
+  assert.ok(accessChunks.length >= 2);
+  assert.equal(accessChunks.every((chunk) => chunk.section_path !== "Document Overview"), true);
+  assert.equal(
+    accessChunks.every((chunk) => chunk.page_end - chunk.page_start + 1 <= 2),
+    true,
+  );
+  assert.equal(
+    accessChunks.some((chunk) => /Customer information repositories require access approval/.test(chunk.content)),
+    true,
+  );
+});
+
 test("sections can span pages while preserving citation ranges and offsets", () => {
   const pageOne = "4. Recovery\n\nRecovery begins after containment is verified and documented.";
   const pageTwo = "The response lead validates restoration and records all follow-up actions.";
@@ -193,6 +242,39 @@ test("sections can span pages while preserving citation ranges and offsets", () 
   assert.equal(result.chunks[0].char_start, 0);
   assert.equal(result.chunks[0].char_end, pageOne.length + 2 + pageTwo.length);
   assert.match(result.chunks[0].metadata.embedding_input, /Citation: Pages 1-2/);
+});
+
+test("page-bounded child chunks inherit earlier-page section headings and paths", () => {
+  const result = build([
+    {
+      pageNumber: 10,
+      text: [
+        "Customer Notification",
+        "",
+        "The response team maintains notification procedures for affected customers.",
+      ].join("\n"),
+    },
+    {
+      pageNumber: 11,
+      text: "Affected customer notices are reviewed by Legal and Privacy before delivery.",
+    },
+    {
+      pageNumber: 12,
+      text: "Notification records are retained with the incident file for reviewer testing.",
+    },
+  ]);
+
+  const pageTwelveChunk = result.chunks.find((chunk) => chunk.page_start === 12);
+
+  assert.ok(pageTwelveChunk);
+  assert.equal(pageTwelveChunk.section_heading, "Customer Notification");
+  assert.equal(pageTwelveChunk.parent_heading, "Document");
+  assert.equal(pageTwelveChunk.section_path, "Customer Notification");
+  assert.equal(pageTwelveChunk.metadata.heading_page, 10);
+  assert.equal(pageTwelveChunk.metadata.section_start_page, 10);
+  assert.match(pageTwelveChunk.metadata.embedding_input, /Section: Customer Notification/);
+  assert.match(pageTwelveChunk.metadata.embedding_input, /Heading page: 10/);
+  assert.doesNotMatch(pageTwelveChunk.content, /^Customer Notification/);
 });
 
 test("compatible short context sections merge without altering source text", () => {

@@ -20,6 +20,7 @@ export type RerankableChunk = {
   content_preview: string;
   similarity: number;
   evidence_reason: string | null;
+  embedding_input?: string | null;
   source_type: string;
   evidence_role: string;
   rerank_score?: number | null;
@@ -134,6 +135,7 @@ function chunkRerankText(chunk: RerankableChunk) {
     chunk.filename,
     chunk.section_path,
     chunk.evidence_reason,
+    chunk.embedding_input,
     chunk.content_preview,
   ].filter(Boolean).join(" "));
 }
