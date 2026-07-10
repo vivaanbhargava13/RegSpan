@@ -10,12 +10,14 @@ import {
   type EmbeddingProvider,
   type ExistingChunkEmbedding,
 } from "@/lib/embeddings";
+import type { WorkspaceExternalAiProcessingPolicy } from "@/lib/aiProcessingPolicy";
 
 type EmbedDocumentChunksInput = {
   supabase: SupabaseClient;
   workspaceId: string;
   documentId: string;
   provider?: EmbeddingProvider;
+  workspacePolicy?: WorkspaceExternalAiProcessingPolicy;
 };
 
 export type EmbedDocumentChunksResult = {
@@ -26,12 +28,13 @@ export type EmbedDocumentChunksResult = {
   skippedCount: number;
 };
 
-export async function embedDocumentChunks({
-  supabase,
-  workspaceId,
-  documentId,
-  provider = createEmbeddingProvider(),
-}: EmbedDocumentChunksInput): Promise<EmbedDocumentChunksResult> {
+export async function embedDocumentChunks(input: EmbedDocumentChunksInput): Promise<EmbedDocumentChunksResult> {
+  const {
+    supabase,
+    workspaceId,
+    documentId,
+    provider = createEmbeddingProvider(process.env, fetch, input.workspacePolicy),
+  } = input;
   const { data: chunkData, error: chunkError } = await supabase
     .from("document_chunks")
     .select("id, content, content_hash, metadata")

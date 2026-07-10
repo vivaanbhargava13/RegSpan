@@ -39,6 +39,7 @@ const {
   EmbeddingProcessingError,
   planEmbeddingUpdates,
 } = await loadEmbeddingCoreModule();
+const { createWorkspaceExternalAiProcessingPolicy } = await import("../lib/aiProcessingPolicy.ts");
 
 const chunks = [
   { id: "chunk-a", content: "Stable policy text", content_hash: "a".repeat(64) },
@@ -66,7 +67,11 @@ test("embedding configuration is server-controlled and validated", () => {
   assert.throws(
     () => createEmbeddingProvider({
       ENABLE_EXTERNAL_AI_PROCESSING: "true",
-    }, async () => new Response()),
+    }, async () => new Response(), createWorkspaceExternalAiProcessingPolicy({
+      workspaceId: "workspace-1",
+      workspaceConsentEnabled: true,
+      environment: { ENABLE_EXTERNAL_AI_PROCESSING: "true" },
+    })),
     (error) => error instanceof EmbeddingProcessingError
       && error.code === "embedding_not_configured",
   );
@@ -76,13 +81,17 @@ test("embedding configuration is server-controlled and validated", () => {
       EMBEDDING_PROVIDER: "unsupported",
       EMBEDDING_MODEL: "model-v1",
       EMBEDDING_API_KEY: "server-secret",
-    }, async () => new Response()),
+    }, async () => new Response(), createWorkspaceExternalAiProcessingPolicy({
+      workspaceId: "workspace-1",
+      workspaceConsentEnabled: true,
+      environment: { ENABLE_EXTERNAL_AI_PROCESSING: "true" },
+    })),
     (error) => error instanceof EmbeddingProcessingError
       && error.code === "unsupported_embedding_provider",
   );
 });
 
-test("external AI embedding calls are blocked unless policy enables them", () => {
+test("external AI embedding calls require server policy and workspace consent", () => {
   let fetchCalled = false;
 
   assert.throws(
@@ -93,10 +102,28 @@ test("external AI embedding calls are blocked unless policy enables them", () =>
     }, async () => {
       fetchCalled = true;
       return new Response();
-    }),
+    }, createWorkspaceExternalAiProcessingPolicy({
+      workspaceId: "workspace-1",
+      workspaceConsentEnabled: false,
+      environment: { ENABLE_EXTERNAL_AI_PROCESSING: "true" },
+    })),
     (error) => error instanceof EmbeddingProcessingError
       && error.code === "external_ai_processing_disabled"
-      && error.safeMessage === "External AI processing is disabled by server policy.",
+      && error.safeMessage === "External AI processing is disabled by workspace and server policy.",
+  );
+  assert.throws(
+    () => createEmbeddingProvider({
+      ENABLE_EXTERNAL_AI_PROCESSING: "false",
+      EMBEDDING_PROVIDER: "openai",
+      EMBEDDING_MODEL: "embedding-test-model",
+      EMBEDDING_API_KEY: "server-secret",
+    }, async () => new Response(), createWorkspaceExternalAiProcessingPolicy({
+      workspaceId: "workspace-1",
+      workspaceConsentEnabled: true,
+      environment: { ENABLE_EXTERNAL_AI_PROCESSING: "false" },
+    })),
+    (error) => error instanceof EmbeddingProcessingError
+      && error.code === "external_ai_processing_disabled",
   );
   assert.equal(fetchCalled, false);
 });
@@ -112,7 +139,11 @@ test("configured provider returns validated vectors without exposing configurati
     return Response.json({
       data: [{ index: 0, embedding: Array(EMBEDDING_DIMENSIONS).fill(0.01) }],
     });
-  });
+  }, createWorkspaceExternalAiProcessingPolicy({
+    workspaceId: "workspace-1",
+    workspaceConsentEnabled: true,
+    environment: { ENABLE_EXTERNAL_AI_PROCESSING: "true" },
+  }));
 
   const vectors = await provider.embedTexts(["citation-grade policy evidence"]);
   assert.equal(provider.model, "embedding-test-model");

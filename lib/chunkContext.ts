@@ -1,4 +1,7 @@
-import { isExternalAiProcessingEnabled } from "./aiProcessingPolicy";
+import {
+  createWorkspaceExternalAiProcessingPolicy,
+  type WorkspaceExternalAiProcessingPolicy,
+} from "./aiProcessingPolicy";
 import {
   buildChunkEmbeddingInput,
   CHUNK_ANNOTATION_VERSION,
@@ -138,6 +141,7 @@ export async function addOptionalChunkSynopses(input: {
   chunks: StoredDocumentChunk[];
   environment?: ChunkContextEnvironment;
   fetchImplementation?: typeof fetch;
+  workspacePolicy?: WorkspaceExternalAiProcessingPolicy;
 }) {
   const environment = input.environment ?? process.env;
   const fetchImplementation = input.fetchImplementation ?? fetch;
@@ -146,7 +150,13 @@ export async function addOptionalChunkSynopses(input: {
   const apiKey = environment.CHUNK_SYNOPSIS_API_KEY?.trim()
     || environment.REQUIREMENT_CLASSIFIER_API_KEY?.trim()
     || environment.OPENAI_API_KEY?.trim();
-  const canUseExternalAi = isExternalAiProcessingEnabled(environment) && Boolean(model && apiKey);
+  const workspacePolicy = createWorkspaceExternalAiProcessingPolicy({
+    workspaceId: input.workspacePolicy?.workspaceId,
+    workspaceConsentEnabled: input.workspacePolicy?.workspaceConsentEnabled,
+    environment,
+  });
+  const canUseExternalAi = workspacePolicy.externalAiProcessingEnabled
+    && Boolean(model && apiKey);
 
   const annotated: StoredDocumentChunk[] = [];
   for (const chunk of input.chunks) {

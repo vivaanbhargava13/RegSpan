@@ -5,7 +5,8 @@ import {
   getActorWorkspaceId,
   getCorrelationId,
 } from "@/lib/documentSecurity";
-import { EmbeddingProcessingError } from "@/lib/embeddings";
+import { createEmbeddingProvider, EmbeddingProcessingError } from "@/lib/embeddings";
+import { loadWorkspaceExternalAiProcessingPolicy } from "@/lib/aiProcessingPolicy";
 import { retrieveRequirementHybridChunks } from "@/lib/hybridRetrieval";
 import { createRequirementEvidenceClassifier } from "@/lib/requirementEvidenceClassifier";
 import { buildRequirementMatchResultWithClassifier } from "@/lib/requirementMatching";
@@ -125,7 +126,20 @@ export async function POST(request: Request) {
     const actor = await authenticateRequest(supabase, request);
     const workspaceId = await getActorWorkspaceId(supabase, actor.user.id);
     const parsed = parseRequirementDebugRequest(await request.json());
-    const classifier = createRequirementEvidenceClassifier();
+    const workspaceAiPolicy = await loadWorkspaceExternalAiProcessingPolicy({
+      supabase,
+      workspaceId,
+    });
+    const embeddingProvider = createEmbeddingProvider(
+      process.env,
+      fetch,
+      workspaceAiPolicy,
+    );
+    const classifier = createRequirementEvidenceClassifier(
+      process.env,
+      fetch,
+      workspaceAiPolicy,
+    );
 
     const results = [];
     for (const requirement of parsed.requirements) {
@@ -134,6 +148,7 @@ export async function POST(request: Request) {
         requirement,
         topK: parsed.topK,
         supabase,
+        provider: embeddingProvider,
       });
       results.push(await buildRequirementMatchResultWithClassifier(
         requirement,

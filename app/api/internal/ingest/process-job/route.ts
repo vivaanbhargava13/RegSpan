@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { addOptionalChunkSynopses } from "@/lib/chunkContext";
 import {
+  loadWorkspaceExternalAiProcessingPolicy,
+} from "@/lib/aiProcessingPolicy";
+import {
   inferDocumentSourceType,
   inferEvidenceRole,
 } from "@/lib/documentSource";
@@ -20,7 +23,7 @@ import {
   PDF_EXTRACTION_VERSION,
 } from "@/lib/pdfIngestion";
 import { embedDocumentChunks } from "@/lib/chunkEmbeddings";
-import { EmbeddingProcessingError } from "@/lib/embeddings";
+import { createEmbeddingProvider, EmbeddingProcessingError } from "@/lib/embeddings";
 import { recordSecurityAuditEvent } from "@/lib/securityAudit";
 import { getServerSupabaseAdminClient } from "@/lib/supabase/server";
 
@@ -471,7 +474,14 @@ export async function POST(request: Request) {
       sourceType: documentSourceType,
       evidenceRole,
     });
-    const contextChunks = await addOptionalChunkSynopses({ chunks });
+    const workspaceAiPolicy = await loadWorkspaceExternalAiProcessingPolicy({
+      supabase,
+      workspaceId: payload.workspaceId,
+    });
+    const contextChunks = await addOptionalChunkSynopses({
+      chunks,
+      workspacePolicy: workspaceAiPolicy,
+    });
 
     stage = "store_document_chunks";
     const { data: storageData, error: storageError } = await supabase.rpc(
@@ -534,6 +544,8 @@ export async function POST(request: Request) {
       supabase,
       workspaceId: payload.workspaceId,
       documentId: payload.documentId,
+      workspacePolicy: workspaceAiPolicy,
+      provider: createEmbeddingProvider(process.env, fetch, workspaceAiPolicy),
     });
 
     console.info("[RegSpan worker] Chunk embeddings stored", {

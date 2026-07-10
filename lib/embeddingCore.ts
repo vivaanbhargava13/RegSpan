@@ -1,4 +1,7 @@
-import { isExternalAiProcessingEnabled } from "./aiProcessingPolicy";
+import {
+  createWorkspaceExternalAiProcessingPolicy,
+  type WorkspaceExternalAiProcessingPolicy,
+} from "./aiProcessingPolicy";
 
 export const EMBEDDING_DIMENSIONS = 1536;
 export const MAX_EMBEDDING_BATCH_SIZE = 32;
@@ -77,11 +80,17 @@ export function planEmbeddingUpdates(
 export function createEmbeddingProvider(
   environment: EmbeddingEnvironment = process.env,
   fetchImplementation: typeof fetch = fetch,
+  workspacePolicy?: WorkspaceExternalAiProcessingPolicy,
 ): EmbeddingProvider {
-  if (!isExternalAiProcessingEnabled(environment)) {
+  const policy = createWorkspaceExternalAiProcessingPolicy({
+    workspaceId: workspacePolicy?.workspaceId,
+    workspaceConsentEnabled: workspacePolicy?.workspaceConsentEnabled,
+    environment,
+  });
+  if (!policy.externalAiProcessingEnabled) {
     throw new EmbeddingProcessingError(
       "external_ai_processing_disabled",
-      "External AI processing is disabled by server policy.",
+      "External AI processing is disabled by workspace and server policy.",
       403,
     );
   }

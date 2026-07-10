@@ -114,6 +114,13 @@ test("optional synopsis is embedded as retrieval context but not raw source cont
       CHUNK_SYNOPSIS_MODEL: "gpt-test",
       CHUNK_SYNOPSIS_API_KEY: "server-secret",
     },
+    workspacePolicy: {
+      workspaceId: identifiers.workspaceId,
+      workspaceConsentEnabled: true,
+      externalAiProcessingEnabled: true,
+      externalAiClassifierEnabled: false,
+      denialReason: null,
+    },
     async fetchImplementation(_url, init) {
       assert.equal(init?.headers?.Authorization, "Bearer server-secret");
       return Response.json({

@@ -28,8 +28,33 @@ test("settings page renders functional account workspace password security and a
   assert.match(client, /Workspace access/);
   assert.match(client, /Team invitations and role management will be added later/);
   assert.match(client, /Security and data handling/);
+  assert.match(client, /External AI processing/);
+  assert.match(client, /Client document processing consent/);
+  assert.match(client, /When disabled, RegSpan does not send client document text to external AI providers/);
+  assert.match(client, /type="checkbox"/);
+  assert.match(client, /window\.confirm/);
   assert.match(client, /AppearanceSettings/);
   assert.doesNotMatch(client, /Data retention|Define retention windows/);
+});
+
+test("workspace external AI consent is owner-scoped, audited, and defaults off", async () => {
+  const [route, migration, workspaceHelper] = await Promise.all([
+    readFile("app/api/workspace/external-ai-processing/route.ts", "utf8"),
+    readFile("supabase/migrations/018_add_workspace_external_ai_processing_consent.sql", "utf8"),
+    readFile("lib/workspaces.ts", "utf8"),
+  ]);
+
+  assert.match(route, /authenticateRequestOrSession/);
+  assert.match(route, /getActorWorkspaceId/);
+  assert.match(route, /workspace\.owner_user_id !== actor\.user\.id/);
+  assert.match(route, /external_ai_processing_enabled: enabled/);
+  assert.match(route, /recordSecurityAuditEvent/);
+  assert.match(route, /previous_enabled/);
+  assert.match(route, /workspace\.external_ai_processing\.update/);
+  assert.match(migration, /018_add_workspace_external_ai_processing_consent/);
+  assert.match(migration, /external_ai_processing_enabled boolean not null default false/);
+  assert.match(workspaceHelper, /externalAiProcessingEnabled/);
+  assert.match(workspaceHelper, /external_ai_processing_enabled === true/);
 });
 
 test("settings profile update preserves auth metadata and validates display name", async () => {

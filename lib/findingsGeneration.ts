@@ -11,6 +11,10 @@ import {
   type GradedEvidenceChunk,
 } from "@/lib/requirementMatching";
 import { createRequirementEvidenceClassifier } from "@/lib/requirementEvidenceClassifier";
+import {
+  loadWorkspaceExternalAiProcessingPolicy,
+} from "@/lib/aiProcessingPolicy";
+import { createEmbeddingProvider } from "@/lib/embeddings";
 import { loadRegSpRequirementsForFindings } from "@/lib/regulatoryControls";
 import { getServerSupabaseAdminClient } from "@/lib/supabase/server";
 
@@ -365,9 +369,22 @@ export async function generateFindingsForWorkspace({
     actorUserId,
     requirementCount: requirements.length,
   });
-  const classifier = createRequirementEvidenceClassifier();
 
   try {
+    const workspaceAiPolicy = await loadWorkspaceExternalAiProcessingPolicy({
+      supabase,
+      workspaceId,
+    });
+    const classifier = createRequirementEvidenceClassifier(
+      process.env,
+      fetch,
+      workspaceAiPolicy,
+    );
+    const embeddingProvider = createEmbeddingProvider(
+      process.env,
+      fetch,
+      workspaceAiPolicy,
+    );
     const generatedFindings: GeneratedRequirementFinding[] = [];
     const storedFindings: StoredFindingResult[] = [];
     for (const requirement of requirements) {
@@ -376,6 +393,7 @@ export async function generateFindingsForWorkspace({
         requirement,
         topK,
         supabase,
+        provider: embeddingProvider,
       });
       const organizationCandidates = candidates.filter(
         (chunk) => chunk.evidence_role === "organization_evidence",

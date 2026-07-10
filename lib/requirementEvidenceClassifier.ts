@@ -1,7 +1,7 @@
 import type { DocumentSourceType, EvidenceRole } from "./documentSource";
 import {
-  isExternalAiClassifierEnabled,
-  isExternalAiProcessingEnabled,
+  createWorkspaceExternalAiProcessingPolicy,
+  type WorkspaceExternalAiProcessingPolicy,
 } from "./aiProcessingPolicy";
 import { detectNegativeEvidence } from "./negativeEvidence";
 import type { RegSpRequirement } from "./regSpRequirements";
@@ -1254,6 +1254,7 @@ export function buildRequirementEvidenceClassifierPrompt(input: RequirementEvide
 export function createRequirementEvidenceClassifier(
   environment: ClassifierEnvironment = process.env,
   fetchImplementation: typeof fetch = fetch,
+  workspacePolicy?: WorkspaceExternalAiProcessingPolicy,
 ): RequirementEvidenceClassifier {
   const requestedProvider = (environment.REQUIREMENT_CLASSIFIER_PROVIDER ?? "heuristic")
     .trim()
@@ -1268,7 +1269,12 @@ export function createRequirementEvidenceClassifier(
     };
   }
 
-  if (!isExternalAiProcessingEnabled(environment) || !isExternalAiClassifierEnabled(environment)) {
+  const externalAiPolicy = createWorkspaceExternalAiProcessingPolicy({
+    workspaceId: workspacePolicy?.workspaceId,
+    workspaceConsentEnabled: workspacePolicy?.workspaceConsentEnabled,
+    environment,
+  });
+  if (!externalAiPolicy.externalAiClassifierEnabled) {
     return {
       provider: "fallback",
       async classify(input) {
@@ -1276,7 +1282,7 @@ export function createRequirementEvidenceClassifier(
         return {
           ...fallback,
           reason:
-            "LLM classifier was requested but external AI classification is disabled by server policy. " +
+            "LLM classifier was requested but external AI classification is disabled by workspace and server policy. " +
             fallback.reason,
         };
       },

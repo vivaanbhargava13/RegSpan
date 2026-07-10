@@ -6,6 +6,7 @@ import {
   EmbeddingProcessingError,
   type EmbeddingProvider,
 } from "@/lib/embeddings";
+import type { WorkspaceExternalAiProcessingPolicy } from "@/lib/aiProcessingPolicy";
 import {
   inferEvidenceRole,
   inferDocumentSourceType,
@@ -41,16 +42,17 @@ type RetrieveRelevantChunksInput = {
   documentId?: string | null;
   supabase?: SupabaseClient;
   provider?: EmbeddingProvider;
+  workspacePolicy?: WorkspaceExternalAiProcessingPolicy;
 };
 
-export async function retrieveRelevantChunks({
-  workspaceId,
-  queryText,
-  topK = 10,
-  documentId = null,
-  supabase = getServerSupabaseAdminClient(),
-  provider = createEmbeddingProvider(),
-}: RetrieveRelevantChunksInput): Promise<RetrievedChunk[]> {
+export async function retrieveRelevantChunks(input: RetrieveRelevantChunksInput): Promise<RetrievedChunk[]> {
+  const {
+    workspaceId,
+    queryText,
+    topK = 10,
+    documentId = null,
+    supabase = getServerSupabaseAdminClient(),
+  } = input;
   const normalizedQuery = queryText.trim();
   if (!isUuid(workspaceId) || (documentId !== null && !isUuid(documentId))) {
     throw new EmbeddingProcessingError(
@@ -73,6 +75,9 @@ export async function retrieveRelevantChunks({
       400,
     );
   }
+
+  const provider = input.provider
+    ?? createEmbeddingProvider(process.env, fetch, input.workspacePolicy);
 
   const [queryEmbedding] = await provider.embedTexts([normalizedQuery]);
   const { data, error } = await supabase.rpc("match_document_chunks_v1", {

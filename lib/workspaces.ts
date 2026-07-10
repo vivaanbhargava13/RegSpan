@@ -5,6 +5,7 @@ export type CurrentWorkspace = {
   name: string;
   ownerUserId: string;
   role: string;
+  externalAiProcessingEnabled: boolean;
 };
 
 export async function getCurrentWorkspace(
@@ -41,7 +42,7 @@ export async function getCurrentWorkspace(
 
   const { data: workspace, error: workspaceError } = await supabase
     .from("workspaces")
-    .select("id, name, owner_user_id")
+    .select("id, name, owner_user_id, external_ai_processing_enabled")
     .eq("id", membership.workspace_id)
     .maybeSingle();
 
@@ -58,5 +59,6 @@ export async function getCurrentWorkspace(
     name: workspace.name,
     ownerUserId: workspace.owner_user_id,
     role: membership.role,
+    externalAiProcessingEnabled: workspace.external_ai_processing_enabled === true,
   };
 }

@@ -204,6 +204,13 @@ test("OpenAI classifier is blocked by server policy unless both AI flags are ena
       fetchCalled = true;
       return Response.json({});
     },
+    {
+      workspaceId: "workspace-1",
+      workspaceConsentEnabled: true,
+      externalAiProcessingEnabled: true,
+      externalAiClassifierEnabled: false,
+      denialReason: "server_policy_disabled",
+    },
   );
 
   assert.equal(classifier.provider, "fallback");
@@ -235,7 +242,7 @@ test("OpenAI classifier is blocked by server policy unless both AI flags are ena
 
   assert.equal(fetchCalled, false);
   assert.equal(result.classifier_provider, "fallback");
-  assert.match(result.reason, /external AI classification is disabled by server policy/);
+  assert.match(result.reason, /external AI classification is disabled by workspace and server policy/);
 });
 
 test("OpenAI classifier downgrades silence-only negative evidence", async () => {
@@ -276,6 +283,13 @@ test("OpenAI classifier downgrades silence-only negative evidence", async () => 
         };
       },
     }),
+    {
+      workspaceId: "workspace-1",
+      workspaceConsentEnabled: true,
+      externalAiProcessingEnabled: true,
+      externalAiClassifierEnabled: true,
+      denialReason: null,
+    },
   );
 
   const result = await classifier.classify(classifierInputForChunk(

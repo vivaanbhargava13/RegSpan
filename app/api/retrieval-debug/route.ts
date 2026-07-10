@@ -6,7 +6,8 @@ import {
   getActorWorkspaceId,
   getCorrelationId,
 } from "@/lib/documentSecurity";
-import { EmbeddingProcessingError } from "@/lib/embeddings";
+import { createEmbeddingProvider, EmbeddingProcessingError } from "@/lib/embeddings";
+import { loadWorkspaceExternalAiProcessingPolicy } from "@/lib/aiProcessingPolicy";
 import { retrieveRelevantChunks } from "@/lib/retrieval";
 import {
   parseRetrievalDebugRequest,
@@ -64,6 +65,15 @@ export async function POST(request: Request) {
     const supabase = getServerSupabaseAdminClient();
     const actor = await authenticateRequest(supabase, request);
     const workspaceId = await getActorWorkspaceId(supabase, actor.user.id);
+    const workspaceAiPolicy = await loadWorkspaceExternalAiProcessingPolicy({
+      supabase,
+      workspaceId,
+    });
+    const embeddingProvider = createEmbeddingProvider(
+      process.env,
+      fetch,
+      workspaceAiPolicy,
+    );
     const parsed = parseRetrievalDebugRequest(await request.json());
     documentId = parsed.documentId;
 
@@ -104,6 +114,7 @@ export async function POST(request: Request) {
       topK: parsed.topK,
       documentId: parsed.documentId,
       supabase,
+      provider: embeddingProvider,
     });
 
     console.info("[RegSpan retrieval] Debug query completed", {

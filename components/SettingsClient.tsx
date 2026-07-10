@@ -51,6 +51,9 @@ export function SettingsClient() {
   const [securityMessage, setSecurityMessage] = useState("");
   const [securityError, setSecurityError] = useState("");
   const [workspaceError, setWorkspaceError] = useState("");
+  const [isSavingExternalAiProcessing, setIsSavingExternalAiProcessing] = useState(false);
+  const [externalAiProcessingMessage, setExternalAiProcessingMessage] = useState("");
+  const [externalAiProcessingError, setExternalAiProcessingError] = useState("");
 
   const email = session?.user.email ?? "";
   const hasProfileChanges = useMemo(() => {
@@ -59,6 +62,9 @@ export function SettingsClient() {
       || profile.lastName !== original.lastName
       || profile.displayName !== original.displayName;
   }, [profile, session]);
+  const canManageExternalAiProcessing = Boolean(
+    session?.user.id && workspace?.ownerUserId === session.user.id,
+  );
 
   useEffect(() => {
     const supabase = getBrowserSupabaseClient();
@@ -185,6 +191,53 @@ export function SettingsClient() {
       }
     } finally {
       setIsSendingReset(false);
+    }
+  }
+
+  async function updateExternalAiProcessing(enabled: boolean) {
+    if (!workspace || !canManageExternalAiProcessing || isSavingExternalAiProcessing) return;
+    if (enabled && !window.confirm(
+      "Enable external AI processing for this workspace? Selected client document text and excerpts may be sent to configured AI providers for future processing and Analysis.",
+    )) {
+      return;
+    }
+
+    setIsSavingExternalAiProcessing(true);
+    setExternalAiProcessingError("");
+    setExternalAiProcessingMessage("");
+
+    try {
+      const response = await fetch("/api/workspace/external-ai-processing", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ enabled }),
+      });
+      const body = (await response.json()) as {
+        error?: string;
+        externalAiProcessingEnabled?: boolean;
+      };
+      if (!response.ok || typeof body.externalAiProcessingEnabled !== "boolean") {
+        throw new Error(body.error || "Unable to update external AI processing.");
+      }
+
+      const externalAiProcessingEnabled = body.externalAiProcessingEnabled;
+
+      setWorkspace((current) => current
+        ? { ...current, externalAiProcessingEnabled }
+        : current);
+      setExternalAiProcessingMessage(
+        externalAiProcessingEnabled
+          ? "External AI processing is enabled for future processing and Analysis."
+          : "External AI processing is disabled for future processing and Analysis.",
+      );
+    } catch (updateError) {
+      setExternalAiProcessingError(
+        updateError instanceof Error
+          ? updateError.message
+          : "Unable to update external AI processing.",
+      );
+    } finally {
+      setIsSavingExternalAiProcessing(false);
     }
   }
 
@@ -323,6 +376,43 @@ export function SettingsClient() {
           </ul>
         </Surface>
       </section>
+
+      <Surface as="section" padding="lg">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-app-subtle">External AI processing</p>
+        <div className="mt-1 flex flex-wrap items-start justify-between gap-4">
+          <div className="max-w-3xl">
+            <h2 className="app-section-title">Client document processing consent</h2>
+            <p id="external-ai-processing-description" className="mt-2 text-sm leading-6 text-app-muted">
+              When disabled, RegSpan does not send client document text to external AI providers. When enabled, selected document text or excerpts may be sent to configured AI providers for embeddings, classification, and summaries. Regulatory reference content may be handled separately. This setting affects future processing and Analysis.
+            </p>
+          </div>
+
+          <label className="flex cursor-pointer items-center gap-3 text-sm font-semibold text-app-text">
+            <span>{workspace?.externalAiProcessingEnabled ? "Enabled" : "Disabled"}</span>
+            <input
+              aria-describedby="external-ai-processing-description"
+              checked={workspace?.externalAiProcessingEnabled === true}
+              className="peer sr-only"
+              disabled={!canManageExternalAiProcessing || isSavingExternalAiProcessing}
+              onChange={(event) => void updateExternalAiProcessing(event.target.checked)}
+              role="switch"
+              type="checkbox"
+            />
+            <span
+              aria-hidden="true"
+              className="relative h-6 w-11 rounded-full bg-app-border-strong transition-colors peer-checked:bg-app-accent peer-disabled:cursor-not-allowed peer-disabled:opacity-60 after:absolute after:left-1 after:top-1 after:size-4 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-5"
+            />
+          </label>
+        </div>
+
+        {!canManageExternalAiProcessing && workspace ? (
+          <p className="mt-4 text-sm text-app-muted">
+            Only the workspace owner can change this setting.
+          </p>
+        ) : null}
+        {externalAiProcessingError ? <Alert className="mt-4" tone="danger">{externalAiProcessingError}</Alert> : null}
+        {externalAiProcessingMessage ? <Alert className="mt-4" tone="success">{externalAiProcessingMessage}</Alert> : null}
+      </Surface>
 
       <AppearanceSettings />
     </div>
