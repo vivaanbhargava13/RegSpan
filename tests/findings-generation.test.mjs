@@ -1841,6 +1841,107 @@ test("production path keeps complementary direct recovery evidence that adds req
   assert.deepEqual(finding.evidence.map((row) => row.quote), [recoveryQuote, remediationQuote]);
 });
 
+test("production path prefers direct recovery evidence over vendor questionnaire evidence", async () => {
+  const recoveryRequirement = {
+    ...requirement,
+    id: "response_recovery_remediation_validation",
+    title: "Response recovery and remediation validation",
+    coverageElements: [
+      { id: "recovery_steps", label: "Defines recovery steps", requiredForCovered: true, signals: ["restoring affected services"] },
+      { id: "remediation_tracking", label: "Tracks remediation", requiredForCovered: true, signals: ["corrective-action tracking", "remediation plan"] },
+      { id: "validation_testing", label: "Validates recovery", requiredForCovered: true, signals: ["validating user access", "recovery evidence"] },
+    ],
+    requiredElementsForCovered: ["recovery_steps", "remediation_tracking", "validation_testing"],
+  };
+  const vendorQuote =
+    "The vendor incident questionnaire requires affected systems, data categories, date of discovery, containment status, forensic support, customer notification support, remediation plan, and recovery evidence.";
+  const recoveryQuote =
+    "Incident recovery procedures require restoring affected services and validating user access before business restart.";
+  const closureQuote =
+    "Corrective-action tracking records remediation tasks, closure approval, and validation evidence.";
+
+  const finding = await productionPathFinding(recoveryRequirement, [
+    chunk({
+      chunk_id: "60606060-6060-4060-8060-606060606060",
+      section_path: "Customer notification content requirements",
+      content_preview: vendorQuote,
+      rerank_score: 99,
+    }),
+    chunk({
+      chunk_id: "61616161-6161-4161-8161-616161616161",
+      section_path: "Incident recovery procedures",
+      content_preview: recoveryQuote,
+    }),
+    chunk({
+      chunk_id: "62626262-6262-4262-8262-626262626262",
+      section_path: "Corrective action closure review",
+      content_preview: closureQuote,
+    }),
+  ], [
+    classifierClassification({
+      covered_elements: ["recovery_steps", "remediation_tracking", "validation_testing"],
+      supporting_quote: vendorQuote,
+    }),
+    classifierClassification({
+      covered_elements: ["recovery_steps", "validation_testing"],
+      supporting_quote: recoveryQuote,
+    }),
+    classifierClassification({
+      covered_elements: ["remediation_tracking", "validation_testing"],
+      supporting_quote: closureQuote,
+    }),
+  ]);
+
+  assert.equal(finding.status, "covered");
+  assert.deepEqual(finding.evidence.map((row) => row.quote), [recoveryQuote, closureQuote]);
+  assert.notEqual(finding.evidence[0].quote, vendorQuote);
+});
+
+test("production path prefers direct assessment and containment evidence over vendor questionnaire evidence", async () => {
+  const assessmentRequirement = {
+    ...requirement,
+    id: "incident_assessment_containment_control",
+    title: "Incident assessment and containment",
+    coverageElements: [
+      { id: "assesses_scope", label: "Assesses nature and scope", requiredForCovered: true, signals: ["assesses the nature and scope"] },
+      { id: "customer_information_systems", label: "Identifies affected systems", requiredForCovered: true, signals: ["affected customer information systems", "information types"] },
+      { id: "containment_control", label: "Requires containment", requiredForCovered: true, signals: ["containment and control"] },
+    ],
+    requiredElementsForCovered: ["assesses_scope", "customer_information_systems", "containment_control"],
+  };
+  const vendorQuote =
+    "The vendor questionnaire collects affected systems, data categories, date of discovery, containment status, and customer impact assessment.";
+  const directQuote =
+    "Incident intake and triage assesses the nature and scope of unauthorized access, identifies affected customer information systems and information types, and starts containment and control steps.";
+
+  const finding = await productionPathFinding(assessmentRequirement, [
+    chunk({
+      chunk_id: "63636363-6363-4363-8363-636363636363",
+      section_path: "Vendor incident questionnaire",
+      content_preview: vendorQuote,
+      rerank_score: 99,
+    }),
+    chunk({
+      chunk_id: "64646464-6464-4464-8464-646464646464",
+      section_path: "Incident intake and triage assessment",
+      content_preview: directQuote,
+    }),
+  ], [
+    classifierClassification({
+      covered_elements: ["customer_information_systems", "containment_control"],
+      supporting_quote: vendorQuote,
+    }),
+    classifierClassification({
+      covered_elements: ["assesses_scope", "customer_information_systems", "containment_control"],
+      supporting_quote: directQuote,
+    }),
+  ]);
+
+  assert.equal(finding.status, "covered");
+  assert.equal(finding.evidence.length, 1);
+  assert.equal(finding.evidence[0].quote, directQuote);
+});
+
 test("production path keeps complementary written compliance record evidence", async () => {
   const recordsRequirement = {
     ...requirement,
@@ -1883,6 +1984,37 @@ test("production path keeps complementary written compliance record evidence", a
   assert.equal(finding.status, "covered");
   assert.equal(finding.evidence.length, 2);
   assert.deepEqual(finding.evidence.map((row) => row.quote), [complianceQuote, disposalQuote]);
+});
+
+test("production path keeps vendor questionnaire evidence for service-provider requirements", async () => {
+  const vendorRequirement = {
+    ...requirement,
+    id: "service_provider_incident_oversight_notice",
+    title: "Service provider incident oversight and notice",
+    coverageElements: [
+      { id: "service_provider_scope", label: "Applies to service providers", requiredForCovered: true, signals: ["service providers", "vendor"] },
+      { id: "notice_to_firm", label: "Requires notice to the firm", requiredForCovered: true, signals: ["report affected systems", "date of discovery"] },
+      { id: "cooperation_remediation", label: "Requires cooperation", requiredForCovered: true, signals: ["forensic support", "remediation plan", "recovery evidence"] },
+    ],
+    requiredElementsForCovered: ["service_provider_scope", "notice_to_firm", "cooperation_remediation"],
+  };
+  const vendorQuote =
+    "The vendor incident questionnaire requires service providers to report affected systems, data categories, date of discovery, containment status, forensic support, remediation plan, and recovery evidence.";
+
+  const finding = await productionPathFinding(vendorRequirement, [
+    chunk({
+      section_path: "Service provider oversight questionnaire",
+      content_preview: vendorQuote,
+    }),
+  ], [
+    classifierClassification({
+      covered_elements: ["service_provider_scope", "notice_to_firm", "cooperation_remediation"],
+      supporting_quote: vendorQuote,
+    }),
+  ]);
+
+  assert.equal(finding.status, "covered");
+  assert.equal(finding.evidence[0].quote, vendorQuote);
 });
 
 test("production path rejects current-page-focus scaffolding as primary evidence", async () => {

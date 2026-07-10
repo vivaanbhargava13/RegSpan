@@ -923,9 +923,18 @@ function requirementSectionPreferences(requirement: RegSpRequirement) {
       return {
         preferred: [
           "written incident response program",
+          "incident intake",
+          "incident triage",
+          "triage",
           "assessment of unauthorized access or use",
+          "assessment",
+          "nature and scope",
+          "affected systems",
+          "affected information",
+          "containment",
+          "control",
         ],
-        disfavored: ["vendor", "service provider", "supplier", "third party"],
+        disfavored: ["vendor", "service provider", "supplier", "third party", "customer notification"],
       };
     case "evidence_log_preservation":
       return {
@@ -959,7 +968,36 @@ function requirementSectionPreferences(requirement: RegSpRequirement) {
       return {
         preferred: [
           "incident recovery and remediation validation",
+          "incident recovery",
+          "recovery",
+          "remediation validation",
+          "remediation",
+          "validation",
+          "corrective action",
+          "corrective-action",
+          "closure",
+          "restoration",
+          "restore affected services",
+          "post-incident review",
           "post-incident review and lessons learned",
+        ],
+        disfavored: ["vendor", "service provider", "supplier", "third party", "customer notification"],
+      };
+    case "written_compliance_records":
+      return {
+        preferred: [
+          "records",
+          "recordkeeping",
+          "retention",
+          "register",
+          "documentation",
+          "evidence",
+          "worksheet",
+          "review",
+          "approval",
+          "notice records",
+          "incident records",
+          "compliance records",
         ],
         disfavored: ["vendor", "service provider", "supplier", "third party"],
       };
@@ -987,6 +1025,22 @@ function sectionPreferenceWeight(requirement: RegSpRequirement, chunk: GradedEvi
   return preferredHits * 45 - disfavoredHits * 35;
 }
 
+function vendorAdjacentPenalty(requirement: RegSpRequirement, chunk: GradedEvidenceChunk) {
+  const requirementId = copyRequirementId(requirement);
+  if (requirementId === "vendor_incident_handling") return 0;
+  const text = textForWeighting(chunk);
+  const vendorHits = [
+    "vendor",
+    "service provider",
+    "supplier",
+    "third party",
+    "third-party",
+    "questionnaire",
+  ].filter((signal) => text.includes(signal)).length;
+  if (vendorHits === 0) return 0;
+  return -70 - Math.min(vendorHits, 3) * 20;
+}
+
 function evidenceWeight(requirement: RegSpRequirement, chunk: GradedEvidenceChunk) {
   const text = textForWeighting(chunk);
   let weight = chunk.rerank_score ?? 0;
@@ -999,6 +1053,7 @@ function evidenceWeight(requirement: RegSpRequirement, chunk: GradedEvidenceChun
   weight += signalWeight(requirement, chunk) * 8;
   weight += quoteSupportedElementIds(requirement, chunk).length * 80;
   weight += sectionPreferenceWeight(requirement, chunk);
+  weight += vendorAdjacentPenalty(requirement, chunk);
   if (chunk.classifier_confidence === "high") weight += 10;
   if (text.includes("incident response policy") || text.includes("response standard")) weight += 18;
   if (text.includes("privacy policy") || text.includes("safeguards program")) weight += 12;
