@@ -1524,6 +1524,177 @@ test("production path does not cover incident evidence preservation from inciden
   assert.equal(finding.evidence.length, 0);
 });
 
+test("production path avoids heading and fragment boundaries in incident-assessment quotes", async () => {
+  const assessmentRequirement = {
+    ...requirement,
+    id: "incident_assessment_containment_control",
+    title: "Incident assessment and containment",
+    coverageElements: [
+      { id: "assesses_scope", label: "Assesses unauthorized access", requiredForCovered: true, signals: ["assessment identifies"] },
+      { id: "customer_information_systems", label: "Identifies affected systems", requiredForCovered: true, signals: ["customer information systems", "information types"] },
+      { id: "containment_control", label: "Contains the incident", requiredForCovered: true, signals: ["containment and control"] },
+    ],
+    requiredElementsForCovered: ["assesses_scope", "customer_information_systems", "containment_control"],
+  };
+  const content = [
+    "The assessment identifies affected platforms.",
+    "",
+    "Containment, control, and preservation of affected systems",
+    "",
+    "systems and information types.",
+    "The assessment identifies affected customer information systems and information types.",
+    "The incident team takes containment and control steps to prevent additional unauthorized access or use.",
+  ].join("\n");
+
+  const finding = await productionPathFinding(assessmentRequirement, [
+    chunk({ content_preview: content }),
+  ], [
+    classifierClassification({
+      covered_elements: ["assesses_scope", "customer_information_systems", "containment_control"],
+      supporting_quote:
+        "platforms.\n\nContainment, control, and preservation of affected systems\n\nsystems and information types.",
+    }),
+  ]);
+
+  assert.equal(finding.status, "covered");
+  assert.match(finding.evidence[0].quote ?? "", /^The assessment identifies affected customer information systems/);
+  assert.match(finding.evidence[0].quote ?? "", /\.$/);
+  assert.doesNotMatch(finding.evidence[0].quote ?? "", /Containment, control, and preservation of affected systems/);
+  assert.doesNotMatch(finding.evidence[0].quote ?? "", /^platforms/i);
+});
+
+test("production path starts preservation quotes at the retention sentence", async () => {
+  const preservationRequirement = {
+    ...requirement,
+    id: "incident_evidence_log_preservation",
+    title: "Incident evidence and log preservation",
+    coverageElements: [
+      {
+        id: "incident_materials",
+        label: "Preserves incident logs, evidence, or investigation materials",
+        requiredForCovered: true,
+        signals: ["investigation materials", "incident record"],
+      },
+    ],
+    requiredElementsForCovered: ["incident_materials"],
+  };
+  const content =
+    "Incident records document categories, containment actions, and closure approval. Investigation materials are retained with the incident record for seven years.";
+
+  const finding = await productionPathFinding(preservationRequirement, [
+    chunk({ content_preview: content }),
+  ], [
+    classifierClassification({
+      covered_elements: ["incident_materials"],
+      supporting_quote:
+        "categories, containment actions, and closure approval. Investigation materials are retained with the incident record",
+    }),
+  ]);
+
+  assert.equal(finding.status, "covered");
+  assert.equal(finding.evidence[0].quote, "Investigation materials are retained with the incident record for seven years.");
+});
+
+test("production path omits truncated recovery follow-on sentences", async () => {
+  const recoveryRequirement = {
+    ...requirement,
+    id: "response_recovery_remediation_validation",
+    title: "Response recovery and remediation validation",
+    coverageElements: [
+      { id: "recovery_steps", label: "Defines recovery steps", requiredForCovered: true, signals: ["restoring affected services"] },
+      { id: "remediation_tracking", label: "Tracks remediation", requiredForCovered: true, signals: ["confirming remediation tasks"] },
+      { id: "validation_testing", label: "Validates remediation", requiredForCovered: true, signals: ["validating user access"] },
+    ],
+    requiredElementsForCovered: ["recovery_steps", "remediation_tracking", "validation_testing"],
+  };
+  const goodSentence =
+    "Recovery activities include restoring affected services, validating user access, confirming remediation tasks, and\ndocumenting remaining open issues.";
+  const content = `${goodSentence} Validation steps are defined for major incidents but are less complete for`;
+
+  const finding = await productionPathFinding(recoveryRequirement, [
+    chunk({ content_preview: content }),
+  ], [
+    classifierClassification({
+      covered_elements: ["recovery_steps", "remediation_tracking", "validation_testing"],
+      supporting_quote: content,
+    }),
+  ]);
+
+  assert.equal(finding.status, "covered");
+  assert.equal(finding.evidence[0].quote, goodSentence);
+  assert.doesNotMatch(finding.evidence[0].quote ?? "", /\bfor$/);
+});
+
+test("production path expands written incident response quote to full sentence", async () => {
+  const writtenRequirement = {
+    ...requirement,
+    id: "written_incident_response_program",
+    title: "Written incident response program",
+    coverageElements: [
+      { id: "written_program", label: "Maintains a written incident response program", requiredForCovered: true, signals: ["maintains a written incident response procedure"] },
+      { id: "customer_information_scope", label: "Applies to customer information", requiredForCovered: true, signals: ["customer information"] },
+    ],
+    requiredElementsForCovered: ["written_program", "customer_information_scope"],
+  };
+  const content =
+    "Meridian Valley Securities Inc. maintains a written incident response procedure for events involving customer information systems and sensitive customer records.";
+
+  const finding = await productionPathFinding(writtenRequirement, [
+    chunk({ content_preview: content }),
+  ], [
+    classifierClassification({
+      covered_elements: ["written_program", "customer_information_scope"],
+      supporting_quote:
+        "Meridian Valley Securities Inc. maintains a written incident response procedure for events involving customer",
+    }),
+  ]);
+
+  assert.equal(finding.status, "covered");
+  assert.equal(finding.evidence[0].quote, content);
+});
+
+test("production path suppresses adjacent partial rows that add no required-element coverage", async () => {
+  const writtenRequirement = {
+    ...requirement,
+    id: "written_incident_response_program",
+    title: "Written incident response program",
+    coverageElements: [
+      { id: "written_program", label: "Maintains a written incident response program", requiredForCovered: true, signals: ["written incident response procedure"] },
+      { id: "customer_information_scope", label: "Applies to customer information", requiredForCovered: true, signals: ["customer information"] },
+    ],
+    requiredElementsForCovered: ["written_program", "customer_information_scope"],
+  };
+  const directContent =
+    "The firm maintains a written incident response procedure for events involving customer information systems and customer records.";
+  const adjacentContent =
+    "Vendor safeguards documentation references customer information but does not define the written incident response procedure.";
+
+  const finding = await productionPathFinding(writtenRequirement, [
+    chunk({ content_preview: directContent }),
+    chunk({
+      chunk_id: "45454545-4545-4454-8454-454545454545",
+      content_preview: adjacentContent,
+      section_path: "Vendor safeguards review",
+    }),
+  ], [
+    classifierClassification({
+      covered_elements: ["written_program", "customer_information_scope"],
+      supporting_quote: directContent,
+    }),
+    classifierClassification({
+      relationship: "partially_supports",
+      requirement_supported: false,
+      covered_elements: ["customer_information_scope"],
+      missing_elements: ["written_program"],
+      supporting_quote: adjacentContent,
+    }),
+  ]);
+
+  assert.equal(finding.status, "covered");
+  assert.equal(finding.evidence.length, 1);
+  assert.equal(finding.evidence[0].quote, directContent);
+});
+
 test("findings generation schema and routes preserve workspace/security boundaries", async () => {
   const [migration, generator, route, generateRoute] = await Promise.all([
     readFile("supabase/migrations/016_create_findings_generation_tables.sql", "utf8"),

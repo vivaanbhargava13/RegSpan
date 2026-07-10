@@ -118,18 +118,42 @@ function trimSpan(rawText: string, start: number, end: number): TextSpan | null 
 
 function sourceSentenceSpans(rawText: string): TextSpan[] {
   const spans: TextSpan[] = [];
-  const linePattern = /[^\n]+/g;
-  for (const lineMatch of rawText.matchAll(linePattern)) {
-    const line = lineMatch[0];
-    const lineStart = lineMatch.index ?? 0;
-    const sentencePattern = /[^.!?]+[.!?]?/g;
-    for (const sentenceMatch of line.matchAll(sentencePattern)) {
-      const sentenceStart = lineStart + (sentenceMatch.index ?? 0);
-      const span = trimSpan(rawText, sentenceStart, sentenceStart + sentenceMatch[0].length);
-      if (span) spans.push(span);
-    }
+  const sentencePattern = /[^.!?]+[.!?]/g;
+  for (const sentenceMatch of rawText.matchAll(sentencePattern)) {
+    const sentenceStart = sentenceMatch.index ?? 0;
+    const span = trimSpan(rawText, sentenceStart, sentenceStart + sentenceMatch[0].length);
+    if (span) spans.push(trimHeadingBoundaryLines(span));
   }
   return spans;
+}
+
+function trimHeadingBoundaryLines(span: TextSpan): TextSpan {
+  const linePattern = /[^\n]+/g;
+  const lines = [...span.text.matchAll(linePattern)]
+    .map((lineMatch) => {
+      const start = span.start + (lineMatch.index ?? 0);
+      return trimSpan(span.text, lineMatch.index ?? 0, (lineMatch.index ?? 0) + lineMatch[0].length)
+        ? {
+          text: lineMatch[0].trim(),
+          start,
+          end: start + lineMatch[0].length,
+        }
+        : null;
+    })
+    .filter((line): line is TextSpan => Boolean(line));
+
+  let first = 0;
+  let last = lines.length - 1;
+  while (first <= last && looksLikeHeadingOnly(lines[first].text)) first += 1;
+  while (last >= first && looksLikeHeadingOnly(lines[last].text)) last -= 1;
+  if (first > last) return span;
+  return trimSpan(span.text, lines[first].start - span.start, lines[last].end - span.start)
+    ? {
+      text: span.text.slice(lines[first].start - span.start, lines[last].end - span.start).trim(),
+      start: lines[first].start,
+      end: lines[last].end,
+    }
+    : span;
 }
 
 function escapeRegExp(value: string) {
@@ -170,6 +194,7 @@ function sourceSpanBetween(rawText: string, first: TextSpan, last: TextSpan) {
 function looksLikeHeadingOnly(value: string) {
   const trimmed = value.trim();
   if (!trimmed) return true;
+  if (/[.!?]$/.test(trimmed)) return false;
   if (/[;:!?]/.test(trimmed)) return false;
   if (trimmed.includes("\n")) return false;
   if (/\b(?:does not|doesn['’]?t|do not|outside the scope|out of scope|lacks?|missing|defined in|established in|handled in|covered in|addressed in|documented in|specified in|reserved for)\b/i.test(trimmed)) {
@@ -180,11 +205,19 @@ function looksLikeHeadingOnly(value: string) {
 }
 
 function hasDanglingEnding(value: string) {
-  return /\b(?:and|or|but|with|including|such as|assigns|requires|defines|includes|provides)\s*$/i.test(value.trim());
+  return /\b(?:and|or|but|with|including|such as|assigns|requires|defines|includes|provides|for|of|to|approved)\s*$/i.test(value.trim());
 }
 
 function startsWithContinuationFragment(value: string) {
   return /^(?:and|or|but|while|when|where|because|including|such as|with|to|for|of|as)\b/.test(value.trim());
+}
+
+function startsWithLowercaseFragment(value: string) {
+  return /^[a-z]/.test(value.trim());
+}
+
+function endsAtSentenceBoundary(value: string) {
+  return /[.!?]["')\]]?$/.test(value.trim());
 }
 
 function substantiveQuoteText(value: string) {
@@ -200,9 +233,11 @@ function substantiveQuoteText(value: string) {
 function hasSubstantiveQuoteShape(value: string) {
   const substantiveText = substantiveQuoteText(value);
   return quoteWordCount(substantiveText) >= 5
+    && endsAtSentenceBoundary(substantiveText)
     && !looksLikeHeadingOnly(substantiveText)
     && !hasDanglingEnding(substantiveText)
-    && !startsWithContinuationFragment(value);
+    && !startsWithContinuationFragment(substantiveText)
+    && !startsWithLowercaseFragment(substantiveText);
 }
 
 const additionalElementSignals: Partial<Record<RegSpRequirementId, Record<string, string[]>>> = {
@@ -408,9 +443,10 @@ function quoteQualityScore(quote: string) {
     score -= 35;
   }
   if (startsWithContinuationFragment(quote)) score -= 60;
+  if (startsWithLowercaseFragment(substantiveText)) score -= 60;
   if (hasDanglingEnding(quote)) score -= 50;
+  if (!endsAtSentenceBoundary(substantiveText)) score -= 80;
   if (looksLikeHeadingOnly(substantiveText)) score -= 80;
-  score += Math.min(quoteWordCount(substantiveText), 80) * 0.5;
   return score;
 }
 
@@ -1160,8 +1196,17 @@ function curateEvidenceChunks({
       return curationWeight(requirement, rightChunk) - curationWeight(requirement, leftChunk);
     });
 
+  const selectedSupportElements = new Set<string>();
   for (const entry of supportedEntries) {
-    addUniqueChunk(selected, entry.supportChunk);
+    const supportChunk = entry.supportChunk;
+    const supportedElements = supportChunk ? quoteSupportedElementIds(requirement, supportChunk) : [];
+    const addsRequiredElement = supportedElements.some((elementId) => !selectedSupportElements.has(elementId));
+    if (addsRequiredElement) {
+      addUniqueChunk(selected, supportChunk);
+      for (const elementId of supportedElements) {
+        selectedSupportElements.add(elementId);
+      }
+    }
     if (selected.length >= 3) return selected;
   }
 
