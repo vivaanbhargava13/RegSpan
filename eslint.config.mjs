@@ -1,22 +1,20 @@
-import { FlatCompat } from "@eslint/eslintrc";
-import js from "@eslint/js";
-import { dirname } from "path";
-import { fileURLToPath } from "url";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const compat = new FlatCompat({
-  baseDirectory: __dirname,
-  recommendedConfig: js.configs.recommended,
-  allConfig: js.configs.all,
-});
+import nextCoreWebVitals from "eslint-config-next/core-web-vitals";
+import nextTypeScript from "eslint-config-next/typescript";
 
 const eslintConfig = [
+  ...nextCoreWebVitals,
+  ...nextTypeScript,
+  {
+    rules: {
+      // These React Compiler checks were introduced by the Next 16 config.
+      // Keep the established lint policy until the affected UI flows are refactored.
+      "react-hooks/immutability": "off",
+      "react-hooks/set-state-in-effect": "off",
+    },
+  },
   {
     ignores: [".next/**", "node_modules/**", "out/**", "next-env.d.ts"],
   },
-  ...compat.extends("next/core-web-vitals", "next/typescript"),
 ];
 
 export default eslintConfig;

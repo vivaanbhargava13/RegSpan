@@ -106,8 +106,8 @@ test("debug pages and sidebar links are hidden unless internal debug is enabled"
   assert.match(requirementPage, /notFound\(\)/);
 });
 
-test("middleware matcher includes internal debug pages", async () => {
-  const middleware = await readFile("middleware.ts", "utf8");
+test("proxy matcher includes internal debug pages", async () => {
+  const middleware = await readFile("proxy.ts", "utf8");
 
   assert.match(middleware, /"\/retrieval-debug\/:path\*"/);
   assert.match(middleware, /"\/requirement-debug\/:path\*"/);
