@@ -251,6 +251,31 @@ function hasScaffoldingLine(value: string) {
     .some(isScaffoldingQuote);
 }
 
+function isOrphanFragmentLine(value: string) {
+  const text = value.trim();
+  if (!text) return true;
+  if (!endsAtSentenceBoundary(text)) return false;
+  if (startsWithContinuationFragment(text) || startsWithLowercaseFragment(text)) return true;
+  if (/^(?:systems|information|types|records|scripts|resources|materials|actions|platforms|repositories)\b/i.test(text)
+    && quoteWordCount(text) <= 6) {
+    return true;
+  }
+  return false;
+}
+
+function hasInternalNonEvidenceLine(value: string) {
+  const lines = value.split("\n");
+  const nonEmptyCount = lines.filter((line) => line.trim()).length;
+  if (nonEmptyCount <= 1) return false;
+  return lines.some((line, index) => {
+    const text = line.trim();
+    if (!text) return false;
+    if (looksLikeHeadingOnly(text) || isScaffoldingQuote(text)) return true;
+    const previousLine = lines[index - 1]?.trim() ?? "";
+    return isOrphanFragmentLine(text) && (!previousLine || index === 0);
+  });
+}
+
 function hasSubstantiveQuoteShape(value: string) {
   const substantiveText = substantiveQuoteText(value);
   return quoteWordCount(substantiveText) >= 5
@@ -258,6 +283,7 @@ function hasSubstantiveQuoteShape(value: string) {
     && !looksLikeHeadingOnly(substantiveText)
     && !isScaffoldingQuote(substantiveText)
     && !hasScaffoldingLine(value)
+    && !hasInternalNonEvidenceLine(value)
     && !hasDanglingEnding(substantiveText)
     && !startsWithContinuationFragment(substantiveText)
     && !startsWithLowercaseFragment(substantiveText);
@@ -340,27 +366,81 @@ const additionalElementSignals: Partial<Record<RegSpRequirementId, Record<string
     ],
   },
   customer_information_safeguards: {
+    customer_information_scope: [
+      "customer information systems",
+      "customer information system",
+      "customer information repositories",
+      "customer information records",
+    ],
     safeguards_controls: [
       "access approval",
+      "role-based access",
+      "multifactor authentication",
+      "multi-factor authentication",
       "periodic access review",
       "privileged access review",
+      "privileged access logging",
+      "change management",
       "failed authentication",
       "unusual downloads",
       "high-risk transfers",
+      "encryption in transit",
+      "encryption at rest",
       "encrypted",
       "encryption",
     ],
   },
   safeguards_customer_information: {
+    customer_information_scope: [
+      "customer information systems",
+      "customer information system",
+      "customer information repositories",
+      "customer information records",
+    ],
     safeguards_controls: [
       "access approval",
+      "role-based access",
+      "multifactor authentication",
+      "multi-factor authentication",
       "periodic access review",
       "privileged access review",
+      "privileged access logging",
+      "change management",
       "failed authentication",
       "unusual downloads",
       "high-risk transfers",
+      "encryption in transit",
+      "encryption at rest",
       "encrypted",
       "encryption",
+    ],
+  },
+  customer_notification_content: {
+    incident_description: [
+      "incident description",
+      "description of the incident",
+      "description of what happened",
+      "what happened",
+      "plain language",
+    ],
+    information_involved: [
+      "affected information",
+      "information involved",
+      "information involved when known",
+      "sensitive customer information involved",
+    ],
+    protective_steps: [
+      "protective steps",
+      "actions customers can take",
+      "actions customers can take to protect themselves",
+      "account-protection resources",
+      "account protection resources",
+      "credit monitoring",
+      "remediation resources",
+    ],
+    contact_information: [
+      "contact information",
+      "contact information for questions",
     ],
   },
   customer_notification_unauthorized_access: {
@@ -383,10 +463,21 @@ const additionalElementSignals: Partial<Record<RegSpRequirementId, Record<string
       "restoring affected services",
       "restore affected services",
       "restoring services",
+      "service restoration",
+      "business restart",
+    ],
+    remediation_tracking: [
+      "remediation tracking",
+      "corrective-action tracking",
+      "corrective action tracking",
+      "remediation tasks",
+      "corrective actions",
+      "closure criteria",
     ],
     validation_testing: [
       "validating user access",
       "validating access",
+      "validation evidence",
       "validation",
     ],
   },
@@ -396,11 +487,46 @@ const additionalElementSignals: Partial<Record<RegSpRequirementId, Record<string
       "restoring affected services",
       "restore affected services",
       "restoring services",
+      "service restoration",
+      "business restart",
+    ],
+    remediation_tracking: [
+      "remediation tracking",
+      "corrective-action tracking",
+      "corrective action tracking",
+      "remediation tasks",
+      "corrective actions",
+      "closure criteria",
     ],
     validation_testing: [
       "validating user access",
       "validating access",
+      "validation evidence",
       "validation",
+    ],
+  },
+  written_compliance_records: {
+    compliance_record_scope: [
+      "written compliance records",
+      "records documenting compliance",
+      "compliance review materials",
+      "compliance records",
+    ],
+    notice_determination_records: [
+      "notification determinations",
+      "notice determinations",
+      "incident determinations",
+      "customer notices",
+      "notice records",
+      "incident records",
+    ],
+    retention_accessibility: [
+      "retained",
+      "retention",
+      "retention schedule",
+      "accessible storage",
+      "disposal register",
+      "certificates of destruction",
     ],
   },
 };
@@ -613,8 +739,27 @@ function finalizedEvidenceRelationship(
   requirement: RegSpRequirement,
   chunk: GradedEvidenceChunk,
 ): GradedEvidenceChunk["evidence_relationship"] {
-  if (chunk.evidence_relationship !== "supports") {
+  if (chunk.evidence_relationship === "supports") {
+    return "supports";
+  }
+  if (chunk.evidence_relationship !== "partially_supports") {
     return chunk.evidence_relationship;
+  }
+  const supportedElements = quoteSupportedElementIds(requirement, chunk);
+  return requirement.requiredElementsForCovered.every((elementId) => supportedElements.includes(elementId))
+    ? "supports"
+    : "partially_supports";
+}
+
+function finalSupportRelationship(
+  requirement: RegSpRequirement,
+  chunk: GradedEvidenceChunk,
+): ElementCoverageRelationship {
+  if (chunk.evidence_relationship === "supports") {
+    return "supports";
+  }
+  if (chunk.evidence_relationship !== "partially_supports") {
+    return chunk.evidence_relationship === "negative_evidence" ? "negative_evidence" : "missing";
   }
   const supportedElements = quoteSupportedElementIds(requirement, chunk);
   return requirement.requiredElementsForCovered.every((elementId) => supportedElements.includes(elementId))
@@ -1188,7 +1333,7 @@ function buildElementCoverageLedger(
     ) ?? null;
     let relationship: ElementCoverageRelationship = "missing";
     if (supportChunk) {
-      relationship = supportChunk.evidence_relationship === "supports" ? "supports" : "partially_supports";
+      relationship = finalSupportRelationship(requirement, supportChunk);
     } else if (negativeChunk) {
       relationship = "negative_evidence";
     }

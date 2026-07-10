@@ -1110,12 +1110,12 @@ test("recovery evidence curation prefers substantive recovery activity quotes ov
 
   const finding = aggregateFindingForRequirement(recoveryRequirement, [weakFragment, substantive]);
 
-  assert.equal(finding.status, "partial");
+  assert.equal(finding.status, "covered");
   assert.equal(
     finding.evidence[0].quote,
     "Recovery activities include restoring affected services, validating user access, confirming remediation tasks, and documenting remaining open issues.",
   );
-  assert.match(finding.remediation, /corrective-action tracking/);
+  assert.equal(finding.evidence[0].relationship, "supports");
 });
 
 test("safeguards curation prefers access approval, periodic review, and encryption evidence", () => {
@@ -1693,6 +1693,196 @@ test("production path suppresses adjacent partial rows that add no required-elem
   assert.equal(finding.status, "covered");
   assert.equal(finding.evidence.length, 1);
   assert.equal(finding.evidence[0].quote, directContent);
+});
+
+test("production path covers strong customer notification content from one substantive quote", async () => {
+  const noticeContentRequirement = {
+    ...requirement,
+    id: "customer_notification_content",
+    title: "Customer notification content",
+    coverageElements: [
+      { id: "incident_description", label: "Requires an incident description", requiredForCovered: true, signals: ["description of the incident"] },
+      { id: "information_involved", label: "Identifies affected information", requiredForCovered: true, signals: ["information involved"] },
+      { id: "protective_steps", label: "Includes protective steps", requiredForCovered: true, signals: ["protective steps", "account-protection resources"] },
+      { id: "contact_information", label: "Provides contact information", requiredForCovered: true, signals: ["contact information"] },
+    ],
+    requiredElementsForCovered: ["incident_description", "information_involved", "protective_steps", "contact_information"],
+  };
+  const quote =
+    "Each notice must include a description of the incident in plain language, the information involved when known, steps taken by the firm, actions customers can take to protect themselves, contact information, and any credit monitoring or account-protection resources approved for the event.";
+
+  const finding = await productionPathFinding(noticeContentRequirement, [
+    chunk({
+      content_preview: quote,
+    }),
+  ], [
+    classifierClassification({
+      relationship: "partially_supports",
+      requirement_supported: false,
+      covered_elements: ["incident_description", "information_involved"],
+      missing_elements: ["protective_steps", "contact_information"],
+      supporting_quote: quote,
+    }),
+  ]);
+
+  assert.equal(finding.status, "covered");
+  assert.equal(finding.evidence[0].relationship, "supports");
+  assert.equal(finding.evidence[0].quote, quote);
+});
+
+test("production path covers strong safeguards controls from one substantive quote", async () => {
+  const safeguardsRequirement = {
+    ...requirement,
+    id: "safeguards_customer_information",
+    title: "Safeguards for customer information",
+    coverageElements: [
+      { id: "customer_information_scope", label: "Applies safeguards to customer information systems", requiredForCovered: true, signals: ["customer information systems"] },
+      { id: "safeguards_controls", label: "Defines administrative or technical safeguards", requiredForCovered: true, signals: ["role-based access", "multifactor authentication", "encryption", "periodic access review"] },
+    ],
+    requiredElementsForCovered: ["customer_information_scope", "safeguards_controls"],
+  };
+  const quote =
+    "Customer information systems require role-based access, multifactor authentication where available, encryption in transit, encryption at rest for approved repositories, privileged access logging, change management, and periodic access review.";
+
+  const finding = await productionPathFinding(safeguardsRequirement, [
+    chunk({ content_preview: quote }),
+  ], [
+    classifierClassification({
+      relationship: "partially_supports",
+      requirement_supported: false,
+      covered_elements: ["safeguards_controls"],
+      missing_elements: ["customer_information_scope"],
+      supporting_quote: quote,
+    }),
+  ]);
+
+  assert.equal(finding.status, "covered");
+  assert.equal(finding.evidence[0].relationship, "supports");
+  assert.equal(finding.evidence[0].quote, quote);
+});
+
+test("production path rejects mixed internal heading and orphan-fragment contamination", async () => {
+  const assessmentRequirement = {
+    ...requirement,
+    id: "incident_assessment_containment_control",
+    title: "Incident assessment and containment",
+    coverageElements: [
+      { id: "assesses_scope", label: "Assesses unauthorized access", requiredForCovered: true, signals: ["assesses unauthorized access"] },
+      { id: "customer_information_systems", label: "Identifies affected systems", requiredForCovered: true, signals: ["affected customer information systems", "information types"] },
+      { id: "containment_control", label: "Contains the incident", requiredForCovered: true, signals: ["containment and control"] },
+    ],
+    requiredElementsForCovered: ["assesses_scope", "customer_information_systems", "containment_control"],
+  };
+  const cleanQuote =
+    "The incident team assesses unauthorized access, identifies affected customer information systems and information types, and performs containment and control steps.";
+  const content = [
+    "Incident intake, triage, and escalation",
+    "",
+    "systems and information types.",
+    cleanQuote,
+  ].join("\n");
+
+  const finding = await productionPathFinding(assessmentRequirement, [
+    chunk({ content_preview: content }),
+  ], [
+    classifierClassification({
+      covered_elements: ["assesses_scope", "customer_information_systems", "containment_control"],
+      supporting_quote: "Incident intake, triage, and escalation\n\nsystems and information types.",
+    }),
+  ]);
+
+  assert.equal(finding.status, "covered");
+  assert.equal(finding.evidence[0].quote, cleanQuote);
+  assert.doesNotMatch(finding.evidence[0].quote ?? "", /Incident intake, triage, and escalation/);
+  assert.doesNotMatch(finding.evidence[0].quote ?? "", /^systems and information types/i);
+});
+
+test("production path keeps complementary direct recovery evidence that adds required coverage", async () => {
+  const recoveryRequirement = {
+    ...requirement,
+    id: "response_recovery_remediation_validation",
+    title: "Response recovery and remediation validation",
+    coverageElements: [
+      { id: "recovery_steps", label: "Defines recovery steps", requiredForCovered: true, signals: ["restoring affected services"] },
+      { id: "remediation_tracking", label: "Tracks remediation", requiredForCovered: true, signals: ["corrective-action tracking", "remediation tasks"] },
+      { id: "validation_testing", label: "Validates recovery", requiredForCovered: true, signals: ["validating user access", "validation evidence"] },
+    ],
+    requiredElementsForCovered: ["recovery_steps", "remediation_tracking", "validation_testing"],
+  };
+  const recoveryQuote =
+    "Recovery activities include restoring affected services and validating user access before business restart.";
+  const remediationQuote =
+    "Corrective-action tracking records remediation tasks, owners, closure criteria, and validation evidence.";
+
+  const finding = await productionPathFinding(recoveryRequirement, [
+    chunk({
+      chunk_id: "56565656-5656-4565-8565-565656565656",
+      section_path: "Incident recovery and remediation validation",
+      content_preview: recoveryQuote,
+    }),
+    chunk({
+      chunk_id: "57575757-5757-4575-8575-575757575757",
+      section_path: "Incident recovery and remediation validation",
+      content_preview: remediationQuote,
+    }),
+  ], [
+    classifierClassification({
+      covered_elements: ["recovery_steps", "validation_testing"],
+      supporting_quote: recoveryQuote,
+    }),
+    classifierClassification({
+      covered_elements: ["remediation_tracking", "validation_testing"],
+      supporting_quote: remediationQuote,
+    }),
+  ]);
+
+  assert.equal(finding.status, "covered");
+  assert.equal(finding.evidence.length, 2);
+  assert.deepEqual(finding.evidence.map((row) => row.quote), [recoveryQuote, remediationQuote]);
+});
+
+test("production path keeps complementary written compliance record evidence", async () => {
+  const recordsRequirement = {
+    ...requirement,
+    id: "written_compliance_records",
+    title: "Written compliance records",
+    coverageElements: [
+      { id: "compliance_record_scope", label: "Requires written compliance records", requiredForCovered: true, signals: ["written compliance records", "compliance review materials"] },
+      { id: "notice_determination_records", label: "Documents incident or notice determinations", requiredForCovered: true, signals: ["incident determinations", "notification determinations", "customer notices"] },
+      { id: "retention_accessibility", label: "Defines retention", requiredForCovered: true, signals: ["retained", "retention schedule", "disposal register"] },
+    ],
+    requiredElementsForCovered: ["compliance_record_scope", "notice_determination_records", "retention_accessibility"],
+  };
+  const disposalQuote =
+    "Certificates of destruction are retained with the disposal register under the retention schedule.";
+  const complianceQuote =
+    "Written compliance records include incident determinations, notification determinations, customer notices, and compliance review materials.";
+
+  const finding = await productionPathFinding(recordsRequirement, [
+    chunk({
+      chunk_id: "58585858-5858-4585-8585-585858585858",
+      section_path: "Record retention and compliance evidence",
+      content_preview: disposalQuote,
+    }),
+    chunk({
+      chunk_id: "59595959-5959-4595-8595-595959595959",
+      section_path: "Record retention and compliance evidence",
+      content_preview: complianceQuote,
+    }),
+  ], [
+    classifierClassification({
+      covered_elements: ["retention_accessibility"],
+      supporting_quote: disposalQuote,
+    }),
+    classifierClassification({
+      covered_elements: ["compliance_record_scope", "notice_determination_records"],
+      supporting_quote: complianceQuote,
+    }),
+  ]);
+
+  assert.equal(finding.status, "covered");
+  assert.equal(finding.evidence.length, 2);
+  assert.deepEqual(finding.evidence.map((row) => row.quote), [complianceQuote, disposalQuote]);
 });
 
 test("production path rejects current-page-focus scaffolding as primary evidence", async () => {
