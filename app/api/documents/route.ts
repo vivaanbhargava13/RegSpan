@@ -9,8 +9,19 @@ import {
   sanitizePdfFilename,
   validatePdfFile,
 } from "@/lib/documentSecurity";
+import { queueDocumentProcessing } from "@/lib/documentProcessing";
 import { recordSecurityAuditEvent } from "@/lib/securityAudit";
 import { getServerSupabaseAdminClient } from "@/lib/supabase/server";
+
+const DEFAULT_DOCUMENT_TYPE = "Information Security";
+const allowedDocumentTypes = new Set([
+  "Incident Response",
+  "Vendor Oversight",
+  "Privacy",
+  "Disposal",
+  DEFAULT_DOCUMENT_TYPE,
+  "Other",
+]);
 
 export async function POST(request: Request) {
   const correlationId = getCorrelationId(request);
@@ -28,24 +39,11 @@ export async function POST(request: Request) {
 
     const formData = await request.formData();
     const file = await validatePdfFile(formData.get("file"));
-    const documentType = String(formData.get("documentType") ?? "").trim();
+    const suppliedDocumentType = String(formData.get("documentType") ?? "").trim();
+    const documentType = allowedDocumentTypes.has(suppliedDocumentType)
+      ? suppliedDocumentType
+      : DEFAULT_DOCUMENT_TYPE;
     const notes = String(formData.get("notes") ?? "").trim();
-
-    const allowedDocumentTypes = new Set([
-      "Incident Response",
-      "Vendor Oversight",
-      "Privacy",
-      "Disposal",
-      "Information Security",
-      "Other",
-    ]);
-    if (!allowedDocumentTypes.has(documentType)) {
-      throw new DocumentRequestError(
-        "Select a valid document type.",
-        400,
-        "invalid_document_type",
-      );
-    }
     if (notes.length > 4000) {
       throw new DocumentRequestError(
         "Notes cannot exceed 4,000 characters.",
@@ -98,6 +96,14 @@ export async function POST(request: Request) {
       throw new Error("metadata_insert_failed");
     }
 
+    const processingResult = await queueDocumentProcessing({
+      supabase,
+      correlationId,
+      documentId,
+      workspaceId,
+      idempotencyKey: `${correlationId}:upload:${documentId}`,
+    });
+
     await recordSecurityAuditEvent(supabase, {
       request,
       correlationId,
@@ -107,10 +113,35 @@ export async function POST(request: Request) {
       actorUserId,
       targetType: "document",
       targetId: documentId,
-      metadata: { file_size: file.size, mime_type: PDF_MIME_TYPE },
+      metadata: {
+        file_size: file.size,
+        mime_type: PDF_MIME_TYPE,
+        processing_queued: processingResult.ok,
+        processing_code: processingResult.code ?? null,
+      },
     });
 
-    return NextResponse.json({ ok: true, documentId }, { status: 201 });
+    await recordSecurityAuditEvent(supabase, {
+      request,
+      correlationId,
+      action: "document.process.auto_requested",
+      outcome: processingResult.ok ? "success" : "failure",
+      workspaceId,
+      actorUserId,
+      targetType: processingResult.jobId ? "processing_job" : "document",
+      targetId: processingResult.jobId ?? documentId,
+      metadata: {
+        document_id: documentId,
+        code: processingResult.code ?? null,
+      },
+    });
+
+    return NextResponse.json({
+      ok: true,
+      documentId,
+      processingQueued: processingResult.ok,
+      processingError: processingResult.ok ? null : processingResult.error,
+    }, { status: 201 });
   } catch (error) {
     console.error("[RegSpan documents] Upload request failed", {
       correlationId,

@@ -216,12 +216,12 @@ function EvidenceCard({ evidence, subdued = false }: { evidence: FindingEvidence
     }`}
     >
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <p className="break-words text-sm font-semibold text-app-text">
+        <div className="min-w-0 max-w-full">
+          <p className="break-words text-sm font-semibold text-app-text [overflow-wrap:anywhere]">
             {evidence.filename ?? "Untitled document"}
           </p>
           {evidence.section_path ? (
-            <p className="mt-1 text-xs font-medium text-app-muted">{evidence.section_path}</p>
+            <p className="mt-1 break-words text-xs font-medium text-app-muted [overflow-wrap:anywhere]">{evidence.section_path}</p>
           ) : null}
         </div>
         <div className="flex shrink-0 flex-wrap gap-2 text-xs font-semibold text-app-subtle">
@@ -234,12 +234,12 @@ function EvidenceCard({ evidence, subdued = false }: { evidence: FindingEvidence
         </div>
       </div>
       {evidence.quote || evidence.evidence_quote ? (
-        <blockquote className="mt-3 border-l-2 border-app-accent/45 bg-app-elevated/45 py-2 pl-3 pr-3 text-sm leading-6 text-app-text">
+        <blockquote className="mt-3 break-words border-l-2 border-app-accent/45 bg-app-elevated/45 py-2 pl-3 pr-3 text-sm leading-6 text-app-text [overflow-wrap:anywhere]">
           “{evidence.quote ?? evidence.evidence_quote}”
         </blockquote>
       ) : null}
       {evidence.reason ? (
-        <p className="mt-3 text-xs leading-5 text-app-muted">{evidence.reason}</p>
+        <p className="mt-3 break-words text-xs leading-5 text-app-muted [overflow-wrap:anywhere]">{evidence.reason}</p>
       ) : null}
     </div>
   );
@@ -400,9 +400,9 @@ export function FindingsClient() {
             variant="appPrimary"
             onClick={runAnalysis}
             disabled={isGenerating || isLoading || !hasProcessedEvidence}
-            title={!hasProcessedEvidence ? "Prepare at least one document before running analysis." : undefined}
+            title={!hasProcessedEvidence ? "Prepare at least one document before running Analysis." : undefined}
           >
-            {isGenerating ? "Reviewing documents…" : "Run analysis"}
+            {isGenerating ? "Reviewing documents…" : "Run Analysis"}
           </Button>
         )}
       />
@@ -415,7 +415,7 @@ export function FindingsClient() {
               <p className="mt-1 text-xs leading-5 text-app-muted">
                 {latestRun
                   ? `Started ${formatDate(latestRun.started_at)}. Completed ${formatDate(latestRun.completed_at)}.`
-                  : "Run analysis to generate requirement-level findings."}
+                  : "Run Analysis to generate requirement-level findings."}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -447,7 +447,7 @@ export function FindingsClient() {
 
       {findings.length > 0 ? (
         <Card as="section" className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
+          <div className="min-w-0">
             <h2 className="text-sm font-semibold text-app-text">Report export</h2>
             <p className="mt-1 text-xs leading-5 text-app-muted">
               Copy or export the current analysis workpaper for audit review.
@@ -481,11 +481,11 @@ export function FindingsClient() {
         </Surface>
       ) : !hasProcessedEvidence ? (
         <EmptyState title="No documents ready for analysis yet">
-          <p>Prepare at least one document before running analysis.</p>
+          <p>Prepare at least one document before running Analysis.</p>
         </EmptyState>
       ) : findings.length === 0 ? (
         <EmptyState title="No findings generated yet">
-          <p>Run analysis to evaluate the current workspace documents against the Reg S-P baseline.</p>
+          <p>Run Analysis to evaluate the current workspace documents against the Reg S-P baseline.</p>
         </EmptyState>
       ) : (
         <section className="space-y-4" aria-label="Analysis results">
@@ -527,33 +527,33 @@ export function FindingsClient() {
 
                 <div className="space-y-4 p-5 pl-6 lg:p-6 lg:pl-7">
                   <div className="grid gap-4 lg:grid-cols-3">
-                    <section>
+                    <section className="min-w-0">
                       <h3 className="text-xs font-bold uppercase tracking-[0.1em] text-app-subtle">
                         What RegSpan found
                       </h3>
-                      <p className="mt-2 text-sm leading-6 text-app-muted">{finding.rationale}</p>
+                      <p className="mt-2 break-words text-sm leading-6 text-app-muted [overflow-wrap:anywhere]">{finding.rationale}</p>
                     </section>
-                    <section>
+                    <section className="min-w-0">
                       <h3 className="text-xs font-bold uppercase tracking-[0.1em] text-app-subtle">
                         Why it matters
                       </h3>
-                      <p className="mt-2 text-sm leading-6 text-app-muted">{whyItMattersForFinding(finding)}</p>
+                      <p className="mt-2 break-words text-sm leading-6 text-app-muted [overflow-wrap:anywhere]">{whyItMattersForFinding(finding)}</p>
                     </section>
-                    <section>
+                    <section className="min-w-0">
                       <h3 className="text-xs font-bold uppercase tracking-[0.1em] text-app-subtle">
                         Recommended next step
                       </h3>
-                      <p className="mt-2 text-sm leading-6 text-app-muted">{finding.remediation}</p>
+                      <p className="mt-2 break-words text-sm leading-6 text-app-muted [overflow-wrap:anywhere]">{finding.remediation}</p>
                     </section>
                   </div>
 
                   <div className="rounded-md border border-app-border bg-app-elevated/45 px-4 py-3">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
+                      <div className="min-w-0">
                         <h3 className="text-xs font-bold uppercase tracking-[0.1em] text-app-subtle">
                           Reg S-P basis
                         </h3>
-                        <p className="mt-1 text-sm font-medium text-app-text">{basis.label}</p>
+                        <p className="mt-1 break-words text-sm font-medium text-app-text [overflow-wrap:anywhere]">{basis.label}</p>
                       </div>
                       <Button href={basis.href} variant="appSecondary">
                         View Requirement
@@ -587,8 +587,8 @@ function EvidenceList({ evidence }: { evidence: FindingEvidence[] }) {
   return (
     <details className="rounded-md border border-app-border bg-app-elevated/35">
       <summary className="flex cursor-pointer list-none flex-col gap-1 px-4 py-3 text-sm font-semibold text-app-text transition hover:bg-app-elevated sm:flex-row sm:items-center sm:justify-between">
-        <span>Client source excerpts</span>
-        <span className="text-xs font-medium text-app-subtle">
+        <span className="min-w-0">Client source excerpts</span>
+        <span className="min-w-0 break-words text-xs font-medium text-app-subtle [overflow-wrap:anywhere]">
           {evidenceSummary(orderedEvidence)} · View supporting document excerpts
         </span>
       </summary>

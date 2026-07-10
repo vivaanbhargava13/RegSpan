@@ -96,7 +96,7 @@ test("dashboard UI exposes real-data empty states and linked metric cards", asyn
   assert.match(client, /Compliance score/);
   assert.match(client, /High-risk open/);
   assert.match(client, /Needs review/);
-  assert.match(client, /Ready for analysis/);
+  assert.match(client, /Ready for Analysis/);
 });
 
 test("dashboard metric tooltips are locally anchored above metric cards", async () => {

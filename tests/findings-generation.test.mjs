@@ -2273,11 +2273,11 @@ test("findings generation schema and routes preserve workspace/security boundari
 test("findings UI shows generation and empty states", async () => {
   const client = await readFile("components/FindingsClient.tsx", "utf8");
 
-  assert.match(client, /Run analysis/);
+  assert.match(client, /Run Analysis/);
   assert.match(client, /Reviewing documents/);
   assert.match(client, /No documents ready for analysis yet/);
   assert.match(client, /No findings generated yet/);
-  assert.match(client, /Prepare at least one document before running analysis/);
+  assert.match(client, /Prepare at least one document before running Analysis/);
   assert.match(client, /Client source excerpts/);
   assert.match(client, /\/api\/findings\/generate/);
   assert.match(client, /\/api\/findings/);

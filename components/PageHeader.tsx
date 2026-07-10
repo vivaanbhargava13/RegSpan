@@ -35,7 +35,7 @@ export function PageHeader({ eyebrow, title, description, actions }: PageHeaderP
           <span aria-hidden="true" className="h-3 w-0.5 rounded-full bg-app-accent" />
           {eyebrow}
         </p>
-        <h1 className="mt-2 max-w-4xl break-words text-2xl font-semibold tracking-[-0.015em] text-app-text lg:text-[32px] lg:leading-[1.18]">
+        <h1 className="mt-2 max-w-4xl break-words text-2xl font-semibold tracking-[-0.015em] text-app-text [overflow-wrap:anywhere] lg:text-[32px] lg:leading-[1.18]">
           {title}
         </h1>
         <p className="mt-2.5 max-w-2xl text-sm leading-6 text-app-muted">{description}</p>

@@ -190,7 +190,7 @@ function ReadinessState({ dashboard }: { dashboard: DashboardData }) {
         title="No analysis results yet"
       >
         <p>
-          Documents are ready for analysis. Run analysis to populate dashboard metrics.
+          Documents are Ready for Analysis. Run Analysis to populate dashboard metrics.
         </p>
       </SharedEmptyState>
     );
@@ -301,9 +301,9 @@ export function DashboardClient() {
             </DashboardMetricLink>
             <DashboardMetricLink href="/documents">
               <MetricTile
-                label="Ready for analysis"
+                label="Ready for Analysis"
                 value={`${dashboard.documents.processedDocuments}/${dashboard.documents.totalDocuments}`}
-                tooltip="Documents ready for analysis divided by all documents currently uploaded to this workspace."
+                tooltip="Documents Ready for Analysis divided by all documents currently uploaded to this workspace."
                 tooltipPlacement="left"
               />
             </DashboardMetricLink>
@@ -332,7 +332,7 @@ export function DashboardClient() {
                   </dd>
                 </div>
                 <div className="grid gap-1 py-3 last:pb-0 sm:grid-cols-[minmax(0,0.8fr)_1fr]">
-                  <dt className="font-medium text-app-muted">Ready for analysis</dt>
+                  <dt className="font-medium text-app-muted">Ready for Analysis</dt>
                   <dd className="font-semibold text-app-text">
                     {dashboard.documents.processedDocuments} of {dashboard.documents.totalDocuments}
                     {dashboard.documents.percentage !== null ? ` (${dashboard.documents.percentage}%)` : ""}

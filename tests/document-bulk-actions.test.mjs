@@ -27,14 +27,51 @@ test("documents page renders clear lifecycle labels and next steps", async () =>
   const client = await readFile("components/DocumentsClient.tsx", "utf8");
 
   assert.match(client, /Preparing source text/);
-  assert.match(client, /Prepare this document before running analysis/);
-  assert.match(client, /Ready for analysis/);
+  assert.match(client, /Source text preparation starts automatically after upload/);
+  assert.match(client, /Ready for Analysis/);
   assert.match(client, /Source text preparation failed/);
   assert.match(client, /Needs reviewer confirmation/);
   assert.match(client, /Reprocess or replace this document/);
   assert.match(client, /Source excerpts/);
-  assert.match(client, /prepare source text for evidence review/);
+  assert.match(client, /prepare source text for evidence review/i);
   assert.doesNotMatch(client, /begin secure extraction, chunking/);
+});
+
+test("documents upload form is file-first and hides optional metadata fields", async () => {
+  const client = await readFile("components/DocumentsClient.tsx", "utf8");
+
+  assert.match(client, /Upload document/);
+  assert.match(client, /DEFAULT_DOCUMENT_TYPE = "Information Security"/);
+  assert.match(client, /formData\.set\("file", selectedFile\)/);
+  assert.doesNotMatch(client, /documentTypes\.map/);
+  assert.doesNotMatch(client, /Select document type/);
+  assert.doesNotMatch(client, /Optional review context/);
+});
+
+test("document upload API defaults type and starts source preparation", async () => {
+  const route = await readFile("app/api/documents/route.ts", "utf8");
+  const processing = await readFile("lib/documentProcessing.ts", "utf8");
+
+  assert.match(route, /DEFAULT_DOCUMENT_TYPE = "Information Security"/);
+  assert.match(route, /queueDocumentProcessing/);
+  assert.match(route, /processingQueued/);
+  assert.doesNotMatch(route, /invalid_document_type/);
+  assert.match(processing, /start_processing_job/);
+  assert.match(processing, /triggerN8nIngestion/);
+});
+
+test("document and finding filename surfaces allow long-word wrapping", async () => {
+  const [documentsClient, detailClient, findingsClient, pageHeader] = await Promise.all([
+    readFile("components/DocumentsClient.tsx", "utf8"),
+    readFile("components/DocumentDetailClient.tsx", "utf8"),
+    readFile("components/FindingsClient.tsx", "utf8"),
+    readFile("components/PageHeader.tsx", "utf8"),
+  ]);
+
+  for (const source of [documentsClient, detailClient, findingsClient, pageHeader]) {
+    assert.match(source, /\[overflow-wrap:anywhere\]/);
+  }
+  assert.doesNotMatch(documentsClient, /max-w-\[280px\] truncate/);
 });
 
 test("documents page sends selected and all bulk actions to the bulk API", async () => {

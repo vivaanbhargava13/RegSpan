@@ -7,7 +7,7 @@ test("document detail copy describes user-facing processing states", async () =>
 
   assert.match(source, /Prepare source text/);
   assert.match(source, /Client source excerpts/);
-  assert.match(source, /Ready for analysis/);
+  assert.match(source, /Ready for Analysis/);
   assert.match(source, /RegSpan could not prepare usable text from this PDF/);
   assert.match(source, /Reprocess this document to prepare client source excerpts/);
   assert.match(source, /Client source excerpts are ready\. Run Analysis/);

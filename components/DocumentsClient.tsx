@@ -8,7 +8,6 @@ import { DataTable } from "@/components/DataTable";
 import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
 import {
-  documentTypes,
   initialDocuments,
   mapSupabaseDocument,
   readAllDocuments,
@@ -43,7 +42,7 @@ function documentLifecycleLabel(status: MockDocument["status"]) {
     case "Processing":
       return "Preparing source text";
     case "Processed":
-      return "Ready for analysis";
+      return "Ready for Analysis";
     case "Failed":
       return "Source text preparation failed";
     case "Needs Review":
@@ -55,11 +54,11 @@ function documentLifecycleNextStep(status: MockDocument["status"]) {
   switch (status) {
     case "Uploaded":
     case "Queued":
-      return "Prepare this document before running analysis.";
+      return "Source text preparation starts automatically after upload.";
     case "Processing":
-      return "RegSpan is preparing source text for analysis.";
+      return "RegSpan is preparing source text for Analysis.";
     case "Processed":
-      return "This document can be included when you run analysis.";
+      return "This document can be included when you run Analysis.";
     case "Failed":
       return "Reprocess or replace this document.";
     case "Needs Review":
@@ -68,6 +67,7 @@ function documentLifecycleNextStep(status: MockDocument["status"]) {
 }
 
 const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
+const DEFAULT_DOCUMENT_TYPE = "Information Security";
 type BulkAction = "delete" | "process";
 type BulkScope = "all" | "selected";
 type BulkActionKey = "delete-all" | "delete-selected" | "process-all" | "process-selected";
@@ -94,8 +94,6 @@ export function DocumentsClient() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [documentType, setDocumentType] = useState("");
-  const [notes, setNotes] = useState("");
   const [error, setError] = useState("");
   const [warning, setWarning] = useState("");
   const [message, setMessage] = useState("");
@@ -180,8 +178,6 @@ export function DocumentsClient() {
 
   function resetForm() {
     setSelectedFile(null);
-    setDocumentType("");
-    setNotes("");
     setError("");
     setIsUploadOpen(false);
   }
@@ -319,12 +315,7 @@ export function DocumentsClient() {
     event.preventDefault();
 
     if (!selectedFile) {
-      setError("Choose a source document before adding it.");
-      return;
-    }
-
-    if (!documentType) {
-      setError("Select a document type before adding it.");
+      setError("Choose a PDF before uploading.");
       return;
     }
 
@@ -339,6 +330,8 @@ export function DocumentsClient() {
     if (supabase) {
       setIsSubmitting(true);
       setError("");
+      setWarning("");
+      setMessage("");
 
       try {
         const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
@@ -348,15 +341,18 @@ export function DocumentsClient() {
 
         const formData = new FormData();
         formData.set("file", selectedFile);
-        formData.set("documentType", documentType);
-        formData.set("notes", notes.trim());
 
         const response = await fetch("/api/documents", {
           method: "POST",
           headers: { Authorization: `Bearer ${sessionData.session.access_token}` },
           body: formData,
         });
-        const result = (await response.json()) as { ok?: boolean; error?: string };
+        const result = (await response.json()) as {
+          ok?: boolean;
+          error?: string;
+          processingQueued?: boolean;
+          processingError?: string | null;
+        };
 
         if (!response.ok || !result.ok) {
           throw new Error(result.error || "Document upload failed.");
@@ -364,6 +360,15 @@ export function DocumentsClient() {
 
         resetForm();
         await loadDocuments();
+        if (result.processingQueued) {
+          setMessage("Document uploaded. Source text preparation has started.");
+        } else {
+          setWarning(
+            result.processingError
+              ? `Document uploaded, but source text preparation could not start: ${result.processingError}`
+              : "Document uploaded, but source text preparation could not start. Use Prepare again to retry.",
+          );
+        }
       } catch (uploadError) {
         setError(uploadError instanceof Error ? uploadError.message : "Document upload failed.");
       } finally {
@@ -375,11 +380,10 @@ export function DocumentsClient() {
     const newDocument: MockDocument = {
       id: `local-${Date.now()}`,
       name: selectedFile.name,
-      type: documentType,
+      type: DEFAULT_DOCUMENT_TYPE,
       status: "Queued",
       uploaded: "Just now",
       chunks: "Pending",
-      notes: notes.trim() || undefined,
     };
     const updatedStoredDocuments = [newDocument, ...readStoredDocuments()];
 
@@ -493,8 +497,8 @@ export function DocumentsClient() {
             </button>
           </div>
 
-          <form className="mt-6 grid gap-5 lg:grid-cols-2" onSubmit={handleSubmit} noValidate>
-            <label className="block">
+          <form className="mt-6 grid max-w-2xl gap-5" onSubmit={handleSubmit} noValidate>
+            <label className="block min-w-0">
               <span className="text-sm font-semibold text-app-text">File</span>
               <input
                 type="file"
@@ -505,41 +509,20 @@ export function DocumentsClient() {
                 }}
                 className="app-field mt-2 block w-full px-3 py-2 text-sm text-app-muted file:mr-3 file:rounded-lg file:border-0 file:bg-app-accent-soft file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-app-accent"
               />
+              {selectedFile ? (
+                <span className="mt-2 block max-w-full text-xs font-medium leading-5 text-app-muted [overflow-wrap:anywhere]">
+                  {selectedFile.name}
+                </span>
+              ) : null}
             </label>
 
-            <label className="block">
-              <span className="text-sm font-semibold text-app-text">Document type</span>
-              <select
-                value={documentType}
-                onChange={(event) => {
-                  setDocumentType(event.target.value);
-                  setError("");
-                }}
-                className="app-field mt-2 h-11 w-full px-3 text-sm text-app-text"
-              >
-                <option value="">Select document type</option>
-                {documentTypes.map((type) => (
-                  <option key={type} value={type}>
-                    {type}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <p className="text-sm leading-6 text-app-muted">
+              RegSpan will save the PDF, prepare source text automatically, and mark it Ready for Analysis when client source excerpts are available.
+            </p>
 
-            <label className="block lg:col-span-2">
-              <span className="text-sm font-semibold text-app-text">Notes</span>
-              <textarea
-                value={notes}
-                onChange={(event) => setNotes(event.target.value)}
-                rows={4}
-                placeholder="Optional review context"
-                className="app-field mt-2 w-full px-3 py-2 text-sm text-app-text placeholder:text-app-subtle"
-              />
-            </label>
-
-            <div className="flex flex-col gap-3 sm:flex-row lg:col-span-2">
+            <div className="flex flex-col gap-3 sm:flex-row">
               <Button type="submit" variant="appPrimary" disabled={isSubmitting}>
-                {isSubmitting ? "Adding document..." : "Add document"}
+                {isSubmitting ? "Uploading..." : "Upload document"}
               </Button>
               <Button type="button" variant="appSecondary" onClick={resetForm}>
                 Cancel
@@ -599,10 +582,10 @@ export function DocumentsClient() {
                       />
                     </td>
                   ) : null}
-                  <td className="px-4 py-4 font-medium text-app-text">
-                    <div className="flex items-center gap-3">
+                  <td className="min-w-0 px-4 py-4 font-medium text-app-text">
+                    <div className="flex min-w-0 items-center gap-3">
                       <span aria-hidden="true" className="grid size-8 shrink-0 place-items-center rounded-md border border-app-border bg-app-elevated font-mono text-[10px] font-bold text-app-accent">PDF</span>
-                      <span className="block max-w-[280px] truncate" title={document.name}>{document.name}</span>
+                      <span className="block min-w-0 max-w-[360px] whitespace-normal break-words leading-5 [overflow-wrap:anywhere]" title={document.name}>{document.name}</span>
                     </div>
                   </td>
                   <td className="px-4 py-4 text-app-muted">{document.type}</td>
@@ -642,8 +625,8 @@ export function DocumentsClient() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="truncate font-semibold text-app-text" title={document.name}>{document.name}</p>
-                        <p className="mt-1 text-xs font-medium text-app-muted">{document.type} · Uploaded {document.uploaded}</p>
+                        <p className="break-words font-semibold leading-5 text-app-text [overflow-wrap:anywhere]" title={document.name}>{document.name}</p>
+                        <p className="mt-1 break-words text-xs font-medium text-app-muted [overflow-wrap:anywhere]">{document.type} · Uploaded {document.uploaded}</p>
                       </div>
                       <span aria-hidden="true" className="grid size-8 shrink-0 place-items-center rounded-md border border-app-border bg-app-elevated font-mono text-[10px] font-bold text-app-accent">PDF</span>
                     </div>
@@ -652,7 +635,7 @@ export function DocumentsClient() {
                       <p className="text-xs leading-5 text-app-muted">{documentLifecycleNextStep(document.status)}</p>
                     </div>
                     <div className="mt-3 flex items-center justify-between gap-3 text-xs text-app-muted">
-                      <span>Source excerpts: {formatSectionsLabel(document.chunks)}</span>
+                      <span className="min-w-0 break-words [overflow-wrap:anywhere]">Source excerpts: {formatSectionsLabel(document.chunks)}</span>
                       <Link className="shrink-0 rounded-md px-2 py-1 text-sm font-semibold text-app-accent transition-colors hover:bg-app-accent-soft hover:text-app-accent-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-app-accent" href={`/documents/${document.id}`}>
                         Review
                       </Link>

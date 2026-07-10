@@ -120,7 +120,7 @@ function documentLifecycleLabel(status: DocumentStatus) {
     case "Processing":
       return "Preparing source text";
     case "Processed":
-      return "Ready for analysis";
+      return "Ready for Analysis";
     case "Failed":
       return "Source text preparation failed";
     case "Needs Review":
@@ -129,9 +129,9 @@ function documentLifecycleLabel(status: DocumentStatus) {
 }
 
 const requirementMatchingStep: TimelineStep = {
-  label: "Ready for analysis",
+  label: "Ready for Analysis",
   status: "Pending",
-  detail: "Run analysis after client source excerpts are ready.",
+  detail: "Run Analysis after client source excerpts are ready.",
   state: "pending",
 };
 
@@ -160,11 +160,11 @@ function getTimeline(status: DocumentStatus, chunkCount: number): TimelineStep[]
         label: "Client source excerpts",
         status: chunkCount > 0 ? "Complete" : "Needs review",
         detail: chunkCount > 0
-          ? "Client source excerpts are ready for analysis."
+          ? "Client source excerpts are Ready for Analysis."
           : "Reprocess this document to prepare client source excerpts.",
         state: chunkCount > 0 ? "complete" : "review",
       },
-      { label: "Ready for analysis", status: "Ready", detail: "This document can be included when you run Analysis.", state: "complete" },
+      { label: "Ready for Analysis", status: "Ready", detail: "This document can be included when you run Analysis.", state: "complete" },
     ];
   }
 
@@ -366,7 +366,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
         throw new Error(result.error || "Preparation could not be started.");
       }
 
-      setMessage("Document preparation was queued. RegSpan will prepare source text for analysis.");
+      setMessage("Document preparation was queued. RegSpan will prepare source text for Analysis.");
       router.refresh();
       setRefreshKey((current) => current + 1);
     } catch (actionError) {
@@ -425,7 +425,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
       if (result.cleanupWarning) {
         setWarning("Replacement succeeded; old object cleanup will need server follow-up.");
       }
-      setMessage("Replacement uploaded. Reprocess the document to prepare source text for analysis.");
+      setMessage("Replacement uploaded. Reprocess the document to prepare source text for Analysis.");
       setReplacementFile(null);
       setIsReplaceOpen(false);
       setRefreshKey((current) => current + 1);
@@ -507,6 +507,8 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
     );
   }
 
+  const canReprocess = document.status !== "Queued" && document.status !== "Processing";
+
   return (
     <div className="space-y-6">
       <Link href="/documents" className="inline-flex items-center gap-2 rounded-md px-1 py-1 text-sm font-semibold text-app-accent transition-colors hover:text-app-accent-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-app-accent">
@@ -517,7 +519,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
         eyebrow="Document record"
         title={document.name}
         description={`${document.type} · Uploaded ${document.uploaded}`}
-        actions={(
+        actions={canReprocess ? (
           <Button
             type="button"
             variant="appPrimary"
@@ -526,7 +528,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
           >
             {activeAction === "reprocess" ? "Preparing..." : "Prepare again"}
           </Button>
-        )}
+        ) : undefined}
       />
 
       {message ? (
@@ -572,7 +574,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
               <dt className="text-[10px] font-semibold uppercase tracking-[0.1em] text-app-subtle">
                 {item.label}
               </dt>
-              <dd className="mt-2 break-words text-sm font-semibold leading-5 text-app-text">{item.value}</dd>
+              <dd className="mt-2 break-words text-sm font-semibold leading-5 text-app-text [overflow-wrap:anywhere]">{item.value}</dd>
             </div>
           ))}
         </dl>
@@ -590,7 +592,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
                 <span className={`grid size-8 shrink-0 place-items-center rounded-md border text-xs font-bold ${stateClasses[item.state]}`}>
                   {index + 1}
                 </span>
-                <div className="min-w-0">
+                  <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-semibold text-app-text">{item.label}</span>
                     <StatusBadge showDot={false}>{item.status}</StatusBadge>
@@ -622,7 +624,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
                         <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-app-subtle">
                           Source excerpt {String(chunk.chunk_index + 1).padStart(2, "0")}
                         </span>
-                        <h3 className="mt-1 text-sm font-semibold text-app-text">
+                        <h3 className="mt-1 break-words text-sm font-semibold text-app-text [overflow-wrap:anywhere]">
                           {chunk.section_path || chunk.section_heading || "Unsectioned content"}
                         </h3>
                       </div>
@@ -727,7 +729,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
         {document.storagePath ? (
           <div className="mt-5 rounded-lg border border-app-border bg-app-elevated/45 p-4">
             <h3 className="text-sm font-semibold text-app-text">Stored file reference</h3>
-            <p className="mt-2 overflow-x-auto rounded-md border border-app-border bg-app-surface px-3 py-2 font-mono text-[11px] text-app-muted" title={document.storagePath}>
+            <p className="mt-2 max-w-full rounded-md border border-app-border bg-app-surface px-3 py-2 font-mono text-[11px] leading-5 text-app-muted [overflow-wrap:anywhere]" title={document.storagePath}>
               {document.storagePath}
             </p>
           </div>
