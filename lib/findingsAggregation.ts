@@ -208,6 +208,10 @@ function hasDanglingEnding(value: string) {
   return /\b(?:and|or|but|with|including|such as|assigns|requires|defines|includes|provides|for|of|to|approved)\s*$/i.test(value.trim());
 }
 
+function hasAbsenceLanguage(value: string) {
+  return /\b(?:does not|doesn['’]?t|do not|does not fully|does not establish|does not define|does not state|does not list|does not require|does not address|does not include|without\s+(?:formal\s+|documented\s+|written\s+|clear\s+|specific\s+)?(?:program|plan|procedure|policy|standard|requirement|notification|reporting|validation|preservation|process|timeline|timing|details)|lacks?|missing|excluded|outside the scope|out of scope|reserved for|delegated to|not intended|incomplete|not standardized)\b/i.test(value);
+}
+
 function startsWithContinuationFragment(value: string) {
   return /^(?:and|or|but|while|when|where|because|including|such as|with|to|for|of|as)\b/.test(value.trim());
 }
@@ -226,8 +230,25 @@ function substantiveQuoteText(value: string) {
     .map((line) => line.trim())
     .filter(Boolean);
   if (lines.length <= 1) return value;
-  const substantiveLines = lines.filter((line) => !looksLikeHeadingOnly(line));
+  const substantiveLines = lines.filter((line) => !looksLikeHeadingOnly(line) && !isScaffoldingQuote(line));
   return (substantiveLines.length > 0 ? substantiveLines : lines).join(" ");
+}
+
+function isScaffoldingQuote(value: string) {
+  const text = value.trim();
+  if (!text) return true;
+  if (/^(?:current\s+)?page\s+focus\s*:/i.test(text)) return true;
+  if (/^(?:current\s+)?(?:section|topic|heading|document\s+section|page\s+topic)\s*:/i.test(text)) return true;
+  if (/^(?:table of contents|contents|index|appendix|references)\b/i.test(text)) return true;
+  return false;
+}
+
+function hasScaffoldingLine(value: string) {
+  return value
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .some(isScaffoldingQuote);
 }
 
 function hasSubstantiveQuoteShape(value: string) {
@@ -235,6 +256,8 @@ function hasSubstantiveQuoteShape(value: string) {
   return quoteWordCount(substantiveText) >= 5
     && endsAtSentenceBoundary(substantiveText)
     && !looksLikeHeadingOnly(substantiveText)
+    && !isScaffoldingQuote(substantiveText)
+    && !hasScaffoldingLine(value)
     && !hasDanglingEnding(substantiveText)
     && !startsWithContinuationFragment(substantiveText)
     && !startsWithLowercaseFragment(substantiveText);
@@ -404,6 +427,10 @@ function evidencePreservationElementMatches(text: string) {
   return (hasSpecificIncidentMaterial && hasPreservationAction) || hasDedicatedEvidencePreservation;
 }
 
+function hasDisposalAlignedLanguage(text: string) {
+  return /\b(?:dispos(?:al|e|es|ed|ing)|destruct(?:ion)?|destroy(?:s|ed|ing)?|shredd?(?:ing|ed|s)?|wip(?:e|es|ed|ing)|saniti[zs](?:e|es|ed|ing|ation)|media disposal|backup disposal|device return|disposal attestation|records disposal)\b/.test(text);
+}
+
 function elementSignalMatches(requirement: RegSpRequirement, elementId: string, text: string) {
   const signals = elementSignals(requirement, elementId);
   if (copyRequirementId(requirement) === "evidence_log_preservation" && elementId === "incident_materials") {
@@ -411,6 +438,10 @@ function elementSignalMatches(requirement: RegSpRequirement, elementId: string, 
       const normalizedSignal = normalize(signal);
       return normalizedSignal && text.includes(normalizedSignal);
     }) && evidencePreservationElementMatches(text);
+  }
+
+  if (copyRequirementId(requirement) === "disposal_consumer_customer_information" && !hasDisposalAlignedLanguage(text)) {
+    return false;
   }
 
   if (copyRequirementId(requirement) === "disposal_consumer_customer_information" && elementId === "secure_disposal_method") {
@@ -427,12 +458,75 @@ function elementSignalMatches(requirement: RegSpRequirement, elementId: string, 
   });
 }
 
-function supportedElementIdsForQuote(requirement: RegSpRequirement, quote: string) {
-  const text = normalize(substantiveQuoteText(quote));
+function elementSignalMatchesText(requirement: RegSpRequirement, elementId: string, text: string) {
+  return elementSignalMatches(requirement, elementId, normalize(text));
+}
+
+function baseSupportedElementIdsForText(requirement: RegSpRequirement, text: string) {
   return (requirement.coverageElements ?? [])
     .filter((element) => requirement.requiredElementsForCovered.includes(element.id))
-    .filter((element) => elementSignalMatches(requirement, element.id, text))
+    .filter((element) => elementSignalMatchesText(requirement, element.id, text))
     .map((element) => element.id);
+}
+
+function supportedElementIdsForQuote(requirement: RegSpRequirement, quote: string) {
+  const substantiveText = substantiveQuoteText(quote);
+  if (isScaffoldingQuote(substantiveText)) return [];
+
+  const sentenceTexts = sourceSentenceSpans(quote).map((span) => span.text);
+  if (hasAbsenceLanguage(substantiveText)) {
+    return uniqueStrings(
+      sentenceTexts
+        .filter((sentence) => !hasAbsenceLanguage(sentence) && !isScaffoldingQuote(sentence))
+        .flatMap((sentence) => baseSupportedElementIdsForText(requirement, sentence)),
+    );
+  }
+
+  return baseSupportedElementIdsForText(requirement, substantiveText);
+}
+
+function isWeakNegativeSignal(signal: string) {
+  const normalized = normalize(signal);
+  return [
+    "customer information",
+    "sensitive customer information",
+    "consumer information",
+    "customer records",
+    "customer data",
+    "information",
+  ].includes(normalized);
+}
+
+function negativeElementSignalMatches(requirement: RegSpRequirement, elementId: string, text: string) {
+  const normalizedText = normalize(text);
+  const signals = elementSignals(requirement, elementId)
+    .map(normalize)
+    .filter((signal) => signal.length >= 4 && !isWeakNegativeSignal(signal));
+  return signals.some((signal) => normalizedText.includes(signal));
+}
+
+function negativelyScopedElementIdsForQuote(
+  requirement: RegSpRequirement,
+  chunk: GradedEvidenceChunk,
+  quote: string,
+) {
+  const substantiveText = substantiveQuoteText(quote);
+  const scopedReference = referencesUnavailablePolicy({
+    ...chunk,
+    supporting_quote: quote,
+  });
+  if (isScaffoldingQuote(substantiveText) || (!hasAbsenceLanguage(substantiveText) && !scopedReference)) return [];
+
+  return (requirement.coverageElements ?? [])
+    .filter((element) => requirement.requiredElementsForCovered.includes(element.id))
+    .filter((element) => negativeElementSignalMatches(requirement, element.id, substantiveText))
+    .map((element) => element.id);
+}
+
+function evidenceElementIdsForQuote(requirement: RegSpRequirement, chunk: GradedEvidenceChunk, quote: string) {
+  return chunk.evidence_relationship === "negative_evidence"
+    ? negativelyScopedElementIdsForQuote(requirement, chunk, quote)
+    : supportedElementIdsForQuote(requirement, quote);
 }
 
 function quoteQualityScore(quote: string) {
@@ -450,8 +544,8 @@ function quoteQualityScore(quote: string) {
   return score;
 }
 
-function finalQuoteCandidateScore(requirement: RegSpRequirement, quote: string) {
-  const supportedElements = supportedElementIdsForQuote(requirement, quote);
+function finalQuoteCandidateScore(requirement: RegSpRequirement, chunk: GradedEvidenceChunk, quote: string) {
+  const supportedElements = evidenceElementIdsForQuote(requirement, chunk, quote);
   return {
     quote,
     supportedElements,
@@ -489,7 +583,7 @@ function candidateQuoteSpans(chunk: GradedEvidenceChunk) {
 
 function finalizedSourceQuote(requirement: RegSpRequirement, chunk: GradedEvidenceChunk) {
   const ranked = candidateQuoteSpans(chunk)
-    .map((candidate) => finalQuoteCandidateScore(requirement, candidate.text))
+    .map((candidate) => finalQuoteCandidateScore(requirement, chunk, candidate.text))
     .filter((candidate) =>
       candidate.supportedElements.length > 0
       && chunk.content_preview.includes(candidate.quote)

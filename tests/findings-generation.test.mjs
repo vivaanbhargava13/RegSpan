@@ -534,9 +534,9 @@ test("disposal remains partial unless all required disposal elements are source-
       requirement_supported: false,
       covered_elements: ["disposal_scope"],
       missing_elements: ["secure_disposal_method"],
-      supporting_quote: "Customer information is retained according to the records schedule.",
-      content_preview: "Customer information is retained according to the records schedule.",
-      grade_reason: "The cited text identifies customer information but not secure disposal methods.",
+      supporting_quote: "Customer information disposal requirements apply to customer records.",
+      content_preview: "Customer information disposal requirements apply to customer records.",
+      grade_reason: "The cited text identifies disposal scope but not secure disposal methods.",
     }),
   ]);
 
@@ -1693,6 +1693,235 @@ test("production path suppresses adjacent partial rows that add no required-elem
   assert.equal(finding.status, "covered");
   assert.equal(finding.evidence.length, 1);
   assert.equal(finding.evidence[0].quote, directContent);
+});
+
+test("production path rejects current-page-focus scaffolding as primary evidence", async () => {
+  const disposalRequirement = {
+    ...requirement,
+    id: "disposal_consumer_customer_information",
+    title: "Disposal of consumer and customer information",
+    coverageElements: [
+      { id: "disposal_scope", label: "Applies to consumer or customer information", requiredForCovered: true, signals: ["consumer and customer information"] },
+      { id: "secure_disposal_method", label: "Requires secure disposal methods", requiredForCovered: true, signals: ["secure disposal"] },
+    ],
+    requiredElementsForCovered: ["disposal_scope", "secure_disposal_method"],
+  };
+  const finding = await productionPathFinding(disposalRequirement, [
+    chunk({ content_preview: "Current page focus: Disposal of consumer and customer information." }),
+  ], [
+    classifierClassification({
+      relationship: "partially_supports",
+      requirement_supported: false,
+      covered_elements: ["disposal_scope"],
+      missing_elements: ["secure_disposal_method"],
+      supporting_quote: "Current page focus: Disposal of consumer and customer information.",
+    }),
+  ]);
+
+  assert.equal(finding.status, "missing");
+  assert.equal(finding.evidence.length, 0);
+});
+
+test("production path does not persist scaffold lines embedded in otherwise related spans", async () => {
+  const assessmentRequirement = {
+    ...requirement,
+    id: "incident_assessment_containment_control",
+    title: "Incident assessment and containment",
+    coverageElements: [
+      { id: "assesses_scope", label: "Assesses unauthorized access", requiredForCovered: true, signals: ["assessment of unauthorized access"] },
+      { id: "customer_information_systems", label: "Identifies affected systems", requiredForCovered: true, signals: ["affected customer information systems"] },
+      { id: "containment_control", label: "Contains the incident", requiredForCovered: true, signals: ["containment steps"] },
+    ],
+    requiredElementsForCovered: ["assesses_scope", "customer_information_systems", "containment_control"],
+  };
+  const content = [
+    "Current page focus: Assessment of unauthorized access or use.",
+    "The assessment of unauthorized access identifies affected customer information systems and information types.",
+    "The response team performs containment steps to prevent additional unauthorized access.",
+  ].join("\n");
+  const finding = await productionPathFinding(assessmentRequirement, [
+    chunk({ content_preview: content }),
+  ], [
+    classifierClassification({
+      covered_elements: ["assesses_scope", "customer_information_systems", "containment_control"],
+      supporting_quote: content,
+    }),
+  ]);
+
+  assert.equal(finding.status, "covered");
+  assert.doesNotMatch(finding.evidence[0].quote ?? "", /Current page focus:/);
+  assert.match(finding.evidence[0].quote ?? "", /^The assessment of unauthorized access/);
+});
+
+test("production path does not use customer-notification negative evidence for disposal", async () => {
+  const disposalRequirement = {
+    ...requirement,
+    id: "disposal_consumer_customer_information",
+    title: "Disposal of consumer and customer information",
+    coverageElements: [
+      { id: "disposal_scope", label: "Applies to consumer or customer information", requiredForCovered: true, signals: ["customer information"] },
+      { id: "secure_disposal_method", label: "Requires secure disposal methods", requiredForCovered: true, signals: ["secure disposal"] },
+    ],
+    requiredElementsForCovered: ["disposal_scope", "secure_disposal_method"],
+  };
+  const quote =
+    "This document does not define a customer notification decision standard for unauthorized access to or use of sensitive customer information.";
+  const finding = await productionPathFinding(disposalRequirement, [
+    chunk({ content_preview: quote }),
+  ], [
+    classifierClassification({
+      relationship: "negative_evidence",
+      requirement_supported: false,
+      control_absent_or_out_of_scope: true,
+      covered_elements: [],
+      missing_elements: ["disposal_scope", "secure_disposal_method"],
+      supporting_quote: quote,
+    }),
+  ]);
+
+  assert.equal(finding.status, "missing");
+  assert.equal(finding.evidence.length, 0);
+});
+
+test("production path does not accept generic escalation language as disposal support", async () => {
+  const disposalRequirement = {
+    ...requirement,
+    id: "disposal_consumer_customer_information",
+    title: "Disposal of consumer and customer information",
+    coverageElements: [
+      { id: "disposal_scope", label: "Applies to consumer or customer information", requiredForCovered: true, signals: ["customer information"] },
+      { id: "secure_disposal_method", label: "Requires secure disposal methods", requiredForCovered: true, signals: ["secure disposal"] },
+    ],
+    requiredElementsForCovered: ["disposal_scope", "secure_disposal_method"],
+  };
+  const quote =
+    "Managers should escalate unusual events to Legal, Compliance, or Information Security when they believe customer information may be affected.";
+  const finding = await productionPathFinding(disposalRequirement, [
+    chunk({ content_preview: quote }),
+  ], [
+    classifierClassification({
+      relationship: "partially_supports",
+      requirement_supported: false,
+      covered_elements: ["disposal_scope"],
+      missing_elements: ["secure_disposal_method"],
+      supporting_quote: quote,
+    }),
+  ]);
+
+  assert.equal(finding.status, "missing");
+  assert.equal(finding.evidence.length, 0);
+});
+
+test("production path accepts disposal-aligned destruction and shredding evidence", async () => {
+  const disposalRequirement = {
+    ...requirement,
+    id: "disposal_consumer_customer_information",
+    title: "Disposal of consumer and customer information",
+    coverageElements: [
+      { id: "disposal_scope", label: "Applies to consumer or customer information", requiredForCovered: true, signals: ["customer information"] },
+      { id: "secure_disposal_method", label: "Requires secure disposal methods", requiredForCovered: true, signals: ["shredding", "destruction"] },
+    ],
+    requiredElementsForCovered: ["disposal_scope", "secure_disposal_method"],
+  };
+  const quote =
+    "Customer information records are disposed of through secure destruction, shredding, or approved media wiping.";
+  const finding = await productionPathFinding(disposalRequirement, [
+    chunk({ content_preview: quote }),
+  ], [
+    classifierClassification({
+      covered_elements: ["disposal_scope", "secure_disposal_method"],
+      supporting_quote: quote,
+    }),
+  ]);
+
+  assert.equal(finding.status, "covered");
+  assert.equal(finding.evidence[0].quote, quote);
+});
+
+test("production path does not use customer-notification negative evidence for incident assessment", async () => {
+  const assessmentRequirement = {
+    ...requirement,
+    id: "incident_assessment_containment_control",
+    title: "Incident assessment and containment",
+    coverageElements: [
+      { id: "assesses_scope", label: "Assesses unauthorized access", requiredForCovered: true, signals: ["assessment"] },
+      { id: "customer_information_systems", label: "Identifies affected systems", requiredForCovered: true, signals: ["customer information systems"] },
+      { id: "containment_control", label: "Contains the incident", requiredForCovered: true, signals: ["containment"] },
+    ],
+    requiredElementsForCovered: ["assesses_scope", "customer_information_systems", "containment_control"],
+  };
+  const quote =
+    "This document does not define a customer notification decision standard for unauthorized access to or use of sensitive customer information.";
+  const finding = await productionPathFinding(assessmentRequirement, [
+    chunk({ content_preview: quote }),
+  ], [
+    classifierClassification({
+      relationship: "negative_evidence",
+      requirement_supported: false,
+      control_absent_or_out_of_scope: true,
+      covered_elements: [],
+      missing_elements: ["assesses_scope", "customer_information_systems", "containment_control"],
+      supporting_quote: quote,
+    }),
+  ]);
+
+  assert.equal(finding.status, "missing");
+  assert.equal(finding.evidence.length, 0);
+});
+
+test("production path does not count limitation-only incident response text as positive partial support", async () => {
+  const writtenRequirement = {
+    ...requirement,
+    id: "written_incident_response_program",
+    title: "Written incident response program",
+    coverageElements: [
+      { id: "written_program", label: "Maintains a written incident response program", requiredForCovered: true, signals: ["written incident response program"] },
+      { id: "customer_information_scope", label: "Applies to customer information", requiredForCovered: true, signals: ["customer information"] },
+    ],
+    requiredElementsForCovered: ["written_program", "customer_information_scope"],
+  };
+  const quote =
+    "The list identifies teams, but it does not define a complete written incident response program for customer information events.";
+  const finding = await productionPathFinding(writtenRequirement, [
+    chunk({ content_preview: quote }),
+  ], [
+    classifierClassification({
+      relationship: "partially_supports",
+      requirement_supported: false,
+      covered_elements: ["written_program", "customer_information_scope"],
+      missing_elements: [],
+      supporting_quote: quote,
+    }),
+  ]);
+
+  assert.equal(finding.status, "missing");
+  assert.equal(finding.evidence.length, 0);
+});
+
+test("production path still accepts substantive weak-document style policy sentences", async () => {
+  const safeguardsRequirement = {
+    ...requirement,
+    id: "safeguards_customer_information",
+    title: "Safeguards for customer information",
+    coverageElements: [
+      { id: "customer_information_scope", label: "Applies safeguards to customer information", requiredForCovered: true, signals: ["customer information repositories"] },
+      { id: "safeguards_controls", label: "Defines safeguards", requiredForCovered: true, signals: ["access approval", "encryption"] },
+    ],
+    requiredElementsForCovered: ["customer_information_scope", "safeguards_controls"],
+  };
+  const quote =
+    "Customer information repositories require access approval, periodic access review, and encryption for approved storage and transmission channels.";
+  const finding = await productionPathFinding(safeguardsRequirement, [
+    chunk({ content_preview: quote }),
+  ], [
+    classifierClassification({
+      covered_elements: ["customer_information_scope", "safeguards_controls"],
+      supporting_quote: quote,
+    }),
+  ]);
+
+  assert.equal(finding.status, "covered");
+  assert.equal(finding.evidence[0].quote, quote);
 });
 
 test("findings generation schema and routes preserve workspace/security boundaries", async () => {
