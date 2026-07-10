@@ -7,17 +7,19 @@ export type FindingConfidence = "high" | "medium" | "low";
 export type NegativeEvidenceScope = "organization_level_negative" | "document_scope_limitation";
 
 export type GeneratedFindingEvidence = {
-  chunk_id: string;
-  document_id: string;
+  chunk_id: string | null;
+  document_id: string | null;
   relationship: GradedEvidenceChunk["evidence_relationship"];
   quote: string | null;
+  evidence_quote?: string | null;
+  source_quote?: string | null;
   reason: string;
   confidence: GradedEvidenceChunk["classifier_confidence"];
   filename: string | null;
   page_start: number | null;
   page_end: number | null;
   section_path: string | null;
-  chunk_index: number;
+  chunk_index: number | null;
 };
 
 export type GeneratedRequirementFinding = {

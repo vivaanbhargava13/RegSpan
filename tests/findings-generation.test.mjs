@@ -2277,6 +2277,40 @@ test("findings generation schema and routes preserve workspace/security boundari
   assert.doesNotMatch(generateRoute, /SUPABASE_SERVICE_ROLE_KEY/);
 });
 
+test("findings persistence stores primary evidence rows and guards completed runs", async () => {
+  const generator = await readFile("lib/findingsGeneration.ts", "utf8");
+  const storeFindingBody = generator.slice(
+    generator.indexOf("async function storeFinding"),
+    generator.indexOf("async function completeAnalysisRun"),
+  );
+  const generateBody = generator.slice(
+    generator.indexOf("export async function generateFindingsForWorkspace"),
+  );
+
+  assert.match(generator, /export function evidenceRowsForInsert/);
+  assert.match(generator, /function sourceQuoteForEvidence/);
+  assert.match(generator, /evidence\.quote,\s*\n\s*evidence\.evidence_quote,\s*\n\s*evidence\.source_quote/);
+  assert.match(generator, /quote: string;/);
+  assert.match(generator, /evidence_quote: string;/);
+  assert.match(generator, /workspace_id: workspaceId/);
+  assert.match(generator, /document_id: evidence\.document_id \?\? null/);
+  assert.match(generator, /chunk_id: evidence\.chunk_id \?\? null/);
+  assert.match(generator, /chunk_index: evidence\.chunk_index \?\? null/);
+  assert.match(generator, /relationship === "supports"/);
+  assert.match(generator, /relationship === "partially_supports"/);
+  assert.match(generator, /relationship === "negative_evidence"/);
+  assert.match(storeFindingBody, /\.from\("finding_evidence"\)\s*\n\s*\.insert\(evidenceRows\)\s*\n\s*\.select\("id"\)/);
+  assert.match(storeFindingBody, /finding_evidence_insert_failed/);
+  assert.match(storeFindingBody, /finding_evidence_insert_incomplete/);
+  assert.match(storeFindingBody, /finding_primary_evidence_missing/);
+  assert.doesNotMatch(storeFindingBody, /if \(finding\.evidence\.length > 0\)/);
+  assert.match(generator, /function assertCompletedRunHasPrimaryEvidence/);
+  assert.match(generator, /analysis_primary_evidence_invariant_failed/);
+  assert.match(generateBody, /const storedFindings: StoredFindingResult\[\] = \[\]/);
+  assert.match(generateBody, /storedFindings\.push\(storedFinding\)/);
+  assert.match(generateBody, /assertCompletedRunHasPrimaryEvidence\(storedFindings\);[\s\S]{0,240}await completeAnalysisRun/);
+});
+
 test("findings UI shows generation and empty states", async () => {
   const client = await readFile("components/FindingsClient.tsx", "utf8");
 
