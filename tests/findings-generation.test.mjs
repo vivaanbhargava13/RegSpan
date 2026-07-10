@@ -681,9 +681,10 @@ test("findings UI keeps covered cards quiet and collapses source excerpts", asyn
   assert.doesNotMatch(client, /Risk if missing/);
   assert.match(client, /Risk if unresolved: \$\{humanize\(finding\.severity\)\}/);
   assert.match(client, /<RiskBadge label=\{`Risk if unresolved:/);
-  assert.match(client, /<details className="rounded-md border border-app-border bg-app-elevated\/35">/);
+  assert.match(client, /aria-expanded=\{isExpanded\}/);
   assert.match(client, /Client source excerpts/);
-  assert.match(client, /View supporting document excerpts/);
+  assert.match(client, /Show source excerpts/);
+  assert.match(client, /Hide source excerpts/);
   assert.match(client, /Document excerpt/);
   assert.match(client, /Supports this conclusion/);
   assert.match(client, /Partially supports this conclusion/);
@@ -2247,11 +2248,12 @@ test("production path still accepts substantive weak-document style policy sente
 });
 
 test("findings generation schema and routes preserve workspace/security boundaries", async () => {
-  const [migration, generator, route, generateRoute] = await Promise.all([
+  const [migration, generator, route, generateRoute, securityHelper] = await Promise.all([
     readFile("supabase/migrations/016_create_findings_generation_tables.sql", "utf8"),
     readFile("lib/findingsGeneration.ts", "utf8"),
     readFile("app/api/findings/route.ts", "utf8"),
     readFile("app/api/findings/generate/route.ts", "utf8"),
+    readFile("lib/documentSecurity.ts", "utf8"),
   ]);
 
   assert.match(migration, /Query name: 016_create_findings_generation_tables/);
@@ -2260,9 +2262,14 @@ test("findings generation schema and routes preserve workspace/security boundari
   assert.match(generator, /evidence_role === "organization_evidence"/);
   assert.match(generator, /createRequirementEvidenceClassifier/);
   assert.match(generator, /retrieveRequirementHybridChunks/);
-  assert.match(route, /authenticateRequest/);
+  assert.match(route, /authenticateRequestOrSession/);
   assert.match(route, /getActorWorkspaceId/);
+  assert.match(route, /\.eq\("status", "completed"\)/);
   assert.doesNotMatch(route, /workspace_id.*request/i);
+  assert.match(securityHelper, /getServerSupabaseAuthClient/);
+  assert.match(securityHelper, /export async function authenticateRequestOrSession/);
+  assert.match(securityHelper, /authSource: "cookie"/);
+  assert.match(securityHelper, /"authentication_required"/);
   assert.match(generateRoute, /authenticateRequest/);
   assert.match(generateRoute, /getActorWorkspaceId/);
   assert.match(generateRoute, /EmbeddingProcessingError/);
@@ -2287,9 +2294,92 @@ test("findings UI shows generation and empty states", async () => {
   assert.match(client, /Risk if unresolved:/);
   assert.match(client, /DEFAULT_VISIBLE_EVIDENCE_COUNT = 4/);
   assert.match(client, /Show additional source excerpts/);
+  assert.match(client, /Show source excerpts/);
+  assert.match(client, /Hide source excerpts/);
+  assert.match(client, /let headers: HeadersInit \| undefined/);
+  assert.match(client, /headers = \{ Authorization: `Bearer \$\{token\}` \}/);
+  assert.match(client, /catch \{\s+headers = undefined;\s+\}/);
   assert.match(client, /background_context/);
   assert.match(client, /subdued/);
   assert.doesNotMatch(client, /SUPABASE_SERVICE_ROLE_KEY|EMBEDDING_API_KEY|OPENAI_API_KEY/);
+});
+
+test("findings UI displays stored client evidence rows and exact quote fallbacks", async () => {
+  const client = await readFile("components/FindingsClient.tsx", "utf8");
+  const route = await readFile("app/api/findings/route.ts", "utf8");
+  const evidenceLookup = route.slice(route.indexOf('.from("finding_evidence")'), route.indexOf("if (evidenceError)"));
+
+  assert.match(route, /\.from\("finding_evidence"\)/);
+  assert.match(route, /quote, evidence_quote/);
+  assert.match(route, /source_quote: row\.quote\?\.trim\(\) \? row\.quote : row\.evidence_quote/);
+  assert.match(route, /\.eq\("status", "completed"\)/);
+  assert.match(route, /\.order\("created_at", \{ ascending: false \}\)/);
+  assert.match(evidenceLookup, /\.in\("finding_id", findingIds\)/);
+  assert.doesNotMatch(evidenceLookup, /\.eq\("workspace_id", workspaceId\)/);
+  assert.match(route, /evidenceByFindingId\[finding\.id as string\] \?\? \[\]/);
+  assert.match(client, /normalizeFindingEvidence/);
+  assert.match(client, /finding_evidence\?: FindingEvidence\[\]/);
+  assert.match(client, /findingEvidence\?: FindingEvidence\[\]/);
+  assert.match(client, /source_excerpts\?: FindingEvidence\[\]/);
+  assert.match(client, /\(body\.findings \?\? \[\]\)\.map\(normalizeFindingEvidence\)/);
+  assert.match(client, /function sourceQuoteForEvidence/);
+  assert.match(client, /evidence\.quote\?\.trim\(\)/);
+  assert.match(client, /evidence\.evidence_quote\?\.trim\(\)/);
+  assert.match(client, /evidence\.source_quote\?\.trim\(\)/);
+  assert.match(client, /<EvidenceList evidence=\{finding\.evidence\} \/>/);
+  assert.match(client, /finding\.evidence\.length === 0/);
+});
+
+test("findings UI handles real API-like evidence payload variants", async () => {
+  const client = await readFile("components/FindingsClient.tsx", "utf8");
+
+  const apiLikeEvidenceArray = {
+    evidence: [{
+      quote: "The procedure requires notice content.",
+      evidence_quote: null,
+      filename: "policy.pdf",
+      page_start: 3,
+      page_end: 4,
+      section_path: "Incident response / Notice content",
+      chunk_index: 12,
+      relationship: "supports",
+      confidence: "high",
+    }],
+  };
+  const nestedRelationShape = {
+    finding_evidence: [{
+      quote: "",
+      evidence_quote: "The procedure requires customer protective steps.",
+      filename: "policy.pdf",
+      page_start: 5,
+      page_end: 5,
+      section_path: "Notice content",
+      chunk_index: 13,
+      relationship: "partially_supports",
+      confidence: "medium",
+    }],
+  };
+  const camelCaseShape = {
+    findingEvidence: [{
+      quote: null,
+      evidence_quote: null,
+      source_quote: "Records are retained with the compliance file.",
+      relationship: "supports",
+      confidence: "high",
+    }],
+  };
+
+  assert.equal(apiLikeEvidenceArray.evidence[0].quote, "The procedure requires notice content.");
+  assert.equal(nestedRelationShape.finding_evidence[0].evidence_quote, "The procedure requires customer protective steps.");
+  assert.equal(camelCaseShape.findingEvidence[0].source_quote, "Records are retained with the compliance file.");
+  assert.match(client, /Array\.isArray\(finding\.evidence\)/);
+  assert.match(client, /Array\.isArray\(finding\.finding_evidence\)/);
+  assert.match(client, /Array\.isArray\(finding\.findingEvidence\)/);
+  assert.match(client, /Array\.isArray\(finding\.source_excerpts\)/);
+  assert.match(client, /sourceQuoteForEvidence\(evidence\)/);
+  assert.doesNotMatch(client, /evidence\.quote \?\? evidence\.evidence_quote/);
+  assert.match(client, /isExpanded \? "Hide source excerpts" : "Show source excerpts"/);
+  assert.match(client, /onClick=\{\(\) => setIsExpanded\(\(current\) => !current\)\}/);
 });
 
 test("Markdown report omits unresolved-risk line for covered findings", () => {

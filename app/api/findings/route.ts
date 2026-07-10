@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import {
-  authenticateRequest,
+  authenticateRequestOrSession,
   documentErrorResponse,
   getActorWorkspaceId,
   getCorrelationId,
@@ -8,6 +8,45 @@ import {
 import { getServerSupabaseAdminClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
+
+type FindingEvidenceRow = {
+  id: string;
+  finding_id: string;
+  document_id: string | null;
+  chunk_id: string | null;
+  relationship: string | null;
+  quote: string | null;
+  evidence_quote: string | null;
+  reason: string | null;
+  confidence: string | null;
+  filename: string | null;
+  page_start: number | null;
+  page_end: number | null;
+  section_path: string | null;
+  chunk_index: number | null;
+  created_at: string | null;
+};
+
+function evidenceForClient(row: FindingEvidenceRow) {
+  return {
+    id: row.id,
+    finding_id: row.finding_id,
+    document_id: row.document_id,
+    chunk_id: row.chunk_id,
+    relationship: row.relationship,
+    quote: row.quote,
+    evidence_quote: row.evidence_quote,
+    source_quote: row.quote?.trim() ? row.quote : row.evidence_quote,
+    reason: row.reason,
+    confidence: row.confidence,
+    filename: row.filename,
+    page_start: row.page_start,
+    page_end: row.page_end,
+    section_path: row.section_path,
+    chunk_index: row.chunk_index,
+    created_at: row.created_at,
+  };
+}
 
 async function hasProcessedEvidence(supabase: ReturnType<typeof getServerSupabaseAdminClient>, workspaceId: string) {
   const { data, error } = await supabase
@@ -42,7 +81,7 @@ export async function GET(request: Request) {
 
   try {
     const supabase = getServerSupabaseAdminClient();
-    const actor = await authenticateRequest(supabase, request);
+    const actor = await authenticateRequestOrSession(supabase, request);
     const workspaceId = await getActorWorkspaceId(supabase, actor.user.id);
     const processedEvidenceAvailable = await hasProcessedEvidence(supabase, workspaceId);
     const reviewedDocumentCount = await processedDocumentCount(supabase, workspaceId);
@@ -51,6 +90,7 @@ export async function GET(request: Request) {
       .from("analysis_runs")
       .select("id, workspace_id, status, started_at, completed_at, generated_by, requirement_count, finding_count, error_message, created_at")
       .eq("workspace_id", workspaceId)
+      .eq("status", "completed")
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -86,17 +126,17 @@ export async function GET(request: Request) {
       const { data: evidence, error: evidenceError } = await supabase
         .from("finding_evidence")
         .select("id, finding_id, document_id, chunk_id, relationship, quote, evidence_quote, reason, confidence, filename, page_start, page_end, section_path, chunk_index, created_at")
-        .eq("workspace_id", workspaceId)
-        .in("finding_id", findingIds);
+        .in("finding_id", findingIds)
+        .order("created_at", { ascending: true });
 
       if (evidenceError) {
         throw new Error("finding_evidence_lookup_failed");
       }
 
-      evidenceByFindingId = (evidence ?? []).reduce<Record<string, unknown[]>>((grouped, item) => {
-        const findingId = item.finding_id as string;
+      evidenceByFindingId = ((evidence ?? []) as FindingEvidenceRow[]).reduce<Record<string, unknown[]>>((grouped, item) => {
+        const findingId = item.finding_id;
         grouped[findingId] ??= [];
-        grouped[findingId].push(item);
+        grouped[findingId].push(evidenceForClient(item));
         return grouped;
       }, {});
     }

@@ -2,6 +2,7 @@ import "server-only";
 
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import type { IngestionDocument } from "@/lib/ingestion";
+import { getServerSupabaseAuthClient } from "@/lib/supabase/authServer";
 
 export const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
 export const PDF_MIME_TYPE = "application/pdf";
@@ -26,6 +27,12 @@ export type AuthorizedDocument = IngestionDocument & {
 export type RequestActor = {
   user: User;
   accessToken: string;
+};
+
+export type SessionRequestActor = {
+  user: User;
+  accessToken: string | null;
+  authSource: "bearer" | "cookie";
 };
 
 export function isUuid(value: string) {
@@ -89,6 +96,29 @@ export async function authenticateRequest(
   }
 
   return { user: data.user, accessToken };
+}
+
+export async function authenticateRequestOrSession(
+  supabaseAdmin: SupabaseClient,
+  request: Request,
+): Promise<SessionRequestActor> {
+  if (request.headers.get("authorization")?.trim()) {
+    const actor = await authenticateRequest(supabaseAdmin, request);
+    return { ...actor, authSource: "bearer" };
+  }
+
+  const supabaseAuth = await getServerSupabaseAuthClient();
+  const { data, error } = await supabaseAuth.auth.getUser();
+
+  if (error || !data.user) {
+    throw new DocumentRequestError(
+      "Authentication is required.",
+      401,
+      "authentication_required",
+    );
+  }
+
+  return { user: data.user, accessToken: null, authSource: "cookie" };
 }
 
 export async function getActorWorkspaceId(

@@ -36,6 +36,7 @@ type FindingEvidence = {
   relationship: string | null;
   quote: string | null;
   evidence_quote: string | null;
+  source_quote?: string | null;
   reason: string | null;
   confidence: string | null;
   filename: string | null;
@@ -55,6 +56,9 @@ type Finding = {
   remediation: string | null;
   rationale: string | null;
   evidence: FindingEvidence[];
+  finding_evidence?: FindingEvidence[];
+  findingEvidence?: FindingEvidence[];
+  source_excerpts?: FindingEvidence[];
 };
 
 type FindingsResponse = {
@@ -117,10 +121,10 @@ function formatDate(value: string | null) {
 }
 
 function formatPageRange(evidence: FindingEvidence) {
-  if (evidence.page_start && evidence.page_end && evidence.page_start !== evidence.page_end) {
+  if (evidence.page_start != null && evidence.page_end != null && evidence.page_start !== evidence.page_end) {
     return `Pages ${evidence.page_start}–${evidence.page_end}`;
   }
-  if (evidence.page_start) return `Page ${evidence.page_start}`;
+  if (evidence.page_start != null) return `Page ${evidence.page_start}`;
   return "Page not available";
 }
 
@@ -139,7 +143,37 @@ function sortedEvidence(evidence: FindingEvidence[]) {
   return [...evidence].sort((left, right) => evidenceSortRank(left) - evidenceSortRank(right));
 }
 
-function evidenceRelationshipLabel(relationship: string | null) {
+function evidenceKey(evidence: FindingEvidence, index: number) {
+  return evidence.id ?? `${evidence.filename ?? "evidence"}-${evidence.section_path ?? "section"}-${index}`;
+}
+
+function normalizeFindingEvidence(finding: Finding): Finding {
+  const evidence = Array.isArray(finding.evidence)
+    ? finding.evidence
+    : Array.isArray(finding.finding_evidence)
+      ? finding.finding_evidence
+      : Array.isArray(finding.findingEvidence)
+        ? finding.findingEvidence
+        : Array.isArray(finding.source_excerpts)
+          ? finding.source_excerpts
+          : [];
+  return { ...finding, evidence };
+}
+
+function sourceQuoteForEvidence(evidence: FindingEvidence) {
+  if (evidence.quote?.trim()) {
+    return evidence.quote.trim();
+  }
+  if (evidence.evidence_quote?.trim()) {
+    return evidence.evidence_quote.trim();
+  }
+  if (evidence.source_quote?.trim()) {
+    return evidence.source_quote.trim();
+  }
+  return null;
+}
+
+function evidenceRelationshipLabel(relationship: string | null | undefined) {
   switch (relationship) {
     case "supports":
       return "Supports this conclusion";
@@ -208,6 +242,8 @@ function evidenceSummary(evidence: FindingEvidence[]) {
 }
 
 function EvidenceCard({ evidence, subdued = false }: { evidence: FindingEvidence; subdued?: boolean }) {
+  const sourceQuote = sourceQuoteForEvidence(evidence);
+
   return (
     <div className={`rounded-md border px-4 py-3 ${
       subdued
@@ -233,9 +269,9 @@ function EvidenceCard({ evidence, subdued = false }: { evidence: FindingEvidence
           </span>
         </div>
       </div>
-      {evidence.quote || evidence.evidence_quote ? (
+      {sourceQuote ? (
         <blockquote className="mt-3 break-words border-l-2 border-app-accent/45 bg-app-elevated/45 py-2 pl-3 pr-3 text-sm leading-6 text-app-text [overflow-wrap:anywhere]">
-          “{evidence.quote ?? evidence.evidence_quote}”
+          “{sourceQuote}”
         </blockquote>
       ) : null}
       {evidence.reason ? (
@@ -305,20 +341,26 @@ export function FindingsClient() {
     setError("");
 
     try {
-      const [token, nextWorkspaceName] = await Promise.all([
-        getAccessToken(),
-        loadWorkspaceReportName(),
-      ]);
+      const nextWorkspaceName = await loadWorkspaceReportName();
       setWorkspaceName(nextWorkspaceName);
+
+      let headers: HeadersInit | undefined;
+      try {
+        const token = await getAccessToken();
+        headers = { Authorization: `Bearer ${token}` };
+      } catch {
+        headers = undefined;
+      }
+
       const response = await fetch("/api/findings", {
-        headers: { Authorization: `Bearer ${token}` },
+        headers,
       });
       const body = (await response.json()) as FindingsResponse;
       if (!response.ok || !body.ok) {
         throw new Error(body.error || "Unable to load findings.");
       }
       setLatestRun(body.latestRun ?? null);
-      setFindings(body.findings ?? []);
+      setFindings((body.findings ?? []).map(normalizeFindingEvidence));
       setHasProcessedEvidence(Boolean(body.hasProcessedEvidence));
       setProcessedDocumentCount(body.processedDocumentCount ?? null);
     } catch (loadError) {
@@ -582,41 +624,52 @@ export function FindingsClient() {
 }
 
 function EvidenceList({ evidence }: { evidence: FindingEvidence[] }) {
+  const [isExpanded, setIsExpanded] = useState(false);
   const orderedEvidence = sortedEvidence(evidence);
 
   return (
-    <details className="rounded-md border border-app-border bg-app-elevated/35">
-      <summary className="flex cursor-pointer list-none flex-col gap-1 px-4 py-3 text-sm font-semibold text-app-text transition hover:bg-app-elevated sm:flex-row sm:items-center sm:justify-between">
+    <div className="rounded-md border border-app-border bg-app-elevated/35">
+      <button
+        type="button"
+        aria-expanded={isExpanded}
+        onClick={() => setIsExpanded((current) => !current)}
+        className="flex w-full cursor-pointer flex-col gap-1 px-4 py-3 text-left text-sm font-semibold text-app-text transition hover:bg-app-elevated sm:flex-row sm:items-center sm:justify-between"
+      >
         <span className="min-w-0">Client source excerpts</span>
         <span className="min-w-0 break-words text-xs font-medium text-app-subtle [overflow-wrap:anywhere]">
-          {evidenceSummary(orderedEvidence)} · View supporting document excerpts
+          {evidenceSummary(orderedEvidence)}
         </span>
-      </summary>
-      <div className="space-y-3 border-t border-app-border p-3">
-        {orderedEvidence.slice(0, DEFAULT_VISIBLE_EVIDENCE_COUNT).map((item) => (
-          <EvidenceCard
-            key={item.id}
-            evidence={item}
-            subdued={item.relationship === "background_context" || item.relationship === "irrelevant"}
-          />
-        ))}
-        {orderedEvidence.length > DEFAULT_VISIBLE_EVIDENCE_COUNT ? (
-          <details className="rounded-md border border-app-border bg-app-surface/70">
-            <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-app-muted transition hover:bg-app-elevated hover:text-app-text">
-              Show additional source excerpts ({orderedEvidence.length - DEFAULT_VISIBLE_EVIDENCE_COUNT} more)
-            </summary>
-            <div className="space-y-3 border-t border-app-border p-3">
-              {orderedEvidence.slice(DEFAULT_VISIBLE_EVIDENCE_COUNT).map((item) => (
-                <EvidenceCard
-                  key={item.id}
-                  evidence={item}
-                  subdued={item.relationship === "background_context" || item.relationship === "irrelevant"}
-                />
-              ))}
-            </div>
-          </details>
-        ) : null}
-      </div>
-    </details>
+        <span className="shrink-0 text-xs font-semibold text-app-accent">
+          {isExpanded ? "Hide source excerpts" : "Show source excerpts"}
+        </span>
+      </button>
+      {isExpanded ? (
+        <div className="space-y-3 border-t border-app-border p-3">
+          {orderedEvidence.slice(0, DEFAULT_VISIBLE_EVIDENCE_COUNT).map((item, index) => (
+            <EvidenceCard
+              key={evidenceKey(item, index)}
+              evidence={item}
+              subdued={item.relationship === "background_context" || item.relationship === "irrelevant"}
+            />
+          ))}
+          {orderedEvidence.length > DEFAULT_VISIBLE_EVIDENCE_COUNT ? (
+            <details className="rounded-md border border-app-border bg-app-surface/70">
+              <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-app-muted transition hover:bg-app-elevated hover:text-app-text">
+                Show additional source excerpts ({orderedEvidence.length - DEFAULT_VISIBLE_EVIDENCE_COUNT} more)
+              </summary>
+              <div className="space-y-3 border-t border-app-border p-3">
+                {orderedEvidence.slice(DEFAULT_VISIBLE_EVIDENCE_COUNT).map((item, index) => (
+                  <EvidenceCard
+                    key={evidenceKey(item, DEFAULT_VISIBLE_EVIDENCE_COUNT + index)}
+                    evidence={item}
+                    subdued={item.relationship === "background_context" || item.relationship === "irrelevant"}
+                  />
+                ))}
+              </div>
+            </details>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
   );
 }
