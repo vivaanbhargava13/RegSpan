@@ -47,6 +47,12 @@ type ElementCoverageLedgerEntry = {
   confidence: FindingConfidence;
 };
 
+type TextSpan = {
+  text: string;
+  start: number;
+  end: number;
+};
+
 const highImpactRequirements = new Set<RegSpRequirementId>([
   "written_incident_response_program",
   "incident_assessment_containment_control",
@@ -101,35 +107,64 @@ function quoteWordCount(value: string) {
   return value.match(/[A-Za-z0-9]+/g)?.length ?? 0;
 }
 
-function evidenceSentences(rawText: string) {
-  return (rawText.match(/[^.!?]+[.!?]?/g) ?? [rawText])
-    .flatMap((sentence) => sentence.split("\n"))
-    .map((sentence) => sentence.trim())
-    .filter(Boolean);
+function trimSpan(rawText: string, start: number, end: number): TextSpan | null {
+  let trimmedStart = start;
+  let trimmedEnd = end;
+  while (trimmedStart < trimmedEnd && /\s/.test(rawText[trimmedStart])) trimmedStart += 1;
+  while (trimmedEnd > trimmedStart && /\s/.test(rawText[trimmedEnd - 1])) trimmedEnd -= 1;
+  const text = rawText.slice(trimmedStart, trimmedEnd);
+  return text ? { text, start: trimmedStart, end: trimmedEnd } : null;
 }
 
-function sourceSentences(rawText: string) {
-  return evidenceSentences(rawText).filter((sentence) => rawText.includes(sentence));
+function sourceSentenceSpans(rawText: string): TextSpan[] {
+  const spans: TextSpan[] = [];
+  const linePattern = /[^\n]+/g;
+  for (const lineMatch of rawText.matchAll(linePattern)) {
+    const line = lineMatch[0];
+    const lineStart = lineMatch.index ?? 0;
+    const sentencePattern = /[^.!?]+[.!?]?/g;
+    for (const sentenceMatch of line.matchAll(sentencePattern)) {
+      const sentenceStart = lineStart + (sentenceMatch.index ?? 0);
+      const span = trimSpan(rawText, sentenceStart, sentenceStart + sentenceMatch[0].length);
+      if (span) spans.push(span);
+    }
+  }
+  return spans;
 }
 
-function completedSourceQuote(chunk: GradedEvidenceChunk) {
-  const quote = chunk.supporting_quote?.trim();
-  if (!quote || !chunk.content_preview.includes(quote)) return quote ?? null;
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
-  const quoteStart = chunk.content_preview.indexOf(quote);
-  const quoteEnd = quoteStart + quote.length;
-  const overlapping = sourceSentences(chunk.content_preview).filter((sentence) => {
-    const sentenceStart = chunk.content_preview.indexOf(sentence);
-    const sentenceEnd = sentenceStart + sentence.length;
-    return sentenceStart >= 0 && sentenceStart < quoteEnd && sentenceEnd > quoteStart;
-  });
+function sourceSpanForQuote(rawText: string, quote: string | null | undefined): TextSpan | null {
+  const trimmed = quote?.trim();
+  if (!trimmed) return null;
+  const exactStart = rawText.indexOf(trimmed);
+  if (exactStart >= 0) {
+    return trimSpan(rawText, exactStart, exactStart + trimmed.length);
+  }
 
-  if (overlapping.length === 0) return quote;
-  const start = chunk.content_preview.indexOf(overlapping[0]);
+  const tokens = trimmed.split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return null;
+  const normalizedWhitespacePattern = new RegExp(tokens.map(escapeRegExp).join("\\s+"));
+  const match = normalizedWhitespacePattern.exec(rawText);
+  if (!match || match.index === undefined) return null;
+  return trimSpan(rawText, match.index, match.index + match[0].length);
+}
+
+function expandedSentenceSpan(rawText: string, span: TextSpan): TextSpan {
+  const sentences = sourceSentenceSpans(rawText);
+  const overlapping = sentences.filter((sentence) =>
+    sentence.start < span.end && sentence.end > span.start
+  );
+  if (overlapping.length === 0) return span;
+  const first = overlapping[0];
   const last = overlapping[overlapping.length - 1];
-  const end = chunk.content_preview.indexOf(last, start) + last.length;
-  const span = chunk.content_preview.slice(start, end).trim();
-  return span || quote;
+  return trimSpan(rawText, first.start, last.end) ?? span;
+}
+
+function sourceSpanBetween(rawText: string, first: TextSpan, last: TextSpan) {
+  return trimSpan(rawText, first.start, last.end);
 }
 
 function looksLikeHeadingOnly(value: string) {
@@ -148,15 +183,26 @@ function hasDanglingEnding(value: string) {
   return /\b(?:and|or|but|with|including|such as|assigns|requires|defines|includes|provides)\s*$/i.test(value.trim());
 }
 
-function hasSubstantiveExactSourceQuote(chunk: GradedEvidenceChunk) {
-  const quote = completedSourceQuote(chunk);
-  return Boolean(
-    quote
-    && chunk.content_preview.includes(quote)
-    && quoteWordCount(quote) >= 5
-    && !looksLikeHeadingOnly(quote)
-    && !hasDanglingEnding(quote),
-  );
+function startsWithContinuationFragment(value: string) {
+  return /^(?:and|or|but|while|when|where|because|including|such as|with|to|for|of|as)\b/.test(value.trim());
+}
+
+function substantiveQuoteText(value: string) {
+  const lines = value
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length <= 1) return value;
+  const substantiveLines = lines.filter((line) => !looksLikeHeadingOnly(line));
+  return (substantiveLines.length > 0 ? substantiveLines : lines).join(" ");
+}
+
+function hasSubstantiveQuoteShape(value: string) {
+  const substantiveText = substantiveQuoteText(value);
+  return quoteWordCount(substantiveText) >= 5
+    && !looksLikeHeadingOnly(substantiveText)
+    && !hasDanglingEnding(substantiveText)
+    && !startsWithContinuationFragment(value);
 }
 
 const additionalElementSignals: Partial<Record<RegSpRequirementId, Record<string, string[]>>> = {
@@ -311,13 +357,25 @@ function elementSignals(requirement: RegSpRequirement, elementId: string) {
   ]);
 }
 
+function evidencePreservationElementMatches(text: string) {
+  const hasSpecificIncidentMaterial =
+    /\b(?:logs?|forensic|investigation materials?|incident records?|recordkeeping|chain of custody)\b/.test(text);
+  const hasPreservationAction =
+    /\b(?:preserv\w*|retain\w*|retention|recordkeeping|maintain\w*)\b/.test(text);
+  const hasDedicatedEvidencePreservation =
+    /\b(?:preserve|preserves|preserving|preserved)\s+(?:relevant\s+)?evidence\b/.test(text)
+    && !/\bwhile\s+preserv(?:e|es|ing|ed)\s+(?:relevant\s+)?evidence\b/.test(text);
+
+  return (hasSpecificIncidentMaterial && hasPreservationAction) || hasDedicatedEvidencePreservation;
+}
+
 function elementSignalMatches(requirement: RegSpRequirement, elementId: string, text: string) {
   const signals = elementSignals(requirement, elementId);
   if (copyRequirementId(requirement) === "evidence_log_preservation" && elementId === "incident_materials") {
     return signals.some((signal) => {
       const normalizedSignal = normalize(signal);
       return normalizedSignal && text.includes(normalizedSignal);
-    }) && /\b(?:preserv|retain|retaining|retained|logs?|evidence|investigation materials|forensic|recordkeeping)\b/.test(text);
+    }) && evidencePreservationElementMatches(text);
   }
 
   if (copyRequirementId(requirement) === "disposal_consumer_customer_information" && elementId === "secure_disposal_method") {
@@ -334,28 +392,118 @@ function elementSignalMatches(requirement: RegSpRequirement, elementId: string, 
   });
 }
 
-function quoteSupportedElementIds(requirement: RegSpRequirement, chunk: GradedEvidenceChunk) {
-  const quote = completedSourceQuote(chunk);
-  if (!quote || !hasSubstantiveExactSourceQuote(chunk)) return [];
-  const text = normalize(quote);
+function supportedElementIdsForQuote(requirement: RegSpRequirement, quote: string) {
+  const text = normalize(substantiveQuoteText(quote));
   return (requirement.coverageElements ?? [])
     .filter((element) => requirement.requiredElementsForCovered.includes(element.id))
     .filter((element) => elementSignalMatches(requirement, element.id, text))
     .map((element) => element.id);
 }
 
-function isSourceGroundedDirectSupport(chunk: GradedEvidenceChunk) {
+function quoteQualityScore(quote: string) {
+  let score = 0;
+  const substantiveText = substantiveQuoteText(quote);
+  if (hasSubstantiveQuoteShape(quote)) score += 40;
+  if (quote.includes("\n") && quote.split(/\n+/).some((line) => looksLikeHeadingOnly(line.trim()))) {
+    score -= 35;
+  }
+  if (startsWithContinuationFragment(quote)) score -= 60;
+  if (hasDanglingEnding(quote)) score -= 50;
+  if (looksLikeHeadingOnly(substantiveText)) score -= 80;
+  score += Math.min(quoteWordCount(substantiveText), 80) * 0.5;
+  return score;
+}
+
+function finalQuoteCandidateScore(requirement: RegSpRequirement, quote: string) {
+  const supportedElements = supportedElementIdsForQuote(requirement, quote);
+  return {
+    quote,
+    supportedElements,
+    score: supportedElements.length * 100 + quoteQualityScore(quote),
+  };
+}
+
+function candidateQuoteSpans(chunk: GradedEvidenceChunk) {
+  const rawText = chunk.content_preview;
+  const candidates: TextSpan[] = [];
+  const seen = new Set<string>();
+  const addCandidate = (span: TextSpan | null) => {
+    if (!span || !rawText.includes(span.text) || seen.has(span.text)) return;
+    seen.add(span.text);
+    candidates.push(span);
+  };
+
+  const sourceQuoteSpan = sourceSpanForQuote(rawText, chunk.supporting_quote);
+  if (!sourceQuoteSpan) return candidates;
+  if (sourceQuoteSpan) {
+    addCandidate(expandedSentenceSpan(rawText, sourceQuoteSpan));
+  }
+
+  const sentences = sourceSentenceSpans(rawText);
+  for (let index = 0; index < sentences.length; index += 1) {
+    for (let windowSize = 1; windowSize <= 3; windowSize += 1) {
+      const last = sentences[index + windowSize - 1];
+      if (!last) continue;
+      addCandidate(sourceSpanBetween(rawText, sentences[index], last));
+    }
+  }
+
+  return candidates;
+}
+
+function finalizedSourceQuote(requirement: RegSpRequirement, chunk: GradedEvidenceChunk) {
+  const ranked = candidateQuoteSpans(chunk)
+    .map((candidate) => finalQuoteCandidateScore(requirement, candidate.text))
+    .filter((candidate) =>
+      candidate.supportedElements.length > 0
+      && chunk.content_preview.includes(candidate.quote)
+      && hasSubstantiveQuoteShape(candidate.quote)
+    )
+    .sort((left, right) => {
+      const supportDelta = right.supportedElements.length - left.supportedElements.length;
+      if (supportDelta !== 0) return supportDelta;
+      const scoreDelta = right.score - left.score;
+      if (scoreDelta !== 0) return scoreDelta;
+      return left.quote.length - right.quote.length;
+    });
+
+  return ranked[0]?.quote ?? null;
+}
+
+function hasSubstantiveExactSourceQuote(requirement: RegSpRequirement, chunk: GradedEvidenceChunk) {
+  return Boolean(finalizedSourceQuote(requirement, chunk));
+}
+
+function quoteSupportedElementIds(requirement: RegSpRequirement, chunk: GradedEvidenceChunk) {
+  const quote = finalizedSourceQuote(requirement, chunk);
+  return quote ? supportedElementIdsForQuote(requirement, quote) : [];
+}
+
+function finalizedEvidenceRelationship(
+  requirement: RegSpRequirement,
+  chunk: GradedEvidenceChunk,
+): GradedEvidenceChunk["evidence_relationship"] {
+  if (chunk.evidence_relationship !== "supports") {
+    return chunk.evidence_relationship;
+  }
+  const supportedElements = quoteSupportedElementIds(requirement, chunk);
+  return requirement.requiredElementsForCovered.every((elementId) => supportedElements.includes(elementId))
+    ? "supports"
+    : "partially_supports";
+}
+
+function isSourceGroundedDirectSupport(requirement: RegSpRequirement, chunk: GradedEvidenceChunk) {
   return isDirectSupport(chunk)
-    && hasSubstantiveExactSourceQuote(chunk)
+    && hasSubstantiveExactSourceQuote(requirement, chunk)
     && (chunk.missing_elements ?? []).length === 0;
 }
 
-function isSourceGroundedPartialSupport(chunk: GradedEvidenceChunk) {
-  return isPartialSupport(chunk) && hasSubstantiveExactSourceQuote(chunk);
+function isSourceGroundedPartialSupport(requirement: RegSpRequirement, chunk: GradedEvidenceChunk) {
+  return isPartialSupport(chunk) && hasSubstantiveExactSourceQuote(requirement, chunk);
 }
 
-function isSourceGroundedNegativeEvidence(chunk: GradedEvidenceChunk) {
-  return isExplicitNegativeEvidence(chunk) && hasSubstantiveExactSourceQuote(chunk);
+function isSourceGroundedNegativeEvidence(requirement: RegSpRequirement, chunk: GradedEvidenceChunk) {
+  return isExplicitNegativeEvidence(chunk) && hasSubstantiveExactSourceQuote(requirement, chunk);
 }
 
 function normalize(value: string | null | undefined) {
@@ -920,7 +1068,11 @@ function buildElementCoverageLedger(
       relationship,
       supportChunk,
       negativeChunk,
-      quote: supportChunk?.supporting_quote?.trim() ?? negativeChunk?.supporting_quote?.trim() ?? null,
+      quote: supportChunk
+        ? finalizedSourceQuote(requirement, supportChunk)
+        : negativeChunk
+          ? finalizedSourceQuote(requirement, negativeChunk)
+          : null,
       chunk_id: supportChunk?.chunk_id ?? negativeChunk?.chunk_id ?? null,
       section_path: supportChunk?.section_path ?? negativeChunk?.section_path ?? null,
       page_start: supportChunk?.page_start ?? negativeChunk?.page_start ?? null,
@@ -958,11 +1110,11 @@ function addUniqueChunk(
 
 function curationWeight(requirement: RegSpRequirement, chunk: GradedEvidenceChunk) {
   let weight = evidenceWeight(requirement, chunk);
-  const quote = completedSourceQuote(chunk);
+  const quote = finalizedSourceQuote(requirement, chunk);
   if (quote) {
     weight += Math.min(quoteWordCount(quote), 80) * 0.5;
   }
-  if (hasSubstantiveExactSourceQuote(chunk)) weight += 25;
+  if (hasSubstantiveExactSourceQuote(requirement, chunk)) weight += 25;
   if (looksLikeHeadingOnly(quote ?? "")) weight -= 200;
   return weight;
 }
@@ -1109,8 +1261,8 @@ function reviewedDocumentLabel(chunk: GradedEvidenceChunk | undefined) {
   return chunk?.filename ? `The reviewed document ${chunk.filename}` : "A reviewed document";
 }
 
-function quoteSummary(chunk: GradedEvidenceChunk | undefined) {
-  const quote = chunk ? completedSourceQuote(chunk)?.trim() : null;
+function quoteSummary(requirement: RegSpRequirement, chunk: GradedEvidenceChunk | undefined) {
+  const quote = chunk ? finalizedSourceQuote(requirement, chunk)?.trim() : null;
   if (!quote) return null;
   return quote.length > 180 ? `${quote.slice(0, 177).trim()}…` : quote;
 }
@@ -1143,9 +1295,9 @@ function whatWeFoundForFinding({
   const strongestSupport = direct[0] ?? partial[0];
   const strongestLimitation = documentScopeLimitations[0];
   const strongestOrganizationNegative = organizationNegative[0];
-  const supportQuote = quoteSummary(strongestSupport);
-  const limitationQuote = quoteSummary(strongestLimitation);
-  const organizationNegativeQuote = quoteSummary(strongestOrganizationNegative);
+  const supportQuote = quoteSummary(requirement, strongestSupport);
+  const limitationQuote = quoteSummary(requirement, strongestLimitation);
+  const organizationNegativeQuote = quoteSummary(requirement, strongestOrganizationNegative);
   const supportDocument = reviewedDocumentLabel(strongestSupport);
   const limitationDocument = reviewedDocumentLabel(strongestLimitation);
   const negativeDocument = reviewedDocumentLabel(strongestOrganizationNegative);
@@ -1219,7 +1371,7 @@ function whatWeFoundForFinding({
       parts.push("A reviewer should confirm whether that referenced document is available and addresses the required elements.");
     } else if (background.some(hasUnclearApplicability)) {
       const applicabilityChunk = background.find(hasUnclearApplicability);
-      const applicabilityQuote = quoteSummary(applicabilityChunk);
+      const applicabilityQuote = quoteSummary(requirement, applicabilityChunk);
       const applicabilityDocument = reviewedDocumentLabel(applicabilityChunk);
       if (applicabilityQuote) {
         parts.push(`${applicabilityDocument} raises an applicability question: “${applicabilityQuote}”`);
@@ -1263,9 +1415,16 @@ function evidenceReasonForStorage(
   }
   if (chunk.evidence_relationship === "supports") {
     const covered = renderedElementList(requirement, quoteSupportedElementIds(requirement, chunk), "found");
-    return covered.length > 0
-      ? `The cited section ${covered}. ${reason}`
-      : `The cited section is relevant to the requirement. ${reason}`;
+    const quoteCovered = quoteSupportedElementIds(requirement, chunk);
+    const quoteMissing = requirement.requiredElementsForCovered.filter((elementId) => !quoteCovered.includes(elementId));
+    if (covered.length > 0 && quoteMissing.length === 0) {
+      return `The cited section ${covered}.`;
+    }
+    if (covered.length > 0) {
+      const missing = renderedElementList(requirement, quoteMissing, "missing");
+      return `The cited section discusses ${covered}, but it does not clearly define ${missing}.`;
+    }
+    return "The selected quote is related to the requirement but does not prove a required element.";
   }
   if (chunk.evidence_relationship === "partially_supports") {
     const covered = renderedElementList(requirement, quoteSupportedElementIds(requirement, chunk), "partial");
@@ -1279,7 +1438,6 @@ function evidenceReasonForStorage(
           ? "The cited section mentions this topic,"
           : "The cited section is related to this requirement.",
       missing.length > 0 ? `but it does not clearly define ${missing}.` : null,
-      reason,
     ].filter(Boolean).join(" ");
   }
   if (chunk.evidence_relationship === "background_context") {
@@ -1294,13 +1452,13 @@ function evidenceForStorage(
   negativeScopeByChunkId: Map<string, NegativeEvidenceScope>,
 ): GeneratedFindingEvidence[] {
   return chunks
-    .filter((chunk) => chunk.evidence_relationship === "background_context" || hasSubstantiveExactSourceQuote(chunk))
+    .filter((chunk) => chunk.evidence_relationship === "background_context" || hasSubstantiveExactSourceQuote(requirement, chunk))
     .slice(0, 3)
     .map((chunk) => ({
     chunk_id: chunk.chunk_id,
     document_id: chunk.document_id,
-    relationship: chunk.evidence_relationship,
-    quote: hasSubstantiveExactSourceQuote(chunk) ? completedSourceQuote(chunk) : null,
+    relationship: finalizedEvidenceRelationship(requirement, chunk),
+    quote: hasSubstantiveExactSourceQuote(requirement, chunk) ? finalizedSourceQuote(requirement, chunk) : null,
     reason: evidenceReasonForStorage(requirement, chunk, negativeScopeByChunkId),
     confidence: chunk.classifier_confidence,
     filename: chunk.filename,
@@ -1316,10 +1474,10 @@ export function aggregateFindingForRequirement(
   gradedChunks: GradedEvidenceChunk[],
 ): GeneratedRequirementFinding {
   const organizationChunks = organizationEvidence(gradedChunks);
-  const direct = organizationChunks.filter(isSourceGroundedDirectSupport);
-  const partial = organizationChunks.filter(isSourceGroundedPartialSupport);
+  const direct = organizationChunks.filter((chunk) => isSourceGroundedDirectSupport(requirement, chunk));
+  const partial = organizationChunks.filter((chunk) => isSourceGroundedPartialSupport(requirement, chunk));
   const background = organizationChunks.filter(isBackgroundContext);
-  const negative = organizationChunks.filter(isSourceGroundedNegativeEvidence);
+  const negative = organizationChunks.filter((chunk) => isSourceGroundedNegativeEvidence(requirement, chunk));
   const negativeScopeByChunkId = new Map(
     negative.map((chunk) => [chunk.chunk_id, classifyNegativeEvidenceScope(chunk)]),
   );
@@ -1386,8 +1544,8 @@ export function aggregateFindingForRequirement(
     documentScopeLimitations: strongestDocumentScopeLimitations,
     background: strongestBackground,
   });
-  const curatedDirect = curatedEvidence.filter(isSourceGroundedDirectSupport);
-  const curatedPartial = curatedEvidence.filter(isSourceGroundedPartialSupport);
+  const curatedDirect = curatedEvidence.filter((chunk) => isSourceGroundedDirectSupport(requirement, chunk));
+  const curatedPartial = curatedEvidence.filter((chunk) => isSourceGroundedPartialSupport(requirement, chunk));
   const curatedBackground = curatedEvidence.filter(isBackgroundContext);
   const curatedOrganizationNegative = curatedEvidence.filter(
     (chunk) => negativeScopeByChunkId.get(chunk.chunk_id) === "organization_level_negative",

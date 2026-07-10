@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import test from "node:test";
+import ts from "typescript";
 import {
   aggregateFindingForRequirement,
   classifyNegativeEvidenceScope,
@@ -9,6 +13,38 @@ import {
   buildMarkdownReport,
   reportEvidenceForFinding,
 } from "../lib/findingsReport.ts";
+
+async function loadTsModule(sourcePath) {
+  const source = await readFile(sourcePath, "utf8");
+  const outDir = await mkdtemp(join(tmpdir(), "regspan-findings-test-"));
+  const outPath = join(outDir, sourcePath.replace(/[\/:]/g, "__").replace(/\.ts$/, ".mjs"));
+  const transpile = (input, fileName) => ts.transpileModule(input, {
+    compilerOptions: {
+      module: ts.ModuleKind.ES2022,
+      target: ts.ScriptTarget.ES2022,
+      verbatimModuleSyntax: false,
+    },
+    fileName,
+  }).outputText;
+  const policyOutput = transpile(await readFile("lib/aiProcessingPolicy.ts", "utf8"), "lib/aiProcessingPolicy.ts");
+  const negativeOutput = transpile(await readFile("lib/negativeEvidence.ts", "utf8"), "lib/negativeEvidence.ts");
+  const classifierOutput = transpile(
+    await readFile("lib/requirementEvidenceClassifier.ts", "utf8"),
+    "lib/requirementEvidenceClassifier.ts",
+  )
+    .replaceAll('from "./aiProcessingPolicy"', 'from "./lib__aiProcessingPolicy.mjs"')
+    .replaceAll('from "./negativeEvidence"', 'from "./lib__negativeEvidence.mjs"');
+  const outputText = transpile(source, sourcePath)
+    .replaceAll('from "./requirementEvidenceClassifier"', 'from "./lib__requirementEvidenceClassifier.mjs"');
+
+  await Promise.all([
+    writeFile(join(outDir, "lib__aiProcessingPolicy.mjs"), policyOutput, "utf8"),
+    writeFile(join(outDir, "lib__negativeEvidence.mjs"), negativeOutput, "utf8"),
+    writeFile(join(outDir, "lib__requirementEvidenceClassifier.mjs"), classifierOutput, "utf8"),
+    writeFile(outPath, outputText, "utf8"),
+  ]);
+  return import(pathToFileURL(outPath).href);
+}
 
 const requirement = {
   id: "customer_notification_unauthorized_access",
@@ -105,6 +141,49 @@ function negativeChunk(overrides = {}) {
     content_preview: "The firm does not establish customer notification.",
     ...overrides,
   });
+}
+
+function classifierClassification(overrides = {}) {
+  return {
+    relationship: "supports",
+    confidence: "high",
+    requirement_supported: true,
+    control_absent_or_out_of_scope: false,
+    covered_elements: requirement.requiredElementsForCovered,
+    missing_elements: [],
+    vague_elements: [],
+    reason: "The cited text supports the requirement.",
+    supporting_quote: null,
+    classifier_provider: "openai",
+    ...overrides,
+  };
+}
+
+async function productionPathFinding(testRequirement, retrievedChunks, classifications) {
+  const { buildRequirementMatchResultWithClassifier } = await loadTsModule("lib/requirementMatching.ts");
+  let index = 0;
+  const classifier = {
+    provider: "openai",
+    async classify() {
+      const classification = classifications[index] ?? classifications[classifications.length - 1];
+      index += 1;
+      return {
+        ...classification,
+        classifier_provider: classification.classifier_provider ?? "openai",
+      };
+    },
+  };
+  const match = await buildRequirementMatchResultWithClassifier(
+    testRequirement,
+    retrievedChunks,
+    classifier,
+  );
+  return aggregateFindingForRequirement(testRequirement, [
+    ...match.direct,
+    ...match.partial,
+    ...match.background,
+    ...match.irrelevant,
+  ]);
 }
 
 function reportFinding(overrides = {}) {
@@ -1283,6 +1362,166 @@ test("finding evidence uses raw quote rather than retrieval synopsis text", () =
   assert.equal(finding.evidence[0].quote, "The firm notifies affected customers after unauthorized access.");
   assert.doesNotMatch(finding.evidence[0].quote ?? "", /30 days/);
   assert.doesNotMatch(finding.rationale, /not later than 30 days/);
+});
+
+test("production path finalizes recovery quotes to substantive source sentences", async () => {
+  const recoveryRequirement = {
+    ...requirement,
+    id: "response_recovery_remediation_validation",
+    title: "Response recovery and remediation validation",
+    coverageElements: [
+      { id: "recovery_steps", label: "Defines recovery steps", requiredForCovered: true, signals: ["restoring affected services"] },
+      { id: "remediation_tracking", label: "Tracks remediation", requiredForCovered: true, signals: ["confirming remediation tasks"] },
+      { id: "validation_testing", label: "Validates remediation", requiredForCovered: true, signals: ["validating user access"] },
+    ],
+    requiredElementsForCovered: ["recovery_steps", "remediation_tracking", "validation_testing"],
+  };
+  const content = [
+    "Incident recovery and remediation validation",
+    "",
+    "Communications are delayed because of an active investigation.",
+    "Recovery activities include restoring affected services, validating user access, confirming remediation tasks, and documenting remaining open issues.",
+  ].join("\n");
+
+  const finding = await productionPathFinding(recoveryRequirement, [
+    chunk({
+      content_preview: content,
+      supporting_quote: null,
+    }),
+  ], [
+    classifierClassification({
+      relationship: "partially_supports",
+      requirement_supported: false,
+      covered_elements: ["recovery_steps", "validation_testing"],
+      missing_elements: ["remediation_tracking"],
+      supporting_quote:
+        "Incident recovery and remediation validation\n\nCommunications are delayed because of an active investigation.",
+      reason: "The classifier selected nearby recovery text.",
+    }),
+  ]);
+
+  assert.equal(finding.evidence[0].quote,
+    "Recovery activities include restoring affected services, validating user access, confirming remediation tasks, and documenting remaining open issues.");
+  assert.doesNotMatch(finding.evidence[0].quote ?? "", /^Incident recovery and remediation validation/);
+  assert.doesNotMatch(finding.evidence[0].reason, /classifier selected/i);
+});
+
+test("production path expands truncated safeguards quotes to the full source sentence", async () => {
+  const safeguardsRequirement = {
+    ...requirement,
+    id: "safeguards_customer_information",
+    title: "Safeguards for customer information",
+    coverageElements: [
+      { id: "customer_information_scope", label: "Applies to customer information", requiredForCovered: true, signals: ["customer information repositories"] },
+      { id: "safeguards_controls", label: "Defines safeguards", requiredForCovered: true, signals: ["access approval", "periodic access review", "encryption"] },
+    ],
+    requiredElementsForCovered: ["customer_information_scope", "safeguards_controls"],
+  };
+  const content =
+    "Customer information repositories require access approval, periodic access review, and encryption for approved storage and transmission channels.";
+
+  const finding = await productionPathFinding(safeguardsRequirement, [
+    chunk({ content_preview: content }),
+  ], [
+    classifierClassification({
+      covered_elements: ["customer_information_scope", "safeguards_controls"],
+      supporting_quote:
+        "Customer information repositories require access approval, periodic access review, and encryption for approved",
+    }),
+  ]);
+
+  assert.equal(finding.status, "covered");
+  assert.equal(finding.evidence[0].quote, content);
+});
+
+test("production path expands service-provider quotes that start with continuation fragments", async () => {
+  const vendorRequirement = {
+    ...requirement,
+    id: "service_provider_incident_oversight_notice",
+    title: "Service provider incident oversight and notice",
+    coverageElements: [
+      { id: "service_provider_scope", label: "Applies to service providers", requiredForCovered: true, signals: ["vendor contracts", "customer information"] },
+      { id: "notice_to_firm", label: "Requires notice to the firm", requiredForCovered: true, signals: ["72 hours", "notice to the firm"] },
+      { id: "cooperation_remediation", label: "Requires cooperation", requiredForCovered: true, signals: ["vendor cooperation"] },
+    ],
+    requiredElementsForCovered: ["service_provider_scope", "notice_to_firm", "cooperation_remediation"],
+  };
+  const content =
+    "Vendor contracts covering customer information require notice to the firm within 72 hours or comparable timing commitment. Vendor cooperation is required where contract terms allow it.";
+
+  const finding = await productionPathFinding(vendorRequirement, [
+    chunk({ content_preview: content }),
+  ], [
+    classifierClassification({
+      covered_elements: ["service_provider_scope", "notice_to_firm", "cooperation_remediation"],
+      supporting_quote:
+        "or comparable timing commitment. Vendor cooperation is required where contract terms allow it.",
+    }),
+  ]);
+
+  assert.match(finding.evidence[0].quote ?? "", /^Vendor contracts covering customer information/);
+  assert.doesNotMatch(finding.evidence[0].quote ?? "", /^or comparable/i);
+});
+
+test("production path expands incident-assessment quotes that start mid-sentence", async () => {
+  const assessmentRequirement = {
+    ...requirement,
+    id: "incident_assessment_containment_control",
+    title: "Incident assessment and containment",
+    coverageElements: [
+      { id: "assesses_scope", label: "Assesses unauthorized access", requiredForCovered: true, signals: ["assessment identifies"] },
+      { id: "customer_information_systems", label: "Identifies affected systems", requiredForCovered: true, signals: ["customer information systems", "information types"] },
+      { id: "containment_control", label: "Contains the incident", requiredForCovered: true, signals: ["containment and control"] },
+    ],
+    requiredElementsForCovered: ["assesses_scope", "customer_information_systems", "containment_control"],
+  };
+  const content =
+    "Assessment identifies affected customer information systems and information types. Takes containment and control steps to prevent additional unauthorized access or use while preserving evidence.";
+
+  const finding = await productionPathFinding(assessmentRequirement, [
+    chunk({ content_preview: content }),
+  ], [
+    classifierClassification({
+      covered_elements: ["assesses_scope", "customer_information_systems", "containment_control"],
+      supporting_quote:
+        "systems and information types. Takes containment and control steps to prevent additional unauthorized access or use while preserving evidence.",
+    }),
+  ]);
+
+  assert.equal(finding.status, "covered");
+  assert.match(finding.evidence[0].quote ?? "", /^Assessment identifies affected customer information systems/);
+  assert.doesNotMatch(finding.evidence[0].quote ?? "", /^systems and information types/i);
+});
+
+test("production path does not cover incident evidence preservation from incidental containment language", async () => {
+  const preservationRequirement = {
+    ...requirement,
+    id: "incident_evidence_log_preservation",
+    title: "Incident evidence and log preservation",
+    coverageElements: [
+      {
+        id: "incident_materials",
+        label: "Preserves incident logs, evidence, or investigation materials",
+        requiredForCovered: true,
+        signals: ["preserving evidence", "preserve relevant logs", "investigation materials"],
+      },
+    ],
+    requiredElementsForCovered: ["incident_materials"],
+  };
+  const content =
+    "Takes containment and control steps to prevent additional unauthorized access or use while preserving evidence.";
+
+  const finding = await productionPathFinding(preservationRequirement, [
+    chunk({ content_preview: content }),
+  ], [
+    classifierClassification({
+      covered_elements: ["incident_materials"],
+      supporting_quote: content,
+    }),
+  ]);
+
+  assert.equal(finding.status, "missing");
+  assert.equal(finding.evidence.length, 0);
 });
 
 test("findings generation schema and routes preserve workspace/security boundaries", async () => {
