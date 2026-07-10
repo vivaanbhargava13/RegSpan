@@ -1,6 +1,11 @@
 import "server-only";
 
+import { createHmac } from "node:crypto";
+
 const N8N_WEBHOOK_TIMEOUT_MS = 10_000;
+export const N8N_WEBHOOK_SIGNATURE_ALGORITHM = "sha256";
+export const N8N_WEBHOOK_TIMESTAMP_HEADER = "x-regspan-webhook-timestamp";
+export const N8N_WEBHOOK_SIGNATURE_HEADER = "x-regspan-webhook-signature";
 
 export type N8nIngestionPayload = {
   jobId: string;
@@ -50,20 +55,56 @@ function getN8nConfiguration() {
   return { url: url.toString(), secret };
 }
 
+export function serializeN8nIngestionPayload(payload: N8nIngestionPayload) {
+  return JSON.stringify({
+    jobId: payload.jobId,
+    documentId: payload.documentId,
+    workspaceId: payload.workspaceId,
+    correlationId: payload.correlationId,
+  });
+}
+
+export function signN8nWebhook({
+  timestamp,
+  rawBody,
+  secret,
+}: {
+  timestamp: string;
+  rawBody: string;
+  secret: string;
+}) {
+  const digest = createHmac(N8N_WEBHOOK_SIGNATURE_ALGORITHM, secret)
+    .update(`${timestamp}.${rawBody}`)
+    .digest("hex");
+  return `${N8N_WEBHOOK_SIGNATURE_ALGORITHM}=${digest}`;
+}
+
+export function createN8nWebhookRequest(payload: N8nIngestionPayload, secret: string) {
+  const timestamp = new Date().toISOString();
+  const rawBody = serializeN8nIngestionPayload(payload);
+  const signature = signN8nWebhook({ timestamp, rawBody, secret });
+
+  return {
+    body: rawBody,
+    headers: {
+      "content-type": "application/json",
+      [N8N_WEBHOOK_TIMESTAMP_HEADER]: timestamp,
+      [N8N_WEBHOOK_SIGNATURE_HEADER]: signature,
+    },
+  };
+}
+
 export async function triggerN8nIngestion(payload: N8nIngestionPayload) {
   const { url, secret } = getN8nConfiguration();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), N8N_WEBHOOK_TIMEOUT_MS);
+  const webhookRequest = createN8nWebhookRequest(payload, secret);
 
   try {
     const response = await fetch(url, {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-regspan-webhook-secret": secret,
-        "x-regspan-webhook-timestamp": new Date().toISOString(),
-      },
-      body: JSON.stringify(payload),
+      headers: webhookRequest.headers,
+      body: webhookRequest.body,
       cache: "no-store",
       redirect: "error",
       signal: controller.signal,
