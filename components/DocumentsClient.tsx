@@ -366,7 +366,7 @@ export function DocumentsClient() {
           setWarning(
             result.processingError
               ? `Document uploaded, but source text preparation could not start: ${result.processingError}`
-              : "Document uploaded, but source text preparation could not start. Use Prepare again to retry.",
+              : "Document uploaded, but source text preparation could not start. Use Reprocess to retry.",
           );
         }
       } catch (uploadError) {
@@ -412,6 +412,20 @@ export function DocumentsClient() {
             <Button variant="appSecondary" onClick={() => setIsSelectMode(true)} disabled={!hasDocuments || isBulkBusy || isSelectMode}>
               Select documents
             </Button>
+            <Button
+              variant="appSecondary"
+              onClick={() => void runBulkAction("process", "all")}
+              disabled={!hasDocuments || isBulkBusy}
+            >
+              {bulkAction === "process-all" ? "Reprocessing..." : "Reprocess all"}
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => void runBulkAction("delete", "all")}
+              disabled={!hasDocuments || isBulkBusy}
+            >
+              {bulkAction === "delete-all" ? "Deleting..." : "Delete all"}
+            </Button>
             <Button variant="appPrimary" onClick={() => setIsUploadOpen(true)} disabled={isBulkBusy}>
               Upload document
             </Button>
@@ -456,21 +470,7 @@ export function DocumentsClient() {
               onClick={() => void runBulkAction("process", "selected")}
               disabled={selectedCount === 0 || isBulkBusy}
             >
-              {bulkAction === "process-selected" ? "Preparing..." : `Prepare selected (${selectedCount})`}
-            </Button>
-            <Button
-              variant="appSecondary"
-              onClick={() => void runBulkAction("process", "all")}
-              disabled={!hasDocuments || isBulkBusy}
-            >
-              {bulkAction === "process-all" ? "Preparing..." : "Prepare all"}
-            </Button>
-            <Button
-              variant="danger"
-              onClick={() => void runBulkAction("delete", "all")}
-              disabled={!hasDocuments || isBulkBusy}
-            >
-              {bulkAction === "delete-all" ? "Deleting..." : "Delete all"}
+              {bulkAction === "process-selected" ? "Reprocessing..." : `Reprocess selected (${selectedCount})`}
             </Button>
             <Button variant="appSecondary" onClick={clearSelection} disabled={isBulkBusy}>
               Cancel

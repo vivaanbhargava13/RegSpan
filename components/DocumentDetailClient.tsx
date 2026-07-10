@@ -51,6 +51,8 @@ type HierarchySummary = {
 };
 
 const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
+const INITIAL_VISIBLE_SOURCE_EXCERPTS = 3;
+const SOURCE_EXCERPT_PAGE_SIZE = 10;
 
 function validateSelectedPdf(file: File) {
   if (file.size === 0) return "The PDF file is empty.";
@@ -240,6 +242,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
   const [message, setMessage] = useState("");
   const [warning, setWarning] = useState("");
   const [error, setError] = useState("");
+  const [visibleExcerptCount, setVisibleExcerptCount] = useState(INITIAL_VISIBLE_SOURCE_EXCERPTS);
 
   useEffect(() => {
     async function loadDocument() {
@@ -294,11 +297,12 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
 
           if (chunksResult.error || hierarchyResult.error) {
             setWarning(
-              "Document metadata loaded, but prepared source excerpts are unavailable. Prepare this document again or confirm local setup is complete.",
+              "Document metadata loaded, but prepared source excerpts are unavailable. Reprocess this document or confirm local setup is complete.",
             );
           }
 
           setChunks(loadedChunks);
+          setVisibleExcerptCount(INITIAL_VISIBLE_SOURCE_EXCERPTS);
           setHierarchySummary(
             hierarchyResult.error
               ? null
@@ -310,6 +314,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
         }
 
         setChunks([]);
+        setVisibleExcerptCount(INITIAL_VISIBLE_SOURCE_EXCERPTS);
         setHierarchySummary(null);
         setDocument(null);
         setHasLoaded(true);
@@ -317,6 +322,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
       }
 
       setChunks([]);
+      setVisibleExcerptCount(INITIAL_VISIBLE_SOURCE_EXCERPTS);
       setHierarchySummary(null);
       setDocument(findMockDocument(documentId));
       setHasLoaded(true);
@@ -508,6 +514,8 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
   }
 
   const canReprocess = document.status !== "Queued" && document.status !== "Processing";
+  const visibleChunks = chunks.slice(0, visibleExcerptCount);
+  const visibleSourceExcerptCount = Math.min(visibleExcerptCount, chunks.length);
 
   return (
     <div className="space-y-6">
@@ -526,7 +534,7 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
             onClick={handleReprocess}
             disabled={Boolean(activeAction)}
           >
-            {activeAction === "reprocess" ? "Preparing..." : "Prepare again"}
+            {activeAction === "reprocess" ? "Reprocessing..." : "Reprocess"}
           </Button>
         ) : undefined}
       />
@@ -616,28 +624,62 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
               ) : null}
             </div>
             {chunks.length > 0 ? (
-              <div className="mt-5 divide-y divide-app-border rounded-lg border border-app-border">
-                {chunks.map((chunk) => (
-                  <article key={chunk.id} className="bg-app-surface p-4 first:rounded-t-lg last:rounded-b-lg">
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                      <div>
-                        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-app-subtle">
-                          Source excerpt {String(chunk.chunk_index + 1).padStart(2, "0")}
+              <>
+                <p className="mt-4 text-xs font-medium text-app-muted">
+                  Showing {visibleSourceExcerptCount} of {chunks.length} source excerpts.
+                </p>
+                <div className="mt-3 divide-y divide-app-border rounded-lg border border-app-border">
+                  {visibleChunks.map((chunk) => (
+                    <article key={chunk.id} className="bg-app-surface p-4 first:rounded-t-lg last:rounded-b-lg">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-app-subtle">
+                            Source excerpt {String(chunk.chunk_index + 1).padStart(2, "0")}
+                          </span>
+                          <h3 className="mt-1 break-words text-sm font-semibold text-app-text [overflow-wrap:anywhere]">
+                            {chunk.section_path || chunk.section_heading || "Unsectioned content"}
+                          </h3>
+                        </div>
+                        <span className="shrink-0 rounded-md border border-app-border bg-app-elevated px-2.5 py-1 font-mono text-[10px] font-semibold text-app-muted">
+                          {formatPageRange(chunk.page_start, chunk.page_end)}
                         </span>
-                        <h3 className="mt-1 break-words text-sm font-semibold text-app-text [overflow-wrap:anywhere]">
-                          {chunk.section_path || chunk.section_heading || "Unsectioned content"}
-                        </h3>
                       </div>
-                      <span className="shrink-0 rounded-md border border-app-border bg-app-elevated px-2.5 py-1 font-mono text-[10px] font-semibold text-app-muted">
-                        {formatPageRange(chunk.page_start, chunk.page_end)}
-                      </span>
-                    </div>
-                    <p className="mt-3 rounded-md border border-app-border bg-app-elevated/60 px-3.5 py-3 text-sm leading-6 text-app-muted">
-                      {chunk.content.length > 220 ? `${chunk.content.slice(0, 220)}…` : chunk.content}
-                    </p>
-                  </article>
-                ))}
-              </div>
+                      <p className="mt-3 rounded-md border border-app-border bg-app-elevated/60 px-3.5 py-3 text-sm leading-6 text-app-muted">
+                        {chunk.content.length > 220 ? `${chunk.content.slice(0, 220)}…` : chunk.content}
+                      </p>
+                    </article>
+                  ))}
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {visibleSourceExcerptCount < chunks.length ? (
+                    <Button
+                      type="button"
+                      variant="appSecondary"
+                      onClick={() => {
+                        setVisibleExcerptCount((current) =>
+                          Math.min(
+                            chunks.length,
+                            current < SOURCE_EXCERPT_PAGE_SIZE
+                              ? SOURCE_EXCERPT_PAGE_SIZE
+                              : current + SOURCE_EXCERPT_PAGE_SIZE,
+                          ),
+                        );
+                      }}
+                    >
+                      Show more
+                    </Button>
+                  ) : null}
+                  {visibleSourceExcerptCount > INITIAL_VISIBLE_SOURCE_EXCERPTS ? (
+                    <Button
+                      type="button"
+                      variant="appSecondary"
+                      onClick={() => setVisibleExcerptCount(INITIAL_VISIBLE_SOURCE_EXCERPTS)}
+                    >
+                      Show less
+                    </Button>
+                  ) : null}
+                </div>
+              </>
             ) : (
               <EmptyState className="mt-4" title="No client source excerpts available">
                 <p>{getChunkEmptyState(document.status)}</p>

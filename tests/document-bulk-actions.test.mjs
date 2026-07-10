@@ -18,9 +18,28 @@ test("documents page updates selected counts and disables empty selected actions
 
   assert.match(client, /const selectedCount = selectedDocumentIds\.size/);
   assert.match(client, /`Delete selected \(\$\{selectedCount\}\)`/);
-  assert.match(client, /`Prepare selected \(\$\{selectedCount\}\)`/);
+  assert.match(client, /`Reprocess selected \(\$\{selectedCount\}\)`/);
   assert.match(client, /disabled=\{selectedCount === 0 \|\| isBulkBusy\}/);
   assert.match(client, /\{selectedCount\} of \{documents\.length\} selected/);
+});
+
+test("documents page keeps global bulk actions outside select mode", async () => {
+  const client = await readFile("components/DocumentsClient.tsx", "utf8");
+  const selectModeStart = client.indexOf("{isSelectMode ? (");
+  const selectModeEnd = client.indexOf("{isUploadOpen ? (");
+  const headerSource = client.slice(0, selectModeStart);
+  const selectModeSource = client.slice(selectModeStart, selectModeEnd);
+
+  assert.match(headerSource, /Upload document/);
+  assert.match(headerSource, /Select documents/);
+  assert.match(headerSource, /Reprocess all/);
+  assert.match(headerSource, /Delete all/);
+  assert.match(headerSource, /runBulkAction\("process", "all"\)/);
+  assert.match(headerSource, /runBulkAction\("delete", "all"\)/);
+  assert.match(selectModeSource, /`Reprocess selected \(\$\{selectedCount\}\)`/);
+  assert.match(selectModeSource, /`Delete selected \(\$\{selectedCount\}\)`/);
+  assert.match(selectModeSource, /Cancel/);
+  assert.doesNotMatch(selectModeSource, /Reprocess all|Prepare all|Delete all/);
 });
 
 test("documents page renders clear lifecycle labels and next steps", async () => {
