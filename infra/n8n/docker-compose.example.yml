@@ -1,0 +1,23 @@
+services:
+  regspan-n8n:
+    image: n8nio/n8n:latest
+    container_name: regspan-n8n-local
+    restart: unless-stopped
+    ports:
+      - "${N8N_PORT:-5678}:5678"
+    environment:
+      N8N_HOST: ${N8N_HOST:-localhost}
+      N8N_PORT: "5678"
+      N8N_PROTOCOL: ${N8N_PROTOCOL:-http}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+      NODE_FUNCTION_ALLOW_BUILTIN: crypto
+      N8N_INGEST_WEBHOOK_SECRET: ${N8N_INGEST_WEBHOOK_SECRET}
+      REGSPAN_WEBHOOK_SECRET: ${N8N_INGEST_WEBHOOK_SECRET}
+      INGESTION_WORKER_SECRET: ${INGESTION_WORKER_SECRET}
+      TZ: ${TZ:-America/New_York}
+    volumes:
+      - regspan_n8n_data:/home/node/.n8n
+
+volumes:
+  regspan_n8n_data:

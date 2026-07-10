@@ -140,3 +140,37 @@ test("n8n documentation includes validation, freshness, replay, and migration gu
   assert.match(source, /x-regspan-webhook-signature/);
   assert.doesNotMatch(source, /x-regspan-webhook-secret/);
 });
+
+test("sanitized n8n local infrastructure docs include required setup", async () => {
+  const [compose, envExample, readme, outline, docs] = await Promise.all([
+    readFile("infra/n8n/docker-compose.example.yml", "utf8"),
+    readFile("infra/n8n/.env.example", "utf8"),
+    readFile("infra/n8n/README.md", "utf8"),
+    readFile("infra/n8n/workflow-outline.md", "utf8"),
+    readFile("docs/n8n-ingestion-v1.md", "utf8"),
+  ]);
+
+  assert.match(compose, /N8N_INGEST_WEBHOOK_SECRET: \$\{N8N_INGEST_WEBHOOK_SECRET\}/);
+  assert.match(compose, /REGSPAN_WEBHOOK_SECRET: \$\{N8N_INGEST_WEBHOOK_SECRET\}/);
+  assert.match(compose, /INGESTION_WORKER_SECRET: \$\{INGESTION_WORKER_SECRET\}/);
+  assert.match(compose, /N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"/);
+  assert.match(compose, /NODE_FUNCTION_ALLOW_BUILTIN: crypto/);
+
+  assert.match(envExample, /replace-with-64-hex-hmac-secret/);
+  assert.match(envExample, /replace-with-different-64-hex-worker-secret/);
+  assert.match(readme, /openssl rand -hex 32/);
+  assert.match(readme, /N8N_INGEST_WEBHOOK_SECRET.*must match/s);
+  assert.match(readme, /INGESTION_WORKER_SECRET.*must match/s);
+  assert.match(readme, /must be different/);
+  assert.match(readme, /docker compose --env-file \.env -f docker-compose\.example\.yml up -d/);
+  assert.match(readme, /host\.docker\.internal:3000\/api\/internal\/ingest\/process-job/);
+  assert.match(readme, /Never commit a real `\.env`/);
+  assert.match(outline, /Webhook[\s\S]*Code in JavaScript HMAC validation[\s\S]*Respond to Webhook[\s\S]*HTTP Request worker/);
+  assert.match(docs, /\.\.\/infra\/n8n\/README\.md/);
+
+  for (const file of [compose, envExample, readme, outline]) {
+    assert.doesNotMatch(file, /\b[a-f0-9]{64}\b/i);
+    assert.doesNotMatch(file, /sk-[A-Za-z0-9]/);
+    assert.doesNotMatch(file, /eyJ[A-Za-z0-9_-]+\./);
+  }
+});

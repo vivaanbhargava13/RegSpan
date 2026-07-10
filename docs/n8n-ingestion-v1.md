@@ -79,6 +79,9 @@ The ingestion worker does not require Supabase credentials in n8n. n8n calls
 the authenticated RegSpan endpoint instead; the Supabase service role remains in
 the RegSpan server environment.
 
+For a sanitized Docker Desktop local setup, compose example, and workflow
+outline, see `../infra/n8n/README.md`.
+
 Use HTTPS outside local development. Do not expose the n8n webhook publicly
 without HMAC verification and network controls such as an IP allowlist, private
 ingress, or a gateway where available.
