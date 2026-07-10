@@ -10,6 +10,10 @@ import {
   validatePdfFile,
 } from "@/lib/documentSecurity";
 import { queueDocumentProcessing } from "@/lib/documentProcessing";
+import {
+  checkRateLimit,
+  rateLimitErrorResponse,
+} from "@/lib/rateLimit";
 import { recordSecurityAuditEvent } from "@/lib/securityAudit";
 import { getServerSupabaseAdminClient } from "@/lib/supabase/server";
 
@@ -36,6 +40,12 @@ export async function POST(request: Request) {
     const actor = await authenticateRequest(supabase, request);
     actorUserId = actor.user.id;
     workspaceId = await getActorWorkspaceId(supabase, actor.user.id);
+    checkRateLimit({
+      request,
+      category: "document_upload",
+      userId: actor.user.id,
+      workspaceId,
+    });
 
     const formData = await request.formData();
     const file = await validatePdfFile(formData.get("file"));
@@ -143,6 +153,14 @@ export async function POST(request: Request) {
       processingError: processingResult.ok ? null : processingResult.error,
     }, { status: 201 });
   } catch (error) {
+    const rateLimited = rateLimitErrorResponse(error);
+    if (rateLimited) {
+      return NextResponse.json(rateLimited.body, {
+        status: rateLimited.status,
+        headers: rateLimited.headers,
+      });
+    }
+
     console.error("[RegSpan documents] Upload request failed", {
       correlationId,
       documentId,

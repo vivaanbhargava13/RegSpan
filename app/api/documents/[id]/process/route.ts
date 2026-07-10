@@ -6,6 +6,10 @@ import {
   isUuid,
 } from "@/lib/documentSecurity";
 import { queueDocumentProcessing } from "@/lib/documentProcessing";
+import {
+  checkRateLimit,
+  rateLimitErrorResponse,
+} from "@/lib/rateLimit";
 import { recordSecurityAuditEvent } from "@/lib/securityAudit";
 import { getServerSupabaseAdminClient } from "@/lib/supabase/server";
 
@@ -18,6 +22,13 @@ export async function POST(request: Request, { params }: RouteContext) {
   try {
     supabase = getServerSupabaseAdminClient();
     const { actor, document } = await authorizeDocumentRequest(supabase, request, id);
+    checkRateLimit({
+      request,
+      category: "document_reprocess",
+      userId: actor.user.id,
+      workspaceId: document.workspace_id,
+      identifier: document.id,
+    });
     const suppliedKey = request.headers.get("idempotency-key")?.trim();
     const idempotencyKey = suppliedKey && suppliedKey.length <= 128
       ? suppliedKey
@@ -130,6 +141,14 @@ export async function POST(request: Request, { params }: RouteContext) {
       { status: result.error?.includes("not configured") ? 503 : 502 },
     );
   } catch (error) {
+    const rateLimited = rateLimitErrorResponse(error);
+    if (rateLimited) {
+      return NextResponse.json(rateLimited.body, {
+        status: rateLimited.status,
+        headers: rateLimited.headers,
+      });
+    }
+
     console.error("[RegSpan ingestion] Processing request rejected", {
       correlationId,
       documentId: id,

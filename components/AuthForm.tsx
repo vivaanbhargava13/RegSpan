@@ -23,6 +23,23 @@ const initialValues: FormValues = {
   confirmPassword: "",
 };
 
+async function loadSignupRedirectUrl() {
+  const response = await fetch("/api/auth/redirect?target=signup", {
+    cache: "no-store",
+  });
+  const body = (await response.json()) as {
+    ok?: boolean;
+    redirectTo?: string;
+    error?: string;
+  };
+
+  if (!response.ok || !body.ok || !body.redirectTo) {
+    throw new Error(body.error || "Authentication redirects are not configured.");
+  }
+
+  return body.redirectTo;
+}
+
 export function AuthForm() {
   const [mode, setMode] = useState<AuthMode>("login");
   const [values, setValues] = useState<FormValues>(initialValues);
@@ -136,11 +153,12 @@ export function AuthForm() {
       if (isSignup) {
         const firstName = values.firstName.trim();
         const lastName = values.lastName.trim();
+        const emailRedirectTo = await loadSignupRedirectUrl();
         const { data, error: signUpError } = await supabase.auth.signUp({
           email: values.email.trim(),
           password: values.password,
           options: {
-            emailRedirectTo: `${window.location.origin}/auth`,
+            emailRedirectTo,
             data: {
               first_name: firstName,
               last_name: lastName,

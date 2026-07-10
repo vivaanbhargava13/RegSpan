@@ -10,5 +10,6 @@ export function isMockProcessingRouteEnabled(environment = process.env) {
 }
 
 export function areInternalDebugRoutesEnabled(environment = process.env) {
-  return isEnabled(environment.ENABLE_INTERNAL_DEBUG_ROUTES);
+  return environment.NODE_ENV !== "production"
+    && isEnabled(environment.ENABLE_INTERNAL_DEBUG_ROUTES);
 }

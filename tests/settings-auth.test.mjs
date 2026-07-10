@@ -23,7 +23,7 @@ test("settings page renders functional account workspace password security and a
   assert.match(client, /Email address/);
   assert.match(client, /Save profile/);
   assert.match(client, /Password and security/);
-  assert.match(client, /Update password/);
+  assert.match(client, /Password reset/);
   assert.match(client, /Send reset link/);
   assert.match(client, /Workspace access/);
   assert.match(client, /Team invitations and role management will be added later/);
@@ -44,16 +44,15 @@ test("settings profile update preserves auth metadata and validates display name
   assert.match(client, /Account profile updated/);
 });
 
-test("settings password actions validate and clear password state", async () => {
+test("settings password actions use reset-link path instead of direct session password change", async () => {
   const client = await readFile("components/SettingsClient.tsx", "utf8");
 
-  assert.match(client, /Password must be at least 8 characters/);
-  assert.match(client, /Passwords do not match/);
-  assert.match(client, /supabase\.auth\.updateUser\(\{ password: password\.newPassword \}\)/);
-  assert.match(client, /setPassword\(initialPasswordForm\)/);
-  assert.match(client, /Password updated/);
-  assert.match(client, /resetPasswordForEmail\(email/);
-  assert.match(client, /redirectTo: `\$\{window\.location\.origin\}\/auth\/update-password`/);
+  assert.match(client, /For account protection/);
+  assert.match(client, /fetch\("\/api\/auth\/forgot-password"/);
+  assert.match(client, /Send reset link/);
+  assert.doesNotMatch(client, /supabase\.auth\.updateUser\(\{ password:/);
+  assert.doesNotMatch(client, /resetPasswordForEmail/);
+  assert.doesNotMatch(client, /window\.location\.origin/);
 });
 
 test("auth login exposes forgot password and public recovery routes", async () => {
@@ -68,12 +67,32 @@ test("auth login exposes forgot password and public recovery routes", async () =
 });
 
 test("forgot password form submits privacy-safe reset requests", async () => {
-  const form = await readFile("components/ForgotPasswordForm.tsx", "utf8");
+  const [form, route] = await Promise.all([
+    readFile("components/ForgotPasswordForm.tsx", "utf8"),
+    readFile("app/api/auth/forgot-password/route.ts", "utf8"),
+  ]);
 
-  assert.match(form, /resetPasswordForEmail\(email\.trim\(\)/);
-  assert.match(form, /redirectTo: `\$\{window\.location\.origin\}\/auth\/update-password`/);
+  assert.match(form, /fetch\("\/api\/auth\/forgot-password"/);
+  assert.match(route, /resetPasswordForEmail\(email/);
+  assert.match(route, /authRedirectUrl\("\/auth\/update-password"\)/);
+  assert.doesNotMatch(form, /window\.location\.origin/);
+  assert.doesNotMatch(route, /window\.location\.origin/);
   assert.match(form, /If an account exists for that email, we sent password reset instructions/);
   assert.doesNotMatch(form, /No account exists|email was not found/i);
+});
+
+test("signup confirmation redirect is requested from the server", async () => {
+  const [authForm, redirectRoute] = await Promise.all([
+    readFile("components/AuthForm.tsx", "utf8"),
+    readFile("app/api/auth/redirect/route.ts", "utf8"),
+  ]);
+
+  assert.match(authForm, /loadSignupRedirectUrl/);
+  assert.match(authForm, /fetch\("\/api\/auth\/redirect\?target=signup"/);
+  assert.match(authForm, /emailRedirectTo/);
+  assert.match(redirectRoute, /authRedirectUrl\(path\)/);
+  assert.doesNotMatch(authForm, /emailRedirectTo: `\$\{window\.location\.origin\}/);
+  assert.doesNotMatch(redirectRoute, /window\.location\.origin/);
 });
 
 test("update password form handles validation success and expired link states", async () => {

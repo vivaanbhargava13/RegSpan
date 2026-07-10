@@ -8,6 +8,10 @@ import {
   sanitizePdfFilename,
   validatePdfFile,
 } from "@/lib/documentSecurity";
+import {
+  checkRateLimit,
+  rateLimitErrorResponse,
+} from "@/lib/rateLimit";
 import { recordSecurityAuditEvent } from "@/lib/securityAudit";
 import { getServerSupabaseAdminClient } from "@/lib/supabase/server";
 
@@ -22,6 +26,13 @@ export async function POST(request: Request, { params }: RouteContext) {
   try {
     supabase = getServerSupabaseAdminClient();
     const { actor, document } = await authorizeDocumentRequest(supabase, request, id);
+    checkRateLimit({
+      request,
+      category: "document_replace",
+      userId: actor.user.id,
+      workspaceId: document.workspace_id,
+      identifier: document.id,
+    });
     const formData = await request.formData();
     const file = await validatePdfFile(formData.get("file"));
     const filename = sanitizePdfFilename(file.name);
@@ -96,6 +107,14 @@ export async function POST(request: Request, { params }: RouteContext) {
 
     return NextResponse.json({ ok: true, cleanupWarning });
   } catch (error) {
+    const rateLimited = rateLimitErrorResponse(error);
+    if (rateLimited) {
+      return NextResponse.json(rateLimited.body, {
+        status: rateLimited.status,
+        headers: rateLimited.headers,
+      });
+    }
+
     console.error("[RegSpan documents] Replace request failed", {
       correlationId,
       documentId: id,

@@ -10,6 +10,10 @@ import {
   FindingsGenerationError,
   generateFindingsForWorkspace,
 } from "@/lib/findingsGeneration";
+import {
+  checkRateLimit,
+  rateLimitErrorResponse,
+} from "@/lib/rateLimit";
 import { recordSecurityAuditEvent } from "@/lib/securityAudit";
 import { getServerSupabaseAdminClient } from "@/lib/supabase/server";
 
@@ -43,6 +47,12 @@ export async function POST(request: Request) {
     const actor = await authenticateRequest(supabase, request);
     actorUserId = actor.user.id;
     workspaceId = await getActorWorkspaceId(supabase, actor.user.id);
+    checkRateLimit({
+      request,
+      category: "findings_generate",
+      userId: actor.user.id,
+      workspaceId,
+    });
 
     const result = await generateFindingsForWorkspace({
       workspaceId,
@@ -72,6 +82,14 @@ export async function POST(request: Request) {
       findingCount: result.findingCount,
     });
   } catch (error) {
+    const rateLimited = rateLimitErrorResponse(error);
+    if (rateLimited) {
+      return NextResponse.json(rateLimited.body, {
+        status: rateLimited.status,
+        headers: rateLimited.headers,
+      });
+    }
+
     console.error("[RegSpan findings] Findings generation failed", {
       correlationId,
       workspaceId,

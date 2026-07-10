@@ -10,6 +10,10 @@ import {
   type AuthorizedDocument,
 } from "@/lib/documentSecurity";
 import { N8nWebhookError, triggerN8nIngestion } from "@/lib/n8n";
+import {
+  checkRateLimit,
+  rateLimitErrorResponse,
+} from "@/lib/rateLimit";
 import { recordSecurityAuditEvent } from "@/lib/securityAudit";
 import { getServerSupabaseAdminClient } from "@/lib/supabase/server";
 
@@ -324,6 +328,13 @@ export async function POST(request: Request) {
     workspaceId = await getActorWorkspaceId(supabase, actor.user.id);
     const parsed = parseBulkRequest(await request.json());
     action = parsed.action;
+    checkRateLimit({
+      request,
+      category: "document_bulk_action",
+      userId: actor.user.id,
+      workspaceId,
+      identifier: parsed.action,
+    });
     const documents = await loadWorkspaceDocuments({
       supabase,
       workspaceId,
@@ -368,6 +379,14 @@ export async function POST(request: Request) {
       results,
     });
   } catch (error) {
+    const rateLimited = rateLimitErrorResponse(error);
+    if (rateLimited) {
+      return NextResponse.json(rateLimited.body, {
+        status: rateLimited.status,
+        headers: rateLimited.headers,
+      });
+    }
+
     console.error("[RegSpan documents] Bulk action failed", {
       correlationId,
       action,

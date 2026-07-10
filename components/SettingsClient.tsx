@@ -16,20 +16,10 @@ type ProfileForm = {
   displayName: string;
 };
 
-type PasswordForm = {
-  newPassword: string;
-  confirmPassword: string;
-};
-
 const initialProfileForm: ProfileForm = {
   firstName: "",
   lastName: "",
   displayName: "",
-};
-
-const initialPasswordForm: PasswordForm = {
-  newPassword: "",
-  confirmPassword: "",
 };
 
 function profileFromSession(session: Session | null): ProfileForm {
@@ -53,10 +43,8 @@ export function SettingsClient() {
   const [session, setSession] = useState<Session | null>(null);
   const [workspace, setWorkspace] = useState<CurrentWorkspace | null>(null);
   const [profile, setProfile] = useState<ProfileForm>(initialProfileForm);
-  const [password, setPassword] = useState<PasswordForm>(initialPasswordForm);
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
-  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
   const [isSendingReset, setIsSendingReset] = useState(false);
   const [profileMessage, setProfileMessage] = useState("");
   const [profileError, setProfileError] = useState("");
@@ -126,12 +114,6 @@ export function SettingsClient() {
     setProfileMessage("");
   }
 
-  function updatePasswordField(field: keyof PasswordForm, value: string) {
-    setPassword((current) => ({ ...current, [field]: value }));
-    setSecurityError("");
-    setSecurityMessage("");
-  }
-
   async function saveProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const displayName = fullNameFromProfile(profile);
@@ -174,49 +156,9 @@ export function SettingsClient() {
     }
   }
 
-  async function updatePassword(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (password.newPassword.length < 8) {
-      setSecurityError("Password must be at least 8 characters.");
-      setSecurityMessage("");
-      return;
-    }
-    if (password.newPassword !== password.confirmPassword) {
-      setSecurityError("Passwords do not match.");
-      setSecurityMessage("");
-      return;
-    }
-
-    const supabase = getBrowserSupabaseClient();
-    if (!supabase) {
-      setSecurityError("Supabase Auth is not configured for this environment.");
-      return;
-    }
-
-    setIsUpdatingPassword(true);
-    setSecurityError("");
-    setSecurityMessage("");
-
-    try {
-      const { error } = await supabase.auth.updateUser({ password: password.newPassword });
-      if (error) throw error;
-      setPassword(initialPasswordForm);
-      setSecurityMessage("Password updated.");
-    } catch (passwordError) {
-      setSecurityError(passwordError instanceof Error ? passwordError.message : "Unable to update password.");
-    } finally {
-      setIsUpdatingPassword(false);
-    }
-  }
-
   async function sendResetLink() {
     if (!email) {
       setSecurityError("Your account email could not be loaded.");
-      return;
-    }
-    const supabase = getBrowserSupabaseClient();
-    if (!supabase) {
-      setSecurityError("Supabase Auth is not configured for this environment.");
       return;
     }
 
@@ -225,13 +167,22 @@ export function SettingsClient() {
     setSecurityMessage("");
 
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/auth/update-password`,
+      const response = await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email }),
       });
-      if (error) throw error;
-      setSecurityMessage("Password reset instructions sent to your account email.");
+      if (response.status === 429) {
+        const body = (await response.json()) as { error?: string };
+        throw new Error(body.error || "Too many password reset requests. Please wait before trying again.");
+      }
+      setSecurityMessage("If an account exists for that email, we sent password reset instructions.");
     } catch (resetError) {
-      setSecurityError(resetError instanceof Error ? resetError.message : "Unable to send password reset instructions.");
+      if (resetError instanceof Error && /too many password reset/i.test(resetError.message)) {
+        setSecurityError(resetError.message);
+      } else {
+        setSecurityMessage("If an account exists for that email, we sent password reset instructions.");
+      }
     } finally {
       setIsSendingReset(false);
     }
@@ -341,45 +292,19 @@ export function SettingsClient() {
       <section className="grid gap-4 xl:grid-cols-2">
         <Surface as="section" padding="lg">
           <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-app-subtle">Password and security</p>
-          <h2 className="mt-1 app-section-title">Update password</h2>
+          <h2 className="mt-1 app-section-title">Password reset</h2>
           <p className="mt-2 text-sm leading-6 text-app-muted">
-            Update the password for your signed-in account. Use a unique password with at least 8 characters.
+            For account protection, RegSpan sends a password reset link to your verified account email instead of changing passwords from an active session.
           </p>
 
-          <form className="mt-5 space-y-4" onSubmit={updatePassword} noValidate>
-            <label className="block">
-              <span className="text-sm font-semibold text-app-text">New password</span>
-              <input
-                value={password.newPassword}
-                onChange={(event) => updatePasswordField("newPassword", event.target.value)}
-                type="password"
-                autoComplete="new-password"
-                className="mt-2 h-10 w-full rounded-lg border border-app-border bg-app-surface px-3 text-sm text-app-text outline-none transition focus:border-app-accent focus:ring-4 focus:ring-app-accent-soft"
-              />
-            </label>
-            <label className="block">
-              <span className="text-sm font-semibold text-app-text">Confirm new password</span>
-              <input
-                value={password.confirmPassword}
-                onChange={(event) => updatePasswordField("confirmPassword", event.target.value)}
-                type="password"
-                autoComplete="new-password"
-                className="mt-2 h-10 w-full rounded-lg border border-app-border bg-app-surface px-3 text-sm text-app-text outline-none transition focus:border-app-accent focus:ring-4 focus:ring-app-accent-soft"
-              />
-            </label>
-
+          <div className="mt-5 space-y-4">
             {securityError ? <Alert tone="danger">{securityError}</Alert> : null}
             {securityMessage ? <Alert tone="success">{securityMessage}</Alert> : null}
 
-            <div className="flex flex-wrap gap-2">
-              <Button type="submit" variant="appPrimary" disabled={isUpdatingPassword}>
-                {isUpdatingPassword ? "Updating…" : "Update password"}
-              </Button>
-              <Button type="button" variant="appSecondary" onClick={sendResetLink} disabled={isSendingReset}>
-                {isSendingReset ? "Sending…" : "Send reset link"}
-              </Button>
-            </div>
-          </form>
+            <Button type="button" variant="appPrimary" onClick={sendResetLink} disabled={isSendingReset || !email}>
+              {isSendingReset ? "Sending…" : "Send reset link"}
+            </Button>
+          </div>
         </Surface>
 
         <Surface as="section" padding="lg">

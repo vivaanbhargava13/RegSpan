@@ -4,7 +4,6 @@ import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/Button";
 import { Logo } from "@/components/Logo";
-import { getBrowserSupabaseClient } from "@/components/supabaseClient";
 
 export function ForgotPasswordForm() {
   const [email, setEmail] = useState("");
@@ -20,24 +19,27 @@ export function ForgotPasswordForm() {
       return;
     }
 
-    const supabase = getBrowserSupabaseClient();
-    if (!supabase) {
-      setError("Supabase Auth is not configured for this environment.");
-      return;
-    }
-
     setIsSubmitting(true);
     setError("");
     setMessage("");
 
     try {
-      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-        redirectTo: `${window.location.origin}/auth/update-password`,
+      const response = await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: email.trim() }),
       });
-      if (resetError) throw resetError;
+      if (response.status === 429) {
+        const body = (await response.json()) as { error?: string };
+        throw new Error(body.error || "Too many password reset requests. Please wait before trying again.");
+      }
       setMessage("If an account exists for that email, we sent password reset instructions.");
-    } catch {
-      setMessage("If an account exists for that email, we sent password reset instructions.");
+    } catch (resetError) {
+      if (resetError instanceof Error && /too many password reset/i.test(resetError.message)) {
+        setError(resetError.message);
+      } else {
+        setMessage("If an account exists for that email, we sent password reset instructions.");
+      }
     } finally {
       setIsSubmitting(false);
     }
