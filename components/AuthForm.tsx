@@ -267,7 +267,14 @@ export function AuthForm() {
           </label>
 
           <label className="block">
-            <span className="text-sm font-semibold text-ink">Password</span>
+            <span className="flex items-center justify-between gap-3">
+              <span className="text-sm font-semibold text-ink">Password</span>
+              {!isSignup ? (
+                <Link href="/auth/forgot-password" className="text-xs font-semibold text-accent hover:text-[#115441]">
+                  Forgot password?
+                </Link>
+              ) : null}
+            </span>
             <input
               value={values.password}
               onChange={(event) => updateField("password", event.target.value)}
