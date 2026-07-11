@@ -155,10 +155,31 @@ where routine_schema = 'public'
     'match_analysis_run_document_chunks_v1'
   ]);
 
--- Query name: documents_bucket_privacy
+-- Query name: documents_bucket_security_configuration
 select id, name, public, file_size_limit, allowed_mime_types
 from storage.buckets
 where id = 'documents';
+
+-- Query name: storage_objects_rls_status
+select
+  n.nspname as schema_name,
+  c.relname as table_name,
+  c.relrowsecurity as rls_enabled,
+  c.relforcerowsecurity as force_rls_enabled
+from pg_class c
+join pg_namespace n on n.oid = c.relnamespace
+where n.nspname = 'storage'
+  and c.relname = 'objects';
+
+-- Query name: storage_objects_managed_grants_informational
+-- Supabase-managed anon/authenticated grants are expected. They allow requests
+-- to reach the RLS boundary; they do not authorize document object access.
+select grantor, grantee, privilege_type
+from information_schema.role_table_grants
+where table_schema = 'storage'
+  and table_name = 'objects'
+  and grantee in ('PUBLIC', 'anon', 'authenticated', 'service_role')
+order by grantee, privilege_type;
 
 -- Query name: storage_object_policy_definitions
 select schemaname, tablename, policyname, roles, cmd, qual, with_check
@@ -167,24 +188,46 @@ where schemaname = 'storage'
   and tablename = 'objects'
 order by policyname;
 
--- Query name: storage_objects_browser_grants_expected_zero_rows
-select table_schema, table_name, grantee, privilege_type
-from information_schema.role_table_grants
-where table_schema = 'storage'
-  and table_name = 'objects'
-  and grantee in ('PUBLIC', 'anon', 'authenticated')
-order by grantee, privilege_type;
-
--- Query name: direct_documents_bucket_browser_policies_expected_zero_rows
+-- Query name: storage_browser_policy_review
+-- Review every browser-role policy and confirm its predicates cannot match
+-- bucket_id = 'documents'. Broad predicates such as true must be treated as a
+-- finding even if the policy name does not mention documents.
 select policyname, roles, cmd, qual, with_check
 from pg_policies
 where schemaname = 'storage'
   and tablename = 'objects'
+  and roles && array['public', 'anon', 'authenticated']::name[]
+order by policyname;
+
+-- Query name: documents_bucket_browser_policies_expected_zero_rows
+-- This catches policies that explicitly name the documents bucket. The policy
+-- review above is still required to identify broad predicates.
+select policyname, roles, cmd, qual, with_check
+from pg_policies
+where schemaname = 'storage'
+  and tablename = 'objects'
+  and roles && array['public', 'anon', 'authenticated']::name[]
   and (
     coalesce(qual, '') ilike '%documents%'
     or coalesce(with_check, '') ilike '%documents%'
     or policyname ilike '%document%'
   );
+
+-- Query name: authenticated_documents_storage_visibility_expected_zero
+begin read only;
+set local role authenticated;
+select count(*) as visible_document_objects
+from storage.objects
+where bucket_id = 'documents';
+rollback;
+
+-- Query name: anonymous_documents_storage_visibility_expected_zero
+begin read only;
+set local role anon;
+select count(*) as visible_document_objects
+from storage.objects
+where bucket_id = 'documents';
+rollback;
 
 -- Query name: unvalidated_sensitive_constraints_expected_zero_rows
 select

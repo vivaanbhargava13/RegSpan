@@ -79,13 +79,19 @@ limit matching the application upload validation. Canonical object names are:
 <workspace UUID>/<document UUID>/<sanitized filename>.pdf
 ```
 
-Migration 021 removes authenticated policies for this bucket and revokes browser
-object-table privileges. Browser clients cannot list, download, upload, update,
-or delete document objects directly.
-Authorized Next.js routes use the server-only service role after resolving the
-actor's workspace and validating the document relationship. Other Storage
-buckets retain their own policies; do not add a broad `storage.objects` policy
-that also matches `bucket_id = 'documents'`.
+Supabase manages grants on `storage.objects` and `storage.buckets`. Grants from
+`supabase_storage_admin` to `anon` or `authenticated` are expected: they allow a
+request to reach the Storage RLS boundary, but they do not authorize access to
+an object. Effective access is determined by bucket privacy and RLS policies.
+
+The private `documents` bucket has no policy that authorizes `anon` or
+`authenticated`, so browser clients cannot list, download, upload, update, or
+delete its objects. Do not revoke Supabase-managed Storage grants or force RLS
+on Supabase-managed Storage tables. Authorized Next.js routes use the
+server-only service role after resolving the actor's workspace and validating
+the document relationship. Other Storage buckets retain their own policies; do
+not add a broad `storage.objects` policy that can match
+`bucket_id = 'documents'`.
 
 ## Internal RPCs
 
@@ -128,7 +134,11 @@ Expected results:
 - Authenticated users have no privileges on embeddings, counters, or audit
   events, and no write privilege except `UPDATE` on their own profile row.
 - Internal RPCs have no `PUBLIC`, `anon`, or `authenticated` execute grants.
-- The `documents` bucket has `public = false` and no browser Storage policy.
+- The `documents` bucket has `public = false`, a 10 MiB limit, and an
+  `application/pdf` MIME allow-list.
+- `storage.objects` has RLS enabled. Supabase-managed browser grants may exist,
+  but no browser-role policy can match the `documents` bucket.
+- Authenticated and anonymous role impersonation each see zero document objects.
 - No sensitive deferred constraint or cross-workspace relationship remains.
 
 Run `supabase/tests/021_production_data_isolation_regression.sql` only against a
@@ -168,6 +178,9 @@ script creates isolated fixture rows and rolls back all changes.
   `application/pdf`.
 - Storage > Policies: no authenticated or anon policy can match the `documents`
   bucket.
+- Database > Storage grants: grants owned by `supabase_storage_admin` are
+  expected and should not be revoked. Verify effective access through RLS and
+  role impersonation instead.
 - Database > Tables: RLS is enabled for every inventory table. Confirm forced
   RLS with the verification SQL because the dashboard may show only enabled.
 - Database > Functions: internal RPC execution is not granted to anon or

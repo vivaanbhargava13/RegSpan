@@ -429,7 +429,6 @@ test("analysis relationships and private document Storage are fail-closed", asyn
   assert.match(migration, /values \('documents', 'documents', false, 10485760/);
   assert.match(migration, /array\['application\/pdf'\]::text\[\]/);
   assert.match(migration, /drop policy if exists %I on storage\.objects/);
-  assert.match(migration, /revoke select, insert, update, delete on storage\.objects from anon, authenticated/);
   assert.doesNotMatch(migration, /create policy documents_storage_/);
   assert.match(
     migration,
@@ -503,16 +502,26 @@ test("two-workspace authorization regression and production verification artifac
     "sensitive_table_grants",
     "public_rls_policy_definitions",
     "browser_executable_internal_rpcs_expected_zero_rows",
-    "documents_bucket_privacy",
-    "direct_documents_bucket_browser_policies_expected_zero_rows",
+    "documents_bucket_security_configuration",
+    "storage_objects_rls_status",
+    "storage_objects_managed_grants_informational",
+    "storage_browser_policy_review",
+    "documents_bucket_browser_policies_expected_zero_rows",
+    "authenticated_documents_storage_visibility_expected_zero",
+    "anonymous_documents_storage_visibility_expected_zero",
     "cross_workspace_relationships_expected_zero_rows",
   ]) {
     assert.match(verification, new RegExp(`Query name: ${queryName}`));
   }
 
   assert.match(documentation, /service role bypasses RLS/i);
+  assert.match(documentation, /Supabase manages grants on `storage\.objects` and `storage\.buckets`/);
+  assert.match(documentation, /allow a\s+request to reach the Storage RLS boundary/);
+  assert.match(documentation, /Effective access is determined by bucket privacy and RLS policies/);
+  assert.match(documentation, /Do not revoke Supabase-managed Storage grants/);
   assert.match(documentation, /Pre-deployment two-workspace test/);
   assert.match(documentation, /RLS does not compensate for an unscoped admin\s+query/i);
   assert.match(documentation, /Regulatory source tables are global authenticated reference data/);
   assert.match(documentation, /never\s+sent to n8n/);
+  assert.doesNotMatch(verification, /storage_objects_browser_grants_expected_zero_rows/);
 });
