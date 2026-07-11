@@ -556,7 +556,6 @@ export function DocumentDetailClient({ documentId }: DocumentDetailClientProps) 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-wrap items-center gap-2">
               <LifecycleBadge label={documentLifecycleLabel(document.status)} value={document.status} />
-              <StatusBadge showDot={false}>{documentLifecycleLabel(document.status)}</StatusBadge>
               <span className="text-xs font-medium text-app-muted">Secure document workspace</span>
             </div>
             <span className="text-xs font-semibold uppercase tracking-[0.08em] text-app-subtle">

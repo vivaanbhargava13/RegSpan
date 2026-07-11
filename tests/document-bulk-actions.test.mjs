@@ -67,6 +67,19 @@ test("documents upload form is file-first and hides optional metadata fields", a
   assert.doesNotMatch(client, /Optional review context/);
 });
 
+test("documents upload field uses the full upload-card width after metadata removal", async () => {
+  const client = await readFile("components/DocumentsClient.tsx", "utf8");
+  const uploadForm = client.slice(
+    client.indexOf('<form className="mt-6 grid'),
+    client.indexOf('</form>', client.indexOf('<form className="mt-6 grid')),
+  );
+
+  assert.match(uploadForm, /<form className="mt-6 grid gap-5"/);
+  assert.match(uploadForm, /className="app-field mt-2 block w-full/);
+  assert.match(uploadForm, /max-w-full text-xs/);
+  assert.doesNotMatch(uploadForm, /max-w-(?!full\b)|grid-cols-|col-span-|w-1\/2|w-1\/3|w-2\/3/);
+});
+
 test("document upload API defaults type and starts source preparation", async () => {
   const route = await readFile("app/api/documents/route.ts", "utf8");
   const processing = await readFile("lib/documentProcessing.ts", "utf8");

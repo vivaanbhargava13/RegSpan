@@ -497,7 +497,7 @@ export function DocumentsClient() {
             </button>
           </div>
 
-          <form className="mt-6 grid max-w-2xl gap-5" onSubmit={handleSubmit} noValidate>
+          <form className="mt-6 grid gap-5" onSubmit={handleSubmit} noValidate>
             <label className="block min-w-0">
               <span className="text-sm font-semibold text-app-text">File</span>
               <input

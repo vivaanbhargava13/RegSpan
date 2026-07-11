@@ -38,3 +38,18 @@ test("document detail progressively reveals client source excerpts", async () =>
   assert.match(source, /Show less/);
   assert.doesNotMatch(source, /chunks\.map\(\(chunk\) =>/);
 });
+
+test("document detail renders one generic lifecycle badge without a duplicate status label", async () => {
+  const source = await readFile("components/DocumentDetailClient.tsx", "utf8");
+  const statusStrip = source.slice(
+    source.indexOf('<div className="border-b border-app-border bg-app-elevated/55'),
+    source.indexOf('<dl className="grid divide-y divide-app-border'),
+  );
+
+  assert.match(statusStrip, /<LifecycleBadge label=\{documentLifecycleLabel\(document\.status\)\} value=\{document\.status\} \/>/);
+  assert.doesNotMatch(statusStrip, /<StatusBadge showDot=\{false\}>\{documentLifecycleLabel\(document\.status\)\}<\/StatusBadge>/);
+  assert.match(source, /function documentLifecycleLabel\(status: DocumentStatus\)/);
+  assert.match(source, /case "Processed":/);
+  assert.match(source, /case "Processing":/);
+  assert.match(source, /case "Failed":/);
+});
