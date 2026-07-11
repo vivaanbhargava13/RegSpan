@@ -377,3 +377,142 @@ test("env example documents server-only redirect and AI variables", async () => 
     /NEXT_PUBLIC_(OPENAI_API_KEY|CHUNK_SYNOPSIS_API_KEY|REQUIREMENT_CLASSIFIER_API_KEY|EMBEDDING_API_KEY)/,
   );
 });
+
+test("production RLS migration establishes explicit browser and service-role boundaries", async () => {
+  const migration = await readFile(
+    "supabase/migrations/021_harden_production_rls_and_storage.sql",
+    "utf8",
+  );
+
+  assert.match(migration, /Query name: 021_harden_production_rls_and_storage/);
+  for (const table of [
+    "documents",
+    "processing_jobs",
+    "document_chunks",
+    "document_hierarchy",
+    "chunk_embeddings",
+    "analysis_runs",
+    "analysis_run_documents",
+    "findings",
+    "finding_evidence",
+    "security_audit_events",
+    "rate_limit_counters",
+  ]) {
+    assert.match(migration, new RegExp(`'${table}'`));
+  }
+
+  assert.match(migration, /force row level security/);
+  assert.match(migration, /from public, anon, authenticated/);
+  assert.match(migration, /grant select, insert on public\.security_audit_events to service_role/);
+  assert.doesNotMatch(migration, /grant select[^;]*chunk_embeddings[^;]*to authenticated/s);
+  assert.doesNotMatch(migration, /create policy chunk_embeddings[^;]*/);
+  assert.doesNotMatch(migration, /create policy rate_limit_counters[^;]*/);
+  assert.doesNotMatch(migration, /create policy security_audit_events[^;]*/);
+  assert.match(migration, /p\.prosecdef/);
+  assert.match(migration, /alter function %s set search_path =/);
+  assert.match(migration, /revoke all on function %s from public, anon, authenticated/);
+  assert.match(migration, /grant execute on function %s to service_role/);
+});
+
+test("analysis relationships and private document Storage are fail-closed", async () => {
+  const migration = await readFile(
+    "supabase/migrations/021_harden_production_rls_and_storage.sql",
+    "utf8",
+  );
+
+  assert.match(migration, /enforce_analysis_run_document_workspace_match/);
+  assert.match(migration, /enforce_finding_analysis_run_workspace_match/);
+  assert.match(migration, /analysis_run_document_run_workspace_mismatch/);
+  assert.match(migration, /finding_analysis_run_workspace_mismatch/);
+  assert.match(migration, /alter table %I\.%I validate constraint %I/);
+  assert.match(migration, /insert into storage\.buckets/);
+  assert.match(migration, /values \('documents', 'documents', false, 10485760/);
+  assert.match(migration, /array\['application\/pdf'\]::text\[\]/);
+  assert.match(migration, /drop policy if exists %I on storage\.objects/);
+  assert.match(migration, /revoke select, insert, update, delete on storage\.objects from anon, authenticated/);
+  assert.doesNotMatch(migration, /create policy documents_storage_/);
+  assert.match(
+    migration,
+    /revoke all on function private\.can_access_document_storage\(text, uuid\)[\s\S]*from public, anon, authenticated/,
+  );
+});
+
+test("service-role application reads retain explicit workspace scope", async () => {
+  const [documentSecurity, worker, findings, generation, mockProcess, ingestion] = await Promise.all([
+    readFile("lib/documentSecurity.ts", "utf8"),
+    readFile("app/api/internal/ingest/process-job/route.ts", "utf8"),
+    readFile("app/api/findings/route.ts", "utf8"),
+    readFile("lib/findingsGeneration.ts", "utf8"),
+    readFile("app/api/documents/[id]/mock-process/route.ts", "utf8"),
+    readFile("lib/ingestion.ts", "utf8"),
+  ]);
+
+  const documentAuthorization = documentSecurity.slice(
+    documentSecurity.indexOf("export async function authorizeDocumentRequest"),
+    documentSecurity.indexOf("export function sanitizePdfFilename"),
+  );
+  assert.match(documentAuthorization, /getActorWorkspaceId\(supabaseAdmin, actor\.user\.id\)/);
+  assert.match(documentAuthorization, /\.eq\("id", documentId\)[\s\S]*\.eq\("workspace_id", workspaceId\)/);
+
+  const jobLookup = worker.slice(worker.indexOf('.from("processing_jobs")'), worker.indexOf("if (jobError)"));
+  assert.match(jobLookup, /\.eq\("id", payload\.jobId\)/);
+  assert.match(jobLookup, /\.eq\("document_id", payload\.documentId\)/);
+  assert.match(jobLookup, /\.eq\("workspace_id", payload\.workspaceId\)/);
+  const documentLookup = worker.slice(worker.indexOf('.from("documents")'), worker.indexOf("if (documentError)"));
+  assert.match(documentLookup, /\.eq\("id", payload\.documentId\)/);
+  assert.match(documentLookup, /\.eq\("workspace_id", payload\.workspaceId\)/);
+
+  const evidenceLookup = findings.slice(
+    findings.indexOf('.from("finding_evidence")'),
+    findings.indexOf("if (evidenceError)"),
+  );
+  assert.match(evidenceLookup, /\.eq\("workspace_id", workspaceId\)/);
+  assert.match(evidenceLookup, /\.in\("finding_id", findingIds\)/);
+
+  const failRun = generation.slice(
+    generation.indexOf("async function failAnalysisRun"),
+    generation.indexOf("export async function generateFindingsForWorkspace"),
+  );
+  assert.match(failRun, /workspaceId: string/);
+  assert.match(failRun, /\.eq\("id", analysisRunId\)[\s\S]*\.eq\("workspace_id", workspaceId\)/);
+  assert.match(mockProcess, /\.eq\("id", jobId\)[\s\S]*\.eq\("document_id", authorized\.document\.id\)[\s\S]*\.eq\("workspace_id", authorized\.document\.workspace_id\)/);
+  assert.match(ingestion, /documentId: string,[\s\S]*workspaceId: string/);
+  assert.match(ingestion, /\.eq\("id", documentId\)[\s\S]*\.eq\("workspace_id", workspaceId\)/);
+});
+
+test("two-workspace authorization regression and production verification artifacts are complete", async () => {
+  const [regression, verification, documentation] = await Promise.all([
+    readFile("supabase/tests/021_production_data_isolation_regression.sql", "utf8"),
+    readFile("docs/security/verify-production-rls-storage.sql", "utf8"),
+    readFile("docs/security/production-data-isolation.md", "utf8"),
+  ]);
+
+  assert.match(regression, /two disposable auth users/i);
+  assert.match(regression, /User A can read workspace B documents/);
+  assert.match(regression, /User A can read workspace B chunks/);
+  assert.match(regression, /User A can read workspace B findings/);
+  assert.match(regression, /User A can read workspace B finding evidence/);
+  assert.match(regression, /Authenticated browser can read chunk embeddings/);
+  assert.match(regression, /Authenticated browser can read rate limit counters/);
+  assert.match(regression, /Authenticated browser can execute an internal analysis RPC/);
+  assert.match(regression, /User A can read workspace B Storage objects/);
+  assert.match(regression, /Cross-workspace analysis snapshot was accepted/);
+
+  for (const queryName of [
+    "rls_and_force_rls_status",
+    "sensitive_table_grants",
+    "public_rls_policy_definitions",
+    "browser_executable_internal_rpcs_expected_zero_rows",
+    "documents_bucket_privacy",
+    "direct_documents_bucket_browser_policies_expected_zero_rows",
+    "cross_workspace_relationships_expected_zero_rows",
+  ]) {
+    assert.match(verification, new RegExp(`Query name: ${queryName}`));
+  }
+
+  assert.match(documentation, /service role bypasses RLS/i);
+  assert.match(documentation, /Pre-deployment two-workspace test/);
+  assert.match(documentation, /RLS does not compensate for an unscoped admin\s+query/i);
+  assert.match(documentation, /Regulatory source tables are global authenticated reference data/);
+  assert.match(documentation, /never\s+sent to n8n/);
+});

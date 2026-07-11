@@ -2475,7 +2475,7 @@ test("findings UI displays stored client evidence rows and exact quote fallbacks
   assert.match(route, /invalidLatestRun/);
   assert.match(route, /\.eq\("analysis_run_id", latestRun\.id\)/);
   assert.match(evidenceLookup, /\.in\("finding_id", findingIds\)/);
-  assert.doesNotMatch(evidenceLookup, /\.eq\("workspace_id", workspaceId\)/);
+  assert.match(evidenceLookup, /\.eq\("workspace_id", workspaceId\)/);
   assert.match(route, /evidenceByFindingId\[finding\.id as string\] \?\? \[\]/);
   assert.match(client, /normalizeFindingEvidence/);
   assert.match(client, /finding_evidence\?: FindingEvidence\[\]/);

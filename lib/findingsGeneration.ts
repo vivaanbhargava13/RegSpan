@@ -392,10 +392,12 @@ async function completeAnalysisRun({
 
 async function failAnalysisRun({
   supabase,
+  workspaceId,
   analysisRunId,
   errorMessage,
 }: {
   supabase: SupabaseClient;
+  workspaceId: string;
   analysisRunId: string;
   errorMessage: string;
 }) {
@@ -406,7 +408,8 @@ async function failAnalysisRun({
       completed_at: new Date().toISOString(),
       error_message: errorMessage,
     })
-    .eq("id", analysisRunId);
+    .eq("id", analysisRunId)
+    .eq("workspace_id", workspaceId);
 }
 
 export async function generateFindingsForWorkspace({
@@ -504,6 +507,7 @@ export async function generateFindingsForWorkspace({
   } catch (error) {
     await failAnalysisRun({
       supabase,
+      workspaceId,
       analysisRunId: analysisRun.id,
       errorMessage: error instanceof FindingsGenerationError
         ? error.publicMessage

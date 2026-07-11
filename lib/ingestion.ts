@@ -21,11 +21,13 @@ export type IngestionDocument = {
 export async function getIngestionDocument(
   supabase: SupabaseClient,
   documentId: string,
+  workspaceId: string,
 ) {
   return supabase
     .from("documents")
     .select("id, workspace_id, filename, status, document_type, notes")
     .eq("id", documentId)
+    .eq("workspace_id", workspaceId)
     .maybeSingle<IngestionDocument>();
 }
 

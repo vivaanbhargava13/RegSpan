@@ -160,6 +160,7 @@ export async function GET(request: Request) {
       const { data: evidence, error: evidenceError } = await supabase
         .from("finding_evidence")
         .select("id, finding_id, document_id, chunk_id, relationship, quote, evidence_quote, reason, confidence, filename, page_start, page_end, section_path, chunk_index, created_at")
+        .eq("workspace_id", workspaceId)
         .in("finding_id", findingIds)
         .order("created_at", { ascending: true });
 

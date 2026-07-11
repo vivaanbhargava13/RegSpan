@@ -151,6 +151,8 @@ export async function POST(request: Request, { params }: RouteContext) {
           updated_at: failedAt,
         })
         .eq("id", jobId)
+        .eq("document_id", authorized.document.id)
+        .eq("workspace_id", authorized.document.workspace_id)
         .in("status", ["Queued", "Processing", "Reprocessing"]);
       await supabase
         .from("documents")

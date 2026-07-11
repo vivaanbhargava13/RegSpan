@@ -223,6 +223,8 @@ export async function POST(request: Request) {
       .from("processing_jobs")
       .select("id, document_id, workspace_id, status")
       .eq("id", payload.jobId)
+      .eq("document_id", payload.documentId)
+      .eq("workspace_id", payload.workspaceId)
       .maybeSingle<WorkerJob>();
 
     if (jobError) {
@@ -234,6 +236,7 @@ export async function POST(request: Request) {
       .from("documents")
       .select("id, workspace_id, filename, storage_path, mime_type, file_size, document_type, notes")
       .eq("id", payload.documentId)
+      .eq("workspace_id", payload.workspaceId)
       .maybeSingle<WorkerDocument>();
 
     if (documentError) {

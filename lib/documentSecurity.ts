@@ -166,12 +166,14 @@ export async function authorizeDocumentRequest(
   }
 
   const actor = await authenticateRequest(supabaseAdmin, request);
+  const workspaceId = await getActorWorkspaceId(supabaseAdmin, actor.user.id);
   const { data: document, error: documentError } = await supabaseAdmin
     .from("documents")
     .select(
       "id, workspace_id, filename, status, storage_path, document_type, notes",
     )
     .eq("id", documentId)
+    .eq("workspace_id", workspaceId)
     .maybeSingle<AuthorizedDocument>();
 
   if (documentError) {
@@ -188,31 +190,6 @@ export async function authorizeDocumentRequest(
   }
 
   if (!document?.workspace_id) {
-    throw new DocumentRequestError("Document not found.", 404, "document_not_found");
-  }
-
-  const { data: membership, error: membershipError } = await supabaseAdmin
-    .from("workspace_members")
-    .select("id")
-    .eq("workspace_id", document.workspace_id)
-    .eq("user_id", actor.user.id)
-    .maybeSingle();
-
-  if (membershipError) {
-    console.error("[RegSpan security] Document membership check failed", {
-      documentId,
-      userId: actor.user.id,
-      error: membershipError.message,
-    });
-    throw new DocumentRequestError(
-      "Unable to verify document access.",
-      500,
-      "membership_lookup_failed",
-    );
-  }
-
-  // Deliberately conceal whether another workspace owns the requested UUID.
-  if (!membership) {
     throw new DocumentRequestError("Document not found.", 404, "document_not_found");
   }
 
