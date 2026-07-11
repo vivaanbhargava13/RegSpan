@@ -10,6 +10,7 @@ import {
   rateLimitErrorResponse,
 } from "@/lib/rateLimit";
 import { getServerSupabaseAdminClient } from "@/lib/supabase/server";
+import { getSupabaseRuntimeEnvironment } from "@/lib/supabase/runtimeEnvironment";
 
 export const runtime = "nodejs";
 
@@ -17,8 +18,7 @@ const PASSWORD_RESET_MESSAGE =
   "If an account exists for that email, we sent password reset instructions.";
 
 function getSupabaseAuthClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
+  const { url: supabaseUrl, anonKey } = getSupabaseRuntimeEnvironment();
 
   if (!supabaseUrl || !anonKey) {
     throw new Error("Supabase Auth server environment variables are missing.");

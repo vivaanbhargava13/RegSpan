@@ -2,10 +2,10 @@ import "server-only";
 
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { getSupabaseRuntimeEnvironment } from "@/lib/supabase/runtimeEnvironment";
 
 export async function getServerSupabaseAuthClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
+  const { url: supabaseUrl, anonKey } = getSupabaseRuntimeEnvironment();
 
   if (!supabaseUrl || !anonKey) {
     throw new Error("Supabase Auth server environment variables are missing.");

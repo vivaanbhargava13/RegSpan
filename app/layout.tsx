@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { GeistMono } from "geist/font/mono";
 import { GeistSans } from "geist/font/sans";
+import { getSupabaseRuntimeEnvironment } from "@/lib/supabase/runtimeEnvironment";
 import "./globals.css";
 
 // Per-request CSP nonces require request-time rendering so Next.js can apply
@@ -17,8 +18,14 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const { url: supabaseUrl, anonKey: supabaseAnonKey } = getSupabaseRuntimeEnvironment();
   return (
-    <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`}>
+    <html
+      lang="en"
+      className={`${GeistSans.variable} ${GeistMono.variable}`}
+      data-supabase-url={supabaseUrl || undefined}
+      data-supabase-anon-key={supabaseAnonKey || undefined}
+    >
       <body className="font-sans antialiased">{children}</body>
     </html>
   );

@@ -1,10 +1,10 @@
 import "server-only";
 
 import { createClient } from "@supabase/supabase-js";
+import { getSupabaseRuntimeEnvironment } from "@/lib/supabase/runtimeEnvironment";
 
 export function getServerSupabaseAdminClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  const { url: supabaseUrl, serviceRoleKey } = getSupabaseRuntimeEnvironment();
 
   console.info("[RegSpan ingestion] Supabase admin configuration", {
     hasSupabaseUrl: Boolean(supabaseUrl),

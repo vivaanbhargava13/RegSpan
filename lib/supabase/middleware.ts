@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { getSupabaseRuntimeEnvironment } from "@/lib/supabase/runtimeEnvironment";
 
 const protectedPrefixes = [
   "/dashboard",
@@ -16,8 +17,7 @@ export async function updateSupabaseSession(
   request: NextRequest,
   requestHeaders: Headers = new Headers(request.headers),
 ) {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
+  const { url: supabaseUrl, anonKey } = getSupabaseRuntimeEnvironment();
 
   if (!supabaseUrl || !anonKey) {
     return NextResponse.next({ request: { headers: requestHeaders } });

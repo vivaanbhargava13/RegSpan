@@ -93,7 +93,7 @@ All values are server-only positive integers:
 | `MAX_PDF_PAGES` | `250` | Reject before metadata inspection or page extraction. |
 | `MAX_EXTRACTED_TEXT_CHARS` | `2000000` | Reject before chunks or embeddings when normalized document text exceeds the limit. |
 | `MAX_PDF_PAGE_TEXT_CHARS` | `500000` | Bound one page's text assembly before normalization. |
-| `PDF_PROCESSING_TIMEOUT_MS` | `30000` | Bound parser import, load, inspection, extraction, and normalization. |
+| `PDF_PROCESSING_TIMEOUT_MS` | `180000` | Bound parser import, load, inspection, extraction, and normalization. Production requires at least 60000 ms of application shutdown headroom. |
 
 The existing upload ceiling remains 10 MiB. Invalid configuration fails with a
 safe server error and the normal failed-job transition. Text is never truncated;

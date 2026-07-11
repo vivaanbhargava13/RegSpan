@@ -9,6 +9,7 @@ import ts from "typescript";
 
 async function importN8nModule() {
   const source = (await readFile("lib/n8n.ts", "utf8")).replace(/^import "server-only";\n/, "");
+  const hostSafetySource = await readFile("lib/productionHostSafety.mjs", "utf8");
   const transpiled = ts.transpileModule(source, {
     compilerOptions: {
       module: ts.ModuleKind.ES2022,
@@ -20,6 +21,7 @@ async function importN8nModule() {
   const outDir = await mkdtemp(join(tmpdir(), "regspan-n8n-test-"));
   const outPath = join(outDir, "n8n.mjs");
   await writeFile(outPath, transpiled, "utf8");
+  await writeFile(join(outDir, "productionHostSafety.mjs"), hostSafetySource, "utf8");
   return import(pathToFileURL(outPath).href);
 }
 
@@ -161,6 +163,13 @@ test("production n8n configuration fails closed while local development remains 
     { ...production, N8N_INGEST_WEBHOOK_URL: "http://hooks.example.test/webhook/regspan" },
     { ...production, N8N_INGEST_WEBHOOK_URL: "https://localhost:5678/webhook/regspan" },
     { ...production, N8N_INGEST_WEBHOOK_URL: "https://127.0.0.1/webhook/regspan" },
+    { ...production, N8N_INGEST_WEBHOOK_URL: "https://2130706433/webhook/regspan" },
+    { ...production, N8N_INGEST_WEBHOOK_URL: "https://0x7f000001/webhook/regspan" },
+    { ...production, N8N_INGEST_WEBHOOK_URL: "https://0.0.0.0/webhook/regspan" },
+    { ...production, N8N_INGEST_WEBHOOK_URL: "https://[::1]/webhook/regspan" },
+    { ...production, N8N_INGEST_WEBHOOK_URL: "https://[0:0:0:0:0:0:0:1]/webhook/regspan" },
+    { ...production, N8N_INGEST_WEBHOOK_URL: "https://[::ffff:127.0.0.1]/webhook/regspan" },
+    { ...production, N8N_INGEST_WEBHOOK_URL: "https://[::ffff:7f00:1]/webhook/regspan" },
     { ...production, N8N_INGEST_WEBHOOK_URL: "https://host.docker.internal/webhook/regspan" },
     { ...production, INGESTION_WORKER_SECRET: undefined },
     { ...production, INGESTION_WORKER_SECRET: secret },
@@ -170,6 +179,17 @@ test("production n8n configuration fails closed while local development remains 
       () => getN8nConfiguration(environment),
       (error) => error instanceof N8nWebhookError && error.kind === "configuration",
     );
+  }
+
+  for (const publicUrl of [
+    "https://203.0.113.8/webhook/regspan",
+    "https://[2606:4700:4700::1111]/webhook/regspan",
+    "https://[::ffff:cb00:7108]/webhook/regspan",
+  ]) {
+    assert.equal(getN8nConfiguration({
+      ...production,
+      N8N_INGEST_WEBHOOK_URL: publicUrl,
+    }).url, publicUrl);
   }
 });
 

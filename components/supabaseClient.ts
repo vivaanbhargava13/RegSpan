@@ -1,24 +1,27 @@
 import { createBrowserClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
 let browserClient: SupabaseClient | null = null;
 
+function runtimeConfiguration() {
+  if (typeof document === "undefined") return null;
+  const supabaseUrl = document.documentElement.dataset.supabaseUrl?.trim();
+  const supabaseAnonKey = document.documentElement.dataset.supabaseAnonKey?.trim();
+  return supabaseUrl && supabaseAnonKey ? { supabaseUrl, supabaseAnonKey } : null;
+}
+
 export function isSupabaseConfigured() {
-  return Boolean(supabaseUrl?.trim() && supabaseAnonKey?.trim());
+  return runtimeConfiguration() !== null;
 }
 
 export function getBrowserSupabaseClient() {
-  if (!isSupabaseConfigured()) {
-    return null;
-  }
+  const configuration = runtimeConfiguration();
+  if (!configuration) return null;
 
   if (!browserClient) {
     browserClient = createBrowserClient(
-      supabaseUrl as string,
-      supabaseAnonKey as string,
+      configuration.supabaseUrl,
+      configuration.supabaseAnonKey,
     );
   }
 

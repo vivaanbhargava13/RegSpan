@@ -6,6 +6,7 @@ dist
 !.env.example
 !infra/n8n/.env.example
 !infra/n8n/.env.production.example
+!infra/app/.env.staging.example
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { isUnsafeProductionHostname } from "./productionHostSafety.mjs";
 
 const N8N_WEBHOOK_TIMEOUT_MS = 10_000;
 export const N8N_WEBHOOK_MAX_SKEW_MS = 5 * 60 * 1_000;
@@ -27,17 +28,6 @@ export class N8nWebhookError extends Error {
 }
 
 type N8nEnvironment = Record<string, string | undefined>;
-
-function isLocalOrContainerOnlyHostname(hostname: string) {
-  const normalized = hostname.toLowerCase().replace(/^\[|\]$/g, "");
-  return normalized === "localhost"
-    || normalized.endsWith(".localhost")
-    || normalized === "host.docker.internal"
-    || normalized === "0.0.0.0"
-    || normalized === "::1"
-    || normalized === "0:0:0:0:0:0:0:1"
-    || /^127(?:\.\d{1,3}){3}$/.test(normalized);
-}
 
 function isAcceptableSecret(secret: string | undefined) {
   const normalized = secret?.trim();
@@ -80,7 +70,7 @@ export function getN8nConfiguration(environment: N8nEnvironment = process.env) {
 
   if (
     isProduction &&
-    (isLocalOrContainerOnlyHostname(url.hostname)
+    (isUnsafeProductionHostname(url.hostname)
       || !isAcceptableSecret(workerSecret)
       || workerSecret === secret)
   ) {

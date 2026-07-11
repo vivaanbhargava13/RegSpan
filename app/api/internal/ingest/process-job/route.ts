@@ -26,6 +26,7 @@ import { embedDocumentChunks } from "@/lib/chunkEmbeddings";
 import { createEmbeddingProvider, EmbeddingProcessingError } from "@/lib/embeddings";
 import { recordSecurityAuditEvent } from "@/lib/securityAudit";
 import { getServerSupabaseAdminClient } from "@/lib/supabase/server";
+import { beginIngestionRequest } from "@/lib/serverLifecycle";
 
 export const runtime = "nodejs";
 
@@ -126,6 +127,7 @@ export async function POST(request: Request) {
   let stage = "initialize_admin_client";
   let supabase;
   let payload: WorkerPayload | null = null;
+  let releaseIngestionRequest: (() => void) | null = null;
 
   try {
     supabase = getServerSupabaseAdminClient();
@@ -171,6 +173,15 @@ export async function POST(request: Request) {
         metadata: { failing_stage: stage },
       });
       return jsonError(401, "Unauthorized.", "unauthorized");
+    }
+
+    releaseIngestionRequest = beginIngestionRequest();
+    if (!releaseIngestionRequest) {
+      return jsonError(
+        503,
+        "Document processing is temporarily unavailable.",
+        "server_shutting_down",
+      );
     }
 
     stage = "validate_request_body";
@@ -679,5 +690,7 @@ export async function POST(request: Request) {
     }
 
     return jsonError(500, "The ingestion worker failed.", "worker_failed");
+  } finally {
+    releaseIngestionRequest?.();
   }
 }
