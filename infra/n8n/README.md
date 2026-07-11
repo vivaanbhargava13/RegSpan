@@ -1,107 +1,108 @@
-# Local n8n infrastructure for RegSpan
+# RegSpan n8n infrastructure examples
 
-This directory contains a sanitized Docker Desktop example for the RegSpan local
-n8n ingestion workflow. It is safe to commit because it contains placeholders
-only. Never commit a real `.env` file or copied secret values.
+This directory contains sanitized examples only. It does not contain a workflow
+export, credential ID, secret, production hostname, or live deployment action.
 
-## 1. Create local environment files
+## Current local workflow
 
-From this directory:
+The existing local Docker setup remains supported:
 
 ```sh
 cp .env.example .env
-```
-
-Generate high-entropy local secrets:
-
-```sh
 openssl rand -hex 32
 openssl rand -hex 32
 openssl rand -hex 32
-```
-
-Use those generated values as follows:
-
-- `N8N_INGEST_WEBHOOK_SECRET` in `infra/n8n/.env` must match
-  `N8N_INGEST_WEBHOOK_SECRET` in RegSpan `.env.local`.
-- `INGESTION_WORKER_SECRET` in `infra/n8n/.env` must match
-  `INGESTION_WORKER_SECRET` in RegSpan `.env.local`.
-- `N8N_INGEST_WEBHOOK_SECRET` and `INGESTION_WORKER_SECRET` must be different
-  from each other.
-- `N8N_ENCRYPTION_KEY` should be a third distinct value for local n8n data.
-
-The compose example maps `REGSPAN_WEBHOOK_SECRET` to the same value as
-`N8N_INGEST_WEBHOOK_SECRET` for temporary workflow compatibility. Do not create
-a separate value for `REGSPAN_WEBHOOK_SECRET`.
-
-## 2. Start n8n
-
-```sh
 docker compose --env-file .env -f docker-compose.example.yml up -d
 ```
 
-n8n will be available at `http://localhost:5678` by default.
+Set the generated values as follows:
 
-To stop the container:
+- Local n8n `N8N_INGEST_WEBHOOK_SECRET` must match RegSpan `.env.local`.
+- Local n8n `INGESTION_WORKER_SECRET` must match RegSpan `.env.local`.
+- Those two secrets must be different.
+- `N8N_ENCRYPTION_KEY` must be a third value and must persist with n8n data.
 
-```sh
-docker compose --env-file .env -f docker-compose.example.yml down
+The local workflow is:
+
+```text
+Webhook -> Code HMAC validation -> Respond to Webhook -> HTTP Request worker
 ```
 
-## 3. Verify container environment
+It intentionally uses `$env.REGSPAN_WEBHOOK_SECRET`, so the local compose file
+sets `N8N_BLOCK_ENV_ACCESS_IN_NODE=false` and
+`NODE_FUNCTION_ALLOW_BUILTIN=crypto`. The Docker Desktop worker URL is:
 
-Verify only lengths, never secret values:
+```text
+http://host.docker.internal:3000/api/internal/ingest/process-job
+```
+
+Verify secret lengths without printing values:
 
 ```sh
 docker compose --env-file .env -f docker-compose.example.yml exec regspan-n8n \
   node -e 'for (const k of ["N8N_INGEST_WEBHOOK_SECRET","REGSPAN_WEBHOOK_SECRET","INGESTION_WORKER_SECRET"]) console.log(k, (process.env[k] || "").length)'
 ```
 
-Expected:
+Never commit a real `.env` file.
 
-- `N8N_INGEST_WEBHOOK_SECRET` length is at least 32 characters.
-- `REGSPAN_WEBHOOK_SECRET` has the same length as
-  `N8N_INGEST_WEBHOOK_SECRET`.
-- `INGESTION_WORKER_SECRET` length is at least 32 characters.
+## Target production workflow
 
-## 4. Update the n8n workflow
-
-The local workflow must use this sequence:
+Production uses the stronger credential-backed design documented in
+`workflow-outline.md`:
 
 ```text
-Webhook -> Code in JavaScript HMAC validation -> Respond to Webhook -> HTTP Request worker
+Webhook
+  -> Validate timestamp and envelope
+  -> Crypto HMAC-SHA256
+  -> Verify signature and replay
+  -> Respond to Webhook
+  -> Call RegSpan ingestion worker
 ```
 
-Use the HMAC validation Code node from `../../docs/n8n-ingestion-v1.md`. The
-compose file sets:
+The HMAC secret is an encrypted n8n **Crypto credential** and the worker token is
+an encrypted **Bearer Auth credential**. Production therefore sets
+`N8N_BLOCK_ENV_ACCESS_IN_NODE=true`; only `crypto.timingSafeEqual` remains
+available to the comparison Code node.
 
-- `N8N_BLOCK_ENV_ACCESS_IN_NODE=false`
-- `NODE_FUNCTION_ALLOW_BUILTIN=crypto`
+## Production example
 
-These are required so the Code node can read the local environment secret and
-use Node's `crypto` module.
+1. Copy `.env.production.example` to an untracked deployment environment file or
+   enter the values directly in the provider secret manager.
+2. Replace every placeholder. Generate database and encryption values with
+   `openssl rand -hex 32`.
+3. Set explicit HTTPS `WEBHOOK_URL` and `N8N_EDITOR_BASE_URL` values. Set
+   `N8N_HOST` to the editor hostname without a scheme.
+4. Validate without starting services:
 
-Configure the HTTP Request worker node:
-
-- Method: `POST`
-- URL: `http://host.docker.internal:3000/api/internal/ingest/process-job`
-- Authentication: bearer/header value from `INGESTION_WORKER_SECRET`
-- Body: the safe IDs from the validated webhook payload only:
-  `jobId`, `documentId`, `workspaceId`, and `correlationId`
-
-Do not put JWTs, Supabase service-role keys, OpenAI keys, PDF bytes, signed
-URLs, storage paths, extracted text, chunks, or embeddings in n8n.
-
-See `workflow-outline.md` for a sanitized node outline.
-
-## 5. Local RegSpan settings
-
-In RegSpan `.env.local`, the n8n webhook URL should point to your local n8n
-webhook endpoint, for example:
-
-```text
-N8N_INGEST_WEBHOOK_URL=http://localhost:5678/webhook/<your-webhook-path>
+```sh
+docker compose \
+  -f docker-compose.production.example.yml \
+  --env-file .env.production.example \
+  config
 ```
 
-Keep the RegSpan `.env.local` HMAC and worker secrets synchronized with
-`infra/n8n/.env` as described above.
+5. For a real deployment, point `--env-file` at the untracked populated file and
+   run `docker compose ... up -d` only after the reverse proxy is configured.
+
+The example pins n8n `2.27.3` and PostgreSQL `16.14`, stores both n8n data and
+PostgreSQL data in named volumes, binds n8n only to `127.0.0.1`, disables the
+public API, saves no execution payloads, and prunes execution rows after seven
+days or 1,000 rows. It does not enable Redis, queue mode, Docker socket access,
+privileged mode, or host filesystem mounts.
+
+Named volumes are persistence, not backup. Back up PostgreSQL and the exact
+`N8N_ENCRYPTION_KEY` separately. Test restoration before private beta.
+
+## Required reading
+
+- `workflow-outline.md`: current and target workflow contracts.
+- `manual-production-migration-checklist.md`: exact future n8n editor actions.
+- `reverse-proxy-security.md`: public webhook and restricted editor boundary.
+- `../../docs/security/n8n-production-hardening.md`: deployment, rotation,
+  recovery, and validation runbook.
+- `../../docs/n8n-ingestion-v1.md`: application HMAC and worker contract.
+
+n8n must receive only `jobId`, `documentId`, `workspaceId`, and
+`correlationId`. Never add JWTs, Supabase keys, OpenAI keys, PDFs, signed URLs,
+Storage paths, extracted text, chunks, embeddings, or worker responses to the
+webhook payload or execution logs.

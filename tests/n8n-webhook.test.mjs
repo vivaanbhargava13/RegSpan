@@ -85,6 +85,94 @@ test("n8n webhook signature changes when body or timestamp changes", async () =>
   );
 });
 
+test("n8n webhook verification rejects tampering, stale timestamps, and malformed signatures", async () => {
+  const {
+    N8N_WEBHOOK_MAX_SKEW_MS,
+    serializeN8nIngestionPayload,
+    signN8nWebhook,
+    verifyN8nWebhookSignature,
+  } = await importN8nModule();
+  const rawBody = serializeN8nIngestionPayload(payload);
+  const signature = signN8nWebhook({ timestamp, rawBody, secret });
+  const now = Date.parse(timestamp);
+
+  assert.equal(verifyN8nWebhookSignature({ timestamp, rawBody, signature, secret, now }), true);
+  assert.equal(verifyN8nWebhookSignature({
+    timestamp,
+    rawBody: `${rawBody} `,
+    signature,
+    secret,
+    now,
+  }), false);
+  assert.equal(verifyN8nWebhookSignature({
+    timestamp: "2026-07-10T12:00:01.000Z",
+    rawBody,
+    signature,
+    secret,
+    now,
+  }), false);
+  assert.equal(verifyN8nWebhookSignature({
+    timestamp,
+    rawBody,
+    signature,
+    secret: "different-signing-secret-with-at-least-32-characters",
+    now,
+  }), false);
+  assert.equal(verifyN8nWebhookSignature({
+    timestamp,
+    rawBody,
+    signature: "sha256=not-hex",
+    secret,
+    now,
+  }), false);
+  assert.equal(verifyN8nWebhookSignature({
+    timestamp,
+    rawBody,
+    signature,
+    secret,
+    now: now + N8N_WEBHOOK_MAX_SKEW_MS + 1,
+  }), false);
+});
+
+test("production n8n configuration fails closed while local development remains supported", async () => {
+  const { getN8nConfiguration, N8nWebhookError } = await importN8nModule();
+  const workerSecret = "worker-bearer-secret-with-at-least-32-characters";
+  const production = {
+    NODE_ENV: "production",
+    N8N_INGEST_WEBHOOK_URL: "https://hooks.example.test/webhook/regspan",
+    N8N_INGEST_WEBHOOK_SECRET: secret,
+    INGESTION_WORKER_SECRET: workerSecret,
+  };
+
+  assert.deepEqual(getN8nConfiguration(production), {
+    url: "https://hooks.example.test/webhook/regspan",
+    secret,
+  });
+  assert.deepEqual(getN8nConfiguration({
+    NODE_ENV: "development",
+    N8N_INGEST_WEBHOOK_URL: "http://localhost:5678/webhook/regspan",
+    N8N_INGEST_WEBHOOK_SECRET: secret,
+  }), {
+    url: "http://localhost:5678/webhook/regspan",
+    secret,
+  });
+
+  for (const environment of [
+    { ...production, N8N_INGEST_WEBHOOK_URL: "http://hooks.example.test/webhook/regspan" },
+    { ...production, N8N_INGEST_WEBHOOK_URL: "https://localhost:5678/webhook/regspan" },
+    { ...production, N8N_INGEST_WEBHOOK_URL: "https://127.0.0.1/webhook/regspan" },
+    { ...production, N8N_INGEST_WEBHOOK_URL: "https://host.docker.internal/webhook/regspan" },
+    { ...production, INGESTION_WORKER_SECRET: undefined },
+    { ...production, INGESTION_WORKER_SECRET: secret },
+    { ...production, N8N_INGEST_WEBHOOK_SECRET: "replace-with-production-secret-value" },
+  ]) {
+    assert.throws(
+      () => getN8nConfiguration(environment),
+      (error) => error instanceof N8nWebhookError && error.kind === "configuration",
+    );
+  }
+});
+
 test("triggerN8nIngestion sends signed headers and no static secret header", async () => {
   const n8n = await importN8nModule();
   const previousUrl = process.env.N8N_INGEST_WEBHOOK_URL;
@@ -139,6 +227,7 @@ test("n8n documentation includes validation, freshness, replay, and migration gu
   assert.match(docs, /curl -i/);
   assert.match(source, /x-regspan-webhook-signature/);
   assert.doesNotMatch(source, /x-regspan-webhook-secret/);
+  assert.match(source, /timingSafeEqual/);
 });
 
 test("sanitized n8n local infrastructure docs include required setup", async () => {
@@ -173,4 +262,73 @@ test("sanitized n8n local infrastructure docs include required setup", async () 
     assert.doesNotMatch(file, /sk-[A-Za-z0-9]/);
     assert.doesNotMatch(file, /eyJ[A-Za-z0-9_-]+\./);
   }
+});
+
+test("production n8n infrastructure is pinned, private, persistent, and credential-backed", async () => {
+  const [compose, envExample, readme, outline, proxy, runbook, checklist, rootEnv] =
+    await Promise.all([
+      readFile("infra/n8n/docker-compose.production.example.yml", "utf8"),
+      readFile("infra/n8n/.env.production.example", "utf8"),
+      readFile("infra/n8n/README.md", "utf8"),
+      readFile("infra/n8n/workflow-outline.md", "utf8"),
+      readFile("infra/n8n/reverse-proxy-security.md", "utf8"),
+      readFile("docs/security/n8n-production-hardening.md", "utf8"),
+      readFile("infra/n8n/manual-production-migration-checklist.md", "utf8"),
+      readFile(".env.example", "utf8"),
+    ]);
+
+  assert.match(compose, /docker\.n8n\.io\/n8nio\/n8n:2\.27\.3/);
+  assert.doesNotMatch(compose, /n8n:(?:latest|stable)\b/);
+  assert.match(compose, /postgres:16\.14-alpine/);
+  assert.match(compose, /127\.0\.0\.1:\$\{N8N_BIND_PORT:-5678\}:5678/);
+  assert.match(compose, /N8N_BLOCK_ENV_ACCESS_IN_NODE: "true"/);
+  assert.match(compose, /N8N_PUBLIC_API_DISABLED: "true"/);
+  assert.match(compose, /EXECUTIONS_DATA_SAVE_ON_SUCCESS: none/);
+  assert.match(compose, /EXECUTIONS_DATA_SAVE_ON_ERROR: none/);
+  assert.match(compose, /n8n_data:\/home\/node\/\.n8n/);
+  assert.match(compose, /postgres_data:\/var\/lib\/postgresql\/data/);
+  assert.doesNotMatch(compose, /docker\.sock|privileged:\s*true|host\.docker\.internal/);
+
+  assert.match(envExample, /N8N_ENCRYPTION_KEY=replace-with/);
+  assert.match(envExample, /WEBHOOK_URL=https:\/\//);
+  assert.match(envExample, /N8N_EDITOR_BASE_URL=https:\/\//);
+  assert.doesNotMatch(envExample, /\b[a-f0-9]{64}\b/i);
+  assert.doesNotMatch(envExample, /N8N_INGEST_WEBHOOK_SECRET|INGESTION_WORKER_SECRET/);
+
+  assert.match(readme, /Current local workflow/);
+  assert.match(readme, /Target production workflow/);
+  assert.match(outline, /Crypto HMAC-SHA256/);
+  assert.match(outline, /Crypto credential/);
+  assert.match(outline, /Bearer Auth[\s\S]*credential/);
+  assert.match(proxy, /HMAC authenticates/);
+  assert.match(proxy, /do not expose.*5678/is);
+  assert.match(runbook, /Before deployment/);
+  assert.match(runbook, /Rotate and recover/);
+  assert.match(checklist, /Rollback/);
+  assert.match(checklist, /Hmac Secret/);
+  assert.match(rootEnv, /N8N_INGEST_WEBHOOK_URL/);
+  assert.match(rootEnv, /production.*HTTPS/is);
+
+  for (const file of [compose, envExample, readme, outline, proxy, runbook, checklist]) {
+    assert.doesNotMatch(file, /sk-[A-Za-z0-9]/);
+    assert.doesNotMatch(file, /eyJ[A-Za-z0-9_-]+\./);
+  }
+});
+
+test("worker authentication and duplicate invocation remain server-authoritative", async () => {
+  const [workerRoute, workerAuth, claimMigration] = await Promise.all([
+    readFile("app/api/internal/ingest/process-job/route.ts", "utf8"),
+    readFile("lib/ingestionWorkerAuth.ts", "utf8"),
+    readFile("supabase/migrations/014_create_pdf_chunk_ingestion.sql", "utf8"),
+  ]);
+
+  assert.match(workerRoute, /authenticateIngestionWorker\(request\)/);
+  assert.match(workerRoute, /return jsonError\(401, "Unauthorized\.", "unauthorized"\)/);
+  assert.match(workerRoute, /\.eq\("id", payload\.jobId\)/);
+  assert.match(workerRoute, /\.eq\("document_id", payload\.documentId\)/);
+  assert.match(workerRoute, /\.eq\("workspace_id", payload\.workspaceId\)/);
+  assert.match(workerRoute, /claimResult\.result === "already_completed"/);
+  assert.match(workerAuth, /timingSafeEqual/);
+  assert.match(claimMigration, /pg_advisory_xact_lock/);
+  assert.match(claimMigration, /current_job\.status = 'Processed'[\s\S]*'already_completed'/);
 });

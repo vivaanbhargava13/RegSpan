@@ -85,7 +85,7 @@ function processingLimits(overrides = {}) {
     maxPdfPages: 250,
     maxExtractedTextChars: 2_000_000,
     maxPdfPageTextChars: 500_000,
-    processingTimeoutMs: 30_000,
+    processingTimeoutMs: 180_000,
     ...overrides,
   };
 }
@@ -155,7 +155,7 @@ test("PDF processing limits use safe defaults and reject invalid configuration",
     maxPdfPages: 250,
     maxExtractedTextChars: 2_000_000,
     maxPdfPageTextChars: 500_000,
-    processingTimeoutMs: 30_000,
+    processingTimeoutMs: 180_000,
   });
   assert.deepEqual(loadPdfProcessingLimits({
     MAX_PDF_PAGES: "2",

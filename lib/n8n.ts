@@ -1,8 +1,10 @@
 import "server-only";
 
-import { createHmac } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 
 const N8N_WEBHOOK_TIMEOUT_MS = 10_000;
+export const N8N_WEBHOOK_MAX_SKEW_MS = 5 * 60 * 1_000;
+export const MINIMUM_N8N_SECRET_LENGTH = 32;
 export const N8N_WEBHOOK_SIGNATURE_ALGORITHM = "sha256";
 export const N8N_WEBHOOK_TIMESTAMP_HEADER = "x-regspan-webhook-timestamp";
 export const N8N_WEBHOOK_SIGNATURE_HEADER = "x-regspan-webhook-signature";
@@ -24,11 +26,35 @@ export class N8nWebhookError extends Error {
   }
 }
 
-function getN8nConfiguration() {
-  const configuredUrl = process.env.N8N_INGEST_WEBHOOK_URL?.trim();
-  const secret = process.env.N8N_INGEST_WEBHOOK_SECRET?.trim();
+type N8nEnvironment = Record<string, string | undefined>;
 
-  if (!configuredUrl || !secret || secret.length < 32) {
+function isLocalOrContainerOnlyHostname(hostname: string) {
+  const normalized = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  return normalized === "localhost"
+    || normalized.endsWith(".localhost")
+    || normalized === "host.docker.internal"
+    || normalized === "0.0.0.0"
+    || normalized === "::1"
+    || normalized === "0:0:0:0:0:0:0:1"
+    || /^127(?:\.\d{1,3}){3}$/.test(normalized);
+}
+
+function isAcceptableSecret(secret: string | undefined) {
+  const normalized = secret?.trim();
+  if (!normalized || normalized.length < MINIMUM_N8N_SECRET_LENGTH) return false;
+  if (/replace|placeholder|change[-_ ]?me|example|your[-_ ]?secret/i.test(normalized)) {
+    return false;
+  }
+  return new Set(normalized).size >= 8;
+}
+
+export function getN8nConfiguration(environment: N8nEnvironment = process.env) {
+  const configuredUrl = environment.N8N_INGEST_WEBHOOK_URL?.trim();
+  const secret = environment.N8N_INGEST_WEBHOOK_SECRET?.trim();
+  const workerSecret = environment.INGESTION_WORKER_SECRET?.trim();
+  const isProduction = environment.NODE_ENV === "production";
+
+  if (!configuredUrl || !secret || !isAcceptableSecret(secret)) {
     throw new N8nWebhookError("configuration");
   }
 
@@ -40,7 +66,7 @@ function getN8nConfiguration() {
   }
 
   const isLocalDevelopmentUrl =
-    process.env.NODE_ENV !== "production" &&
+    !isProduction &&
     url.protocol === "http:" &&
     (url.hostname === "localhost" || url.hostname === "127.0.0.1");
 
@@ -49,6 +75,15 @@ function getN8nConfiguration() {
   }
 
   if (url.username || url.password) {
+    throw new N8nWebhookError("configuration");
+  }
+
+  if (
+    isProduction &&
+    (isLocalOrContainerOnlyHostname(url.hostname)
+      || !isAcceptableSecret(workerSecret)
+      || workerSecret === secret)
+  ) {
     throw new N8nWebhookError("configuration");
   }
 
@@ -77,6 +112,32 @@ export function signN8nWebhook({
     .update(`${timestamp}.${rawBody}`)
     .digest("hex");
   return `${N8N_WEBHOOK_SIGNATURE_ALGORITHM}=${digest}`;
+}
+
+export function verifyN8nWebhookSignature({
+  timestamp,
+  rawBody,
+  signature,
+  secret,
+  now = Date.now(),
+  maxSkewMs = N8N_WEBHOOK_MAX_SKEW_MS,
+}: {
+  timestamp: string;
+  rawBody: string;
+  signature: string;
+  secret: string;
+  now?: number;
+  maxSkewMs?: number;
+}) {
+  const timestampMs = Date.parse(timestamp);
+  if (!Number.isFinite(timestampMs) || Math.abs(now - timestampMs) > maxSkewMs) {
+    return false;
+  }
+  if (!/^sha256=[0-9a-f]{64}$/.test(signature)) return false;
+
+  const expected = Buffer.from(signN8nWebhook({ timestamp, rawBody, secret }), "utf8");
+  const supplied = Buffer.from(signature, "utf8");
+  return supplied.length === expected.length && timingSafeEqual(supplied, expected);
 }
 
 export function createN8nWebhookRequest(payload: N8nIngestionPayload, secret: string) {

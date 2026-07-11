@@ -68,12 +68,18 @@ deploying this app change.
 
 ## Required n8n configuration
 
-Store these only in n8n encrypted credentials/environment configuration:
+The current local workflow uses an environment compatibility path:
 
-- `REGSPAN_WEBHOOK_SECRET`: the same high-entropy, 32-character-or-longer value
-  used by RegSpan's `N8N_INGEST_WEBHOOK_SECRET`.
-- `INGESTION_WORKER_SECRET`: a separate high-entropy, 32-character-or-longer
-  bearer secret matching RegSpan's server-only value.
+- `N8N_INGEST_WEBHOOK_SECRET` is read by the local validation Code node.
+  `REGSPAN_WEBHOOK_SECRET` remains a temporary compose alias for older local
+  workflow copies.
+- `INGESTION_WORKER_SECRET` is a separate bearer secret matching RegSpan.
+
+The target production workflow stores the HMAC secret in an encrypted **Crypto
+credential** and the worker token in an encrypted **Bearer Auth credential**.
+It does not expose either secret through node environment access. The exact
+manual migration is documented in
+`../infra/n8n/manual-production-migration-checklist.md`.
 
 The ingestion worker does not require Supabase credentials in n8n. n8n calls
 the authenticated RegSpan endpoint instead; the Supabase service role remains in
@@ -97,7 +103,7 @@ the raw body as an object and that n8n provides the original headers in
 const crypto = require("crypto");
 
 const MAX_SKEW_MS = 5 * 60 * 1000;
-const secret = process.env.REGSPAN_WEBHOOK_SECRET;
+const secret = $env.N8N_INGEST_WEBHOOK_SECRET;
 if (!secret || secret.length < 32) {
   throw new Error("regspan_webhook_secret_not_configured");
 }
@@ -162,6 +168,12 @@ for (const [key, value] of Object.entries(staticData.regspanSeen)) {
 
 return [{ json: { body } }];
 ```
+
+The local Webhook node parses JSON, and this Code node reconstructs the exact
+deterministic four-field serialization sent by RegSpan. It does not preserve
+arbitrary whitespace from non-RegSpan JSON producers. Production uses the same
+deterministic representation but calculates HMAC in the built-in Crypto node
+with an encrypted credential.
 
 n8n workflow static data is best-effort replay protection. The RegSpan worker
 still performs authoritative idempotency and job/document/workspace validation,
@@ -277,6 +289,10 @@ into the Next server bundle; deploy on Node.js 20.16 or newer.
 - Never send results to an unauthenticated callback. Any future callback must use
   a separate scoped secret/signature, timestamp/replay protection, job matching,
   and transactional database validation.
+- Production uses n8n `2.27.3` in the repository example, PostgreSQL persistence,
+  a backed-up `N8N_ENCRYPTION_KEY`, blocked node environment access, disabled
+  public API, and no saved execution payloads. See
+  `security/n8n-production-hardening.md`.
 
 For local development without n8n, call the authenticated
 `POST /api/documents/[id]/mock-process` endpoint directly. The normal Process UI

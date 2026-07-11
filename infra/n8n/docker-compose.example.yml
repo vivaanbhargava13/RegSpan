@@ -1,6 +1,6 @@
 services:
   regspan-n8n:
-    image: n8nio/n8n:latest
+    image: docker.n8n.io/n8nio/n8n:2.27.3
     container_name: regspan-n8n-local
     restart: unless-stopped
     ports:

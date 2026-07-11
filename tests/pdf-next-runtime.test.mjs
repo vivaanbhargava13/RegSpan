@@ -34,7 +34,7 @@ test("PDF parser remains isolated, Node-only, and external to the Next server bu
   assert.match(serverBoundary, /import ["']server-only["']/);
   assert.match(nextConfig, /serverExternalPackages:\s*\[[^\]]*["']pdfjs-dist["']/s);
   assert.doesNotMatch(nextConfig, /pdf-parse/);
-  assert.match(envExample, /PDF_PROCESSING_TIMEOUT_MS=30000/);
+  assert.match(envExample, /PDF_PROCESSING_TIMEOUT_MS=180000/);
   assert.match(envExample, /MAX_PDF_PAGE_TEXT_CHARS=500000/);
   assert.match(documentation, /actual\s+worker-thread termination/i);
   assert.match(documentation, /Storage object is intentionally retained/i);
