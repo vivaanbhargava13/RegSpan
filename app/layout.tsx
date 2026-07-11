@@ -3,6 +3,10 @@ import { GeistMono } from "geist/font/mono";
 import { GeistSans } from "geist/font/sans";
 import "./globals.css";
 
+// Per-request CSP nonces require request-time rendering so Next.js can apply
+// the proxy-provided nonce to framework scripts.
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "RegSpan | Reg S-P Evidence Mapping",
   description: "AI-assisted Reg S-P evidence mapping for financial firms.",

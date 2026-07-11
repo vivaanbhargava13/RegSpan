@@ -114,8 +114,9 @@ test("debug pages and sidebar links are hidden unless internal debug is enabled"
 test("proxy matcher includes internal debug pages", async () => {
   const middleware = await readFile("proxy.ts", "utf8");
 
-  assert.match(middleware, /"\/retrieval-debug\/:path\*"/);
-  assert.match(middleware, /"\/requirement-debug\/:path\*"/);
+  assert.match(middleware, /"\/retrieval-debug"/);
+  assert.match(middleware, /"\/requirement-debug"/);
+  assert.match(middleware, /"\/\(\(\?!_next\/static\|_next\/image/);
 });
 
 test("debug API responses omit embedding_input from browser payloads", async () => {
@@ -524,4 +525,255 @@ test("two-workspace authorization regression and production verification artifac
   assert.match(documentation, /Regulatory source tables are global authenticated reference data/);
   assert.match(documentation, /never\s+sent to n8n/);
   assert.doesNotMatch(verification, /storage_objects_browser_grants_expected_zero_rows/);
+});
+
+test("browser mutation origin validation is explicit and fail-closed", async () => {
+  const {
+    allowedAppOrigins,
+    validateBrowserMutationOrigin,
+  } = await importServerUtility("lib/requestOrigin.ts");
+  const production = {
+    NODE_ENV: "production",
+    APP_BASE_URL: "https://app.example.test",
+    ALLOWED_APP_ORIGINS: "https://preview.example.test",
+  };
+
+  assert.deepEqual(
+    [...allowedAppOrigins(production)].sort(),
+    ["https://app.example.test", "https://preview.example.test"],
+  );
+
+  const allowed = validateBrowserMutationOrigin(new Request(
+    "https://app.example.test/api/documents",
+    {
+      method: "POST",
+      headers: {
+        origin: "https://app.example.test",
+        "sec-fetch-site": "same-origin",
+      },
+    },
+  ), production);
+  assert.equal(allowed.allowed, true);
+
+  for (const origin of ["https://malicious.example.test", "null"]) {
+    const rejected = validateBrowserMutationOrigin(new Request(
+      "https://app.example.test/api/documents",
+      { method: "POST", headers: { origin } },
+    ), production);
+    assert.equal(rejected.allowed, false);
+    assert.equal(rejected.status, 403);
+    assert.equal(rejected.body.code, "origin_not_allowed");
+    assert.doesNotMatch(JSON.stringify(rejected.body), /malicious|origin.*null/i);
+  }
+
+  const missingOrigin = validateBrowserMutationOrigin(new Request(
+    "https://app.example.test/api/documents",
+    { method: "DELETE" },
+  ), production);
+  assert.equal(missingOrigin.allowed, false);
+  assert.equal(missingOrigin.reason, "origin_missing");
+
+  const missingConfiguration = validateBrowserMutationOrigin(new Request(
+    "https://app.example.test/api/documents",
+    { method: "POST", headers: { origin: "https://app.example.test" } },
+  ), { NODE_ENV: "production" });
+  assert.equal(missingConfiguration.allowed, false);
+  assert.equal(missingConfiguration.status, 503);
+  assert.equal(missingConfiguration.body.code, "origin_configuration_error");
+
+  const safeGet = validateBrowserMutationOrigin(new Request(
+    "https://app.example.test/api/findings",
+  ), { NODE_ENV: "production" });
+  assert.deepEqual(safeGet, { allowed: true, reason: "safe_method" });
+
+  const localhostDevelopment = validateBrowserMutationOrigin(new Request(
+    "http://localhost:4100/api/documents",
+    { method: "POST", headers: { origin: "http://localhost:4100" } },
+  ), {
+    NODE_ENV: "development",
+    APP_BASE_URL: "http://localhost:4100",
+  });
+  assert.equal(localhostDevelopment.allowed, true);
+
+  const localhostProduction = validateBrowserMutationOrigin(new Request(
+    "https://app.example.test/api/documents",
+    { method: "POST", headers: { origin: "https://localhost:4100" } },
+  ), {
+    NODE_ENV: "production",
+    APP_BASE_URL: "https://localhost:4100",
+  });
+  assert.equal(localhostProduction.allowed, false);
+  assert.equal(localhostProduction.status, 503);
+});
+
+test("nonce CSP is per-request, strict in production, and limited to browser dependencies", async () => {
+  const {
+    applySecurityHeaders,
+    buildContentSecurityPolicy,
+    createCspNonce,
+    appendVaryOrigin,
+    securityHeaders,
+  } = await importServerUtility("lib/securityHeaders.ts");
+  const production = {
+    NODE_ENV: "production",
+    APP_BASE_URL: "https://app.example.test",
+    NEXT_PUBLIC_SUPABASE_URL: "https://project.supabase.test",
+    N8N_INGEST_WEBHOOK_URL: "https://internal-automation.example.test",
+    INGESTION_WORKER_SECRET: "worker-secret-value",
+    SUPABASE_SERVICE_ROLE_KEY: "service-secret-value",
+    OPENAI_API_KEY: "ai-secret-value",
+  };
+  const nonceA = createCspNonce();
+  const nonceB = createCspNonce();
+  assert.notEqual(nonceA, nonceB);
+  assert.match(nonceA, /^[a-zA-Z0-9_-]+$/);
+
+  const policy = buildContentSecurityPolicy(nonceA, production);
+  const scriptDirective = policy.split("; ").find((value) => value.startsWith("script-src "));
+  assert.match(scriptDirective, new RegExp(`'nonce-${nonceA}'`));
+  assert.match(scriptDirective, /'strict-dynamic'/);
+  assert.doesNotMatch(scriptDirective, /'unsafe-eval'|'unsafe-inline'/);
+  assert.match(policy, /frame-ancestors 'none'/);
+  assert.match(policy, /object-src 'none'/);
+  assert.match(policy, /connect-src 'self' https:\/\/project\.supabase\.test wss:\/\/project\.supabase\.test/);
+  assert.match(policy, /upgrade-insecure-requests/);
+  assert.doesNotMatch(policy, /internal-automation|worker-secret|service-secret|ai-secret|openai/i);
+  assert.doesNotMatch(policy, /https:\/\/\*|wss:\/\/\*/);
+
+  const developmentPolicy = buildContentSecurityPolicy(createCspNonce(), {
+    NODE_ENV: "development",
+    NEXT_PUBLIC_SUPABASE_URL: "http://127.0.0.1:54321",
+  });
+  assert.match(developmentPolicy, /script-src[^;]*'unsafe-eval'/);
+  assert.match(developmentPolicy, /connect-src[^;]*ws: wss:/);
+  assert.doesNotMatch(developmentPolicy, /upgrade-insecure-requests/);
+
+  const productionHeaders = securityHeaders(policy, production);
+  assert.equal(productionHeaders["Content-Security-Policy"], policy);
+  assert.equal(productionHeaders["X-Content-Type-Options"], "nosniff");
+  assert.equal(productionHeaders["Referrer-Policy"], "strict-origin-when-cross-origin");
+  assert.equal(productionHeaders["X-Frame-Options"], "DENY");
+  assert.match(productionHeaders["Permissions-Policy"], /camera=\(\)/);
+  assert.equal(productionHeaders["Cross-Origin-Opener-Policy"], "same-origin-allow-popups");
+  assert.equal(productionHeaders["Cross-Origin-Resource-Policy"], "same-origin");
+  assert.equal(
+    productionHeaders["Strict-Transport-Security"],
+    "max-age=31536000; includeSubDomains",
+  );
+  assert.doesNotMatch(productionHeaders["Strict-Transport-Security"], /preload/i);
+
+  const proxyTerminatedTlsHeaders = securityHeaders(policy, {
+    NODE_ENV: "production",
+    APP_BASE_URL: undefined,
+    X_FORWARDED_PROTO: "http",
+  });
+  assert.equal(
+    proxyTerminatedTlsHeaders["Strict-Transport-Security"],
+    "max-age=31536000; includeSubDomains",
+  );
+
+  const publicPageHeaders = new Headers();
+  const apiRejectionHeaders = new Headers({ "Content-Type": "application/json" });
+  applySecurityHeaders(publicPageHeaders, policy, { NODE_ENV: "production" });
+  applySecurityHeaders(apiRejectionHeaders, policy, { NODE_ENV: "production" });
+  assert.equal(
+    publicPageHeaders.get("Strict-Transport-Security"),
+    "max-age=31536000; includeSubDomains",
+  );
+  assert.equal(
+    apiRejectionHeaders.get("Strict-Transport-Security"),
+    "max-age=31536000; includeSubDomains",
+  );
+  assert.equal(
+    securityHeaders(developmentPolicy, { NODE_ENV: "development" })["Strict-Transport-Security"],
+    undefined,
+  );
+
+  const varyHeaders = new Headers({ Vary: "Accept-Encoding" });
+  appendVaryOrigin(varyHeaders);
+  appendVaryOrigin(varyHeaders);
+  assert.equal(varyHeaders.get("Vary"), "Accept-Encoding, Origin");
+});
+
+test("Next.js proxy applies nonce headers globally and exempts only the secret-authenticated worker", async () => {
+  const [proxySource, securityHeadersSource, sessionMiddleware, nextConfig, rootLayout, workerRoute] = await Promise.all([
+    readFile("proxy.ts", "utf8"),
+    readFile("lib/securityHeaders.ts", "utf8"),
+    readFile("lib/supabase/middleware.ts", "utf8"),
+    readFile("next.config.ts", "utf8"),
+    readFile("app/layout.tsx", "utf8"),
+    readFile("app/api/internal/ingest/process-job/route.ts", "utf8"),
+  ]);
+
+  assert.match(proxySource, /createCspNonce\(\)/);
+  assert.match(proxySource, /requestHeaders\.set\("x-nonce", nonce\)/);
+  assert.match(proxySource, /requestHeaders\.set\("Content-Security-Policy", contentSecurityPolicy\)/);
+  assert.match(proxySource, /applySecurityHeaders\(response\.headers, contentSecurityPolicy\)/);
+  assert.match(proxySource, /applySecurityHeaders\(rejection\.headers, contentSecurityPolicy\)/);
+  assert.match(proxySource, /appendVaryOrigin\(rejection\.headers\)/);
+  assert.match(proxySource, /if \(isBrowserApiMutation\) appendVaryOrigin\(response\.headers\)/);
+  assert.match(proxySource, /\/\(\(\?!_next\/static\|_next\/image/);
+  assert.match(rootLayout, /export const dynamic = "force-dynamic"/);
+  assert.match(sessionMiddleware, /request: \{ headers: requestHeaders \}/);
+
+  assert.match(proxySource, /INTERNAL_SERVER_ROUTES = new Set\(\["\/api\/internal\/ingest\/process-job"\]\)/);
+  assert.match(proxySource, /!INTERNAL_SERVER_ROUTES\.has\(pathname\)/);
+  assert.match(workerRoute, /authenticateIngestionWorker\(request\)/);
+  assert.match(workerRoute, /return jsonError\(401, "Unauthorized\.", "unauthorized"\)/);
+  assert.doesNotMatch(proxySource, /api\/documents|api\/findings|api\/workspace/);
+
+  assert.match(nextConfig, /poweredByHeader: false/);
+  assert.doesNotMatch(nextConfig, /async headers\(\)/);
+  assert.match(securityHeadersSource, /environment\.NODE_ENV === "production"/);
+  assert.doesNotMatch(
+    securityHeadersSource,
+    /APP_BASE_URL|x-forwarded-proto|X_FORWARDED_PROTO|nextUrl\.protocol/i,
+  );
+});
+
+test("same-origin API hardening emits no wildcard CORS and documents every exemption", async () => {
+  const routePaths = [
+    "app/api/auth/forgot-password/route.ts",
+    "app/api/auth/redirect/route.ts",
+    "app/api/dashboard/route.ts",
+    "app/api/documents/route.ts",
+    "app/api/documents/bulk/route.ts",
+    "app/api/documents/[id]/route.ts",
+    "app/api/documents/[id]/mock-process/route.ts",
+    "app/api/documents/[id]/process/route.ts",
+    "app/api/documents/[id]/replace/route.ts",
+    "app/api/findings/route.ts",
+    "app/api/findings/generate/route.ts",
+    "app/api/internal/ingest/process-job/route.ts",
+    "app/api/requirement-debug/route.ts",
+    "app/api/retrieval-debug/route.ts",
+    "app/api/workspace/external-ai-processing/route.ts",
+  ];
+  const [proxySource, requestOrigin, securityHeadersSource, documentation, envExample, ...routes] = await Promise.all([
+    readFile("proxy.ts", "utf8"),
+    readFile("lib/requestOrigin.ts", "utf8"),
+    readFile("lib/securityHeaders.ts", "utf8"),
+    readFile("docs/security/browser-request-hardening.md", "utf8"),
+    readFile(".env.example", "utf8"),
+    ...routePaths.map((routePath) => readFile(routePath, "utf8")),
+  ]);
+  const browserBoundarySource = [proxySource, requestOrigin, securityHeadersSource, ...routes].join("\n");
+
+  assert.doesNotMatch(browserBoundarySource, /Access-Control-Allow-Origin/i);
+  assert.doesNotMatch(browserBoundarySource, /Access-Control-Allow-Credentials/i);
+  assert.doesNotMatch(browserBoundarySource, /origin[^\n]*\*|\*[^\n]*origin/i);
+  assert.match(requestOrigin, /The request origin is not allowed\./);
+  assert.doesNotMatch(requestOrigin, /body:[^}]*rawOrigin/s);
+  assert.match(requestOrigin, /route: new URL\(request\.url\)\.pathname/);
+  assert.match(requestOrigin, /method: request\.method\.toUpperCase\(\)/);
+  assert.match(requestOrigin, /reason: decision\.reason/);
+  assert.doesNotMatch(requestOrigin, /cookie|authorization|request\.text|request\.json/i);
+
+  assert.match(envExample, /^ALLOWED_APP_ORIGINS=http:\/\/localhost:3000$/m);
+  assert.match(documentation, /CORS alone is not CSRF protection/);
+  assert.match(documentation, /POST `?\/api\/internal\/ingest\/process-job`?/);
+  assert.match(documentation, /INGESTION_WORKER_SECRET/);
+  assert.match(documentation, /Do not include paths, query strings, fragments, credentials, or wildcards/);
+  assert.doesNotMatch(routes[1], /isAllowedAuthRequestOrigin/);
+  assert.match(routes[1], /authRedirectUrl\(path\)/);
 });
