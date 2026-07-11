@@ -40,6 +40,7 @@ type RetrieveRelevantChunksInput = {
   queryText: string;
   topK?: number;
   documentId?: string | null;
+  analysisRunId?: string | null;
   supabase?: SupabaseClient;
   provider?: EmbeddingProvider;
   workspacePolicy?: WorkspaceExternalAiProcessingPolicy;
@@ -51,10 +52,13 @@ export async function retrieveRelevantChunks(input: RetrieveRelevantChunksInput)
     queryText,
     topK = 10,
     documentId = null,
+    analysisRunId = null,
     supabase = getServerSupabaseAdminClient(),
   } = input;
   const normalizedQuery = queryText.trim();
-  if (!isUuid(workspaceId) || (documentId !== null && !isUuid(documentId))) {
+  if (!isUuid(workspaceId)
+    || (documentId !== null && !isUuid(documentId))
+    || (analysisRunId !== null && !isUuid(analysisRunId))) {
     throw new EmbeddingProcessingError(
       "invalid_retrieval_scope",
       "The retrieval scope is invalid.",
@@ -80,13 +84,21 @@ export async function retrieveRelevantChunks(input: RetrieveRelevantChunksInput)
     ?? createEmbeddingProvider(process.env, fetch, input.workspacePolicy);
 
   const [queryEmbedding] = await provider.embedTexts([normalizedQuery]);
-  const { data, error } = await supabase.rpc("match_document_chunks_v1", {
-    p_workspace_id: workspaceId,
-    p_query_embedding: queryEmbedding,
-    p_top_k: topK,
-    p_document_id: documentId,
-    p_embedding_model: provider.model,
-  });
+  const { data, error } = analysisRunId
+    ? await supabase.rpc("match_analysis_run_document_chunks_v1", {
+      p_analysis_run_id: analysisRunId,
+      p_workspace_id: workspaceId,
+      p_query_embedding: queryEmbedding,
+      p_top_k: topK,
+      p_embedding_model: provider.model,
+    })
+    : await supabase.rpc("match_document_chunks_v1", {
+      p_workspace_id: workspaceId,
+      p_query_embedding: queryEmbedding,
+      p_top_k: topK,
+      p_document_id: documentId,
+      p_embedding_model: provider.model,
+    });
 
   if (error) {
     throw new EmbeddingProcessingError(

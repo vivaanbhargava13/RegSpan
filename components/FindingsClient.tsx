@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert } from "@/components/Alert";
 import { Button } from "@/components/Button";
 import { EmptyState } from "@/components/EmptyState";
@@ -29,6 +29,20 @@ type AnalysisRun = {
   finding_count: number;
   error_message: string | null;
   created_at: string;
+};
+
+type ReviewedDocument = {
+  document_id: string | null;
+  filename: string | null;
+  document_status: string | null;
+  uploaded_at: string | null;
+  created_at: string | null;
+};
+
+type InvalidLatestRun = {
+  id: string;
+  completed_at: string | null;
+  error_message: string | null;
 };
 
 type FindingEvidence = {
@@ -65,14 +79,19 @@ type FindingsResponse = {
   ok?: boolean;
   error?: string;
   latestRun?: AnalysisRun | null;
+  activeRun?: AnalysisRun | null;
+  invalidLatestRun?: InvalidLatestRun | null;
   findings?: Finding[];
   hasProcessedEvidence?: boolean;
   processedDocumentCount?: number | null;
+  reviewedDocuments?: ReviewedDocument[];
 };
 
 type GenerateResponse = {
   ok?: boolean;
   error?: string;
+  state?: "started_new_run" | "reused_active_run" | "completed" | "failed" | "rate_limited" | "configuration_error";
+  analysisRunId?: string;
 };
 
 const DEFAULT_VISIBLE_EVIDENCE_COUNT = 4;
@@ -309,15 +328,20 @@ async function loadWorkspaceReportName() {
 
 export function FindingsClient() {
   const [latestRun, setLatestRun] = useState<AnalysisRun | null>(null);
+  const [activeRun, setActiveRun] = useState<AnalysisRun | null>(null);
+  const [invalidLatestRun, setInvalidLatestRun] = useState<InvalidLatestRun | null>(null);
   const [findings, setFindings] = useState<Finding[]>([]);
   const [hasProcessedEvidence, setHasProcessedEvidence] = useState(false);
   const [processedDocumentCount, setProcessedDocumentCount] = useState<number | null>(null);
+  const [reviewedDocuments, setReviewedDocuments] = useState<ReviewedDocument[]>([]);
   const [workspaceName, setWorkspaceName] = useState(REPORT_WORKSPACE_FALLBACK);
   const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [reportMessage, setReportMessage] = useState("");
+  const submissionInFlight = useRef(false);
+  const hadActiveRun = useRef(false);
 
   const metrics = useMemo(() => {
     const openCount = findings.filter((finding) => finding.status !== "covered").length;
@@ -331,14 +355,22 @@ export function FindingsClient() {
 
   const reviewedDocumentLabel = processedDocumentCount ?? 0;
   const reviewedRequirementLabel = latestRun?.requirement_count ?? 10;
+  const activeRunId = activeRun?.id ?? null;
 
-  useEffect(() => {
-    void loadFindings();
+  const showMessage = useCallback((nextMessage: string) => {
+    setMessage(nextMessage);
+    setError("");
   }, []);
 
-  async function loadFindings() {
-    setIsLoading(true);
-    setError("");
+  const showError = useCallback((nextError: string) => {
+    setError(nextError);
+    setMessage("");
+  }, []);
+
+  const loadFindings = useCallback(async (options: { silent?: boolean } = {}) => {
+    if (!options.silent) {
+      setIsLoading(true);
+    }
 
     try {
       const nextWorkspaceName = await loadWorkspaceReportName();
@@ -360,18 +392,44 @@ export function FindingsClient() {
         throw new Error(body.error || "Unable to load findings.");
       }
       setLatestRun(body.latestRun ?? null);
+      setActiveRun(body.activeRun ?? null);
+      setInvalidLatestRun(body.invalidLatestRun ?? null);
       setFindings((body.findings ?? []).map(normalizeFindingEvidence));
       setHasProcessedEvidence(Boolean(body.hasProcessedEvidence));
       setProcessedDocumentCount(body.processedDocumentCount ?? null);
+      setReviewedDocuments(body.reviewedDocuments ?? []);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Unable to load findings.");
+      showError(loadError instanceof Error ? loadError.message : "Unable to load findings.");
     } finally {
-      setIsLoading(false);
+      if (!options.silent) {
+        setIsLoading(false);
+      }
     }
-  }
+  }, [showError]);
+
+  useEffect(() => {
+    void loadFindings();
+  }, [loadFindings]);
+
+  useEffect(() => {
+    if (!activeRunId) {
+      if (hadActiveRun.current) {
+        hadActiveRun.current = false;
+        showMessage("Analysis completed.");
+      }
+      return;
+    }
+
+    hadActiveRun.current = true;
+    const interval = window.setInterval(() => {
+      void loadFindings({ silent: true });
+    }, 2500);
+    return () => window.clearInterval(interval);
+  }, [activeRunId, loadFindings, showMessage]);
 
   async function runAnalysis() {
-    if (isGenerating) return;
+    if (isGenerating || activeRun || submissionInFlight.current) return;
+    submissionInFlight.current = true;
     setIsGenerating(true);
     setError("");
     setMessage("RegSpan is reviewing documents ready for analysis against the Reg S-P baseline.");
@@ -391,15 +449,32 @@ export function FindingsClient() {
       if (!response.ok || !body.ok) {
         throw new Error(body.error || "Findings generation failed.");
       }
-      setMessage("Analysis completed.");
-      await loadFindings();
+      if (body.state === "reused_active_run") {
+        setActiveRun({
+          id: body.analysisRunId ?? "active-analysis",
+          status: "running",
+          started_at: new Date().toISOString(),
+          completed_at: null,
+          requirement_count: 0,
+          finding_count: 0,
+          error_message: null,
+          created_at: new Date().toISOString(),
+        });
+        showMessage("Analysis is already running. Showing live progress.");
+        await loadFindings({ silent: true });
+      } else {
+        setActiveRun(null);
+        showMessage("Analysis completed.");
+        await loadFindings({ silent: true });
+      }
     } catch (generateError) {
-      setError(
+      showError(
         generateError instanceof Error
           ? `${generateError.message} Try again after confirming at least one document is ready for analysis.`
           : "Findings generation failed. Try again after confirming at least one document is ready for analysis.",
       );
     } finally {
+      submissionInFlight.current = false;
       setIsGenerating(false);
     }
   }
@@ -441,10 +516,10 @@ export function FindingsClient() {
             type="button"
             variant="appPrimary"
             onClick={runAnalysis}
-            disabled={isGenerating || isLoading || !hasProcessedEvidence}
-            title={!hasProcessedEvidence ? "Prepare at least one document before running Analysis." : undefined}
+            disabled={isGenerating || Boolean(activeRun) || isLoading || !hasProcessedEvidence}
+            title={!hasProcessedEvidence ? "Prepare at least one document before running Analysis." : activeRun ? "Analysis is already running." : undefined}
           >
-            {isGenerating ? "Reviewing documents…" : "Run Analysis"}
+            {isGenerating || activeRun ? "Reviewing documents…" : "Run Analysis"}
           </Button>
         )}
       />
@@ -453,7 +528,7 @@ export function FindingsClient() {
         <div className="border-b border-app-border px-4 py-3 sm:px-5">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <h2 className="text-sm font-semibold text-app-text">Latest analysis summary</h2>
+              <h2 className="text-sm font-semibold text-app-text">{activeRun && latestRun ? "Previous analysis" : "Latest analysis summary"}</h2>
               <p className="mt-1 text-xs leading-5 text-app-muted">
                 {latestRun
                   ? `Started ${formatDate(latestRun.started_at)}. Completed ${formatDate(latestRun.completed_at)}.`
@@ -485,6 +560,22 @@ export function FindingsClient() {
             </div>
           ))}
         </div>
+        {reviewedDocuments.length > 0 ? (
+          <div className="border-t border-app-border px-4 py-3 sm:px-5">
+            <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-app-subtle">Documents reviewed</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {reviewedDocuments.map((document) => (
+                <span
+                  key={document.document_id ?? `${document.filename ?? "document"}-${document.created_at ?? "snapshot"}`}
+                  className="max-w-full break-words rounded-md border border-app-border bg-app-elevated px-2 py-1 text-xs font-medium text-app-muted [overflow-wrap:anywhere]"
+                  title={document.filename ?? undefined}
+                >
+                  {document.filename ?? "Untitled document"}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </Surface>
 
       {findings.length > 0 ? (
@@ -508,6 +599,14 @@ export function FindingsClient() {
 
       {latestRun?.error_message ? (
         <Alert tone="danger">{latestRun.error_message}</Alert>
+      ) : null}
+
+      {activeRun && !error ? <Alert tone="success">Analysis is running. RegSpan will refresh these results automatically.</Alert> : null}
+
+      {invalidLatestRun ? (
+        <Alert tone="danger">
+          A newer analysis could not be used because its client source evidence was incomplete. Showing the most recent defensible analysis instead.
+        </Alert>
       ) : null}
 
       {message ? <Alert tone="success">{message}</Alert> : null}

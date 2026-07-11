@@ -9,6 +9,7 @@ import {
   checkRateLimit,
   rateLimitErrorResponse,
 } from "@/lib/rateLimit";
+import { getServerSupabaseAdminClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
@@ -56,10 +57,12 @@ export async function POST(request: Request) {
       );
     }
 
-    checkRateLimit({
+    await checkRateLimit({
       request,
       category: "password_reset",
       identifier: email,
+      supabase: getServerSupabaseAdminClient(),
+      correlationId,
     });
 
     const supabase = getSupabaseAuthClient();

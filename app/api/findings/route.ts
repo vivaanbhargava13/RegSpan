@@ -27,6 +27,37 @@ type FindingEvidenceRow = {
   created_at: string | null;
 };
 
+type AnalysisRunRow = {
+  id: string;
+  workspace_id: string;
+  status: "running" | "completed" | "failed";
+  started_at: string;
+  completed_at: string | null;
+  generated_by: string | null;
+  requirement_count: number;
+  finding_count: number;
+  error_message: string | null;
+  created_at: string;
+};
+
+type AnalysisRunDocumentRow = {
+  document_id: string | null;
+  filename: string | null;
+  document_status: string | null;
+  uploaded_at: string | null;
+  created_at: string | null;
+};
+
+type AnalysisReportState = {
+  active_run: AnalysisRunRow | null;
+  latest_run: AnalysisRunRow | null;
+  invalid_latest_run: {
+    id: string;
+    completed_at: string | null;
+    error_message: string | null;
+  } | null;
+};
+
 function evidenceForClient(row: FindingEvidenceRow) {
   return {
     id: row.id,
@@ -62,20 +93,6 @@ async function hasProcessedEvidence(supabase: ReturnType<typeof getServerSupabas
   return (data ?? []).length > 0;
 }
 
-async function processedDocumentCount(supabase: ReturnType<typeof getServerSupabaseAdminClient>, workspaceId: string) {
-  const { count, error } = await supabase
-    .from("documents")
-    .select("id", { count: "exact", head: true })
-    .eq("workspace_id", workspaceId)
-    .eq("status", "Processed");
-
-  if (error) {
-    throw new Error("processed_document_count_failed");
-  }
-
-  return count ?? 0;
-}
-
 export async function GET(request: Request) {
   const correlationId = getCorrelationId(request);
 
@@ -84,29 +101,46 @@ export async function GET(request: Request) {
     const actor = await authenticateRequestOrSession(supabase, request);
     const workspaceId = await getActorWorkspaceId(supabase, actor.user.id);
     const processedEvidenceAvailable = await hasProcessedEvidence(supabase, workspaceId);
-    const reviewedDocumentCount = await processedDocumentCount(supabase, workspaceId);
+    const { data: reportStateData, error: reportStateError } = await supabase.rpc(
+      "get_analysis_report_state_v1",
+      { p_workspace_id: workspaceId },
+    );
 
-    const { data: latestRun, error: runError } = await supabase
-      .from("analysis_runs")
-      .select("id, workspace_id, status, started_at, completed_at, generated_by, requirement_count, finding_count, error_message, created_at")
-      .eq("workspace_id", workspaceId)
-      .eq("status", "completed")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (runError) {
+    if (reportStateError || !reportStateData) {
       throw new Error("analysis_run_lookup_failed");
     }
+
+    const reportState = reportStateData as AnalysisReportState;
+    const latestRun = reportState.latest_run;
+    const activeRun = reportState.active_run;
+    const latestCompletedAt = latestRun?.completed_at ? new Date(latestRun.completed_at).getTime() : 0;
+    const invalidCompletedAt = reportState.invalid_latest_run?.completed_at
+      ? new Date(reportState.invalid_latest_run.completed_at).getTime()
+      : 0;
+    const invalidLatestRun = invalidCompletedAt > latestCompletedAt ? reportState.invalid_latest_run : null;
 
     if (!latestRun) {
       return NextResponse.json({
         ok: true,
         latestRun: null,
+        activeRun,
+        invalidLatestRun,
         findings: [],
         hasProcessedEvidence: processedEvidenceAvailable,
-        processedDocumentCount: reviewedDocumentCount,
+        processedDocumentCount: 0,
+        reviewedDocuments: [],
       });
+    }
+
+    const { data: reviewedDocuments, error: reviewedDocumentsError } = await supabase
+      .from("analysis_run_documents")
+      .select("document_id, filename, document_status, uploaded_at, created_at")
+      .eq("workspace_id", workspaceId)
+      .eq("analysis_run_id", latestRun.id)
+      .order("filename", { ascending: true });
+
+    if (reviewedDocumentsError) {
+      throw new Error("analysis_run_documents_lookup_failed");
     }
 
     const { data: findings, error: findingsError } = await supabase
@@ -144,12 +178,15 @@ export async function GET(request: Request) {
     return NextResponse.json({
       ok: true,
       latestRun,
+      activeRun,
+      invalidLatestRun,
       findings: (findings ?? []).map((finding) => ({
         ...finding,
         evidence: evidenceByFindingId[finding.id as string] ?? [],
       })),
       hasProcessedEvidence: processedEvidenceAvailable,
-      processedDocumentCount: reviewedDocumentCount,
+      processedDocumentCount: (reviewedDocuments ?? []).length,
+      reviewedDocuments: (reviewedDocuments ?? []) as AnalysisRunDocumentRow[],
     });
   } catch (error) {
     console.error("[RegSpan findings] Findings lookup failed", {

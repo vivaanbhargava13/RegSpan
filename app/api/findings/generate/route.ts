@@ -23,14 +23,14 @@ function findingsGenerationErrorResponse(error: unknown) {
   if (error instanceof FindingsGenerationError) {
     return {
       status: error.status,
-      body: { ok: false, error: error.publicMessage, code: error.code },
+      body: { ok: false, state: "failed", error: error.publicMessage, code: error.code },
     };
   }
 
   if (error instanceof EmbeddingProcessingError) {
     return {
       status: error.status,
-      body: { ok: false, error: error.safeMessage, code: error.code },
+      body: { ok: false, state: "configuration_error", error: error.safeMessage, code: error.code },
     };
   }
 
@@ -47,9 +47,11 @@ export async function POST(request: Request) {
     const actor = await authenticateRequest(supabase, request);
     actorUserId = actor.user.id;
     workspaceId = await getActorWorkspaceId(supabase, actor.user.id);
-    checkRateLimit({
+    await checkRateLimit({
       request,
       category: "findings_generate",
+      supabase,
+      correlationId,
       userId: actor.user.id,
       workspaceId,
     });
@@ -59,6 +61,24 @@ export async function POST(request: Request) {
       actorUserId,
       supabase,
     });
+
+    if (result.state === "reused_active_run") {
+      await recordSecurityAuditEvent(supabase, {
+        request,
+        correlationId,
+        action: "findings.generate.reused_active_run",
+        outcome: "success",
+        workspaceId,
+        actorUserId,
+        targetType: "analysis_run",
+        targetId: result.analysisRunId,
+      });
+      return NextResponse.json({
+        ok: true,
+        state: "reused_active_run",
+        analysisRunId: result.analysisRunId,
+      }, { status: 202 });
+    }
 
     await recordSecurityAuditEvent(supabase, {
       request,
@@ -77,14 +97,20 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       ok: true,
+      state: "completed",
+      startedState: result.startedState,
       analysisRunId: result.analysisRunId,
       requirementCount: result.requirementCount,
       findingCount: result.findingCount,
+      reviewedDocumentCount: result.reviewedDocumentCount,
     });
   } catch (error) {
     const rateLimited = rateLimitErrorResponse(error);
     if (rateLimited) {
-      return NextResponse.json(rateLimited.body, {
+      return NextResponse.json({
+        ...rateLimited.body,
+        state: rateLimited.status === 429 ? "rate_limited" : "configuration_error",
+      }, {
         status: rateLimited.status,
         headers: rateLimited.headers,
       });

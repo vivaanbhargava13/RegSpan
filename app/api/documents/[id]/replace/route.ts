@@ -26,15 +26,26 @@ export async function POST(request: Request, { params }: RouteContext) {
   try {
     supabase = getServerSupabaseAdminClient();
     const { actor, document } = await authorizeDocumentRequest(supabase, request, id);
-    checkRateLimit({
+    await checkRateLimit({
       request,
       category: "document_replace",
+      supabase,
+      correlationId,
       userId: actor.user.id,
       workspaceId: document.workspace_id,
       identifier: document.id,
     });
     const formData = await request.formData();
     const file = await validatePdfFile(formData.get("file"));
+    await checkRateLimit({
+      request,
+      category: "workspace_upload_bytes",
+      supabase,
+      correlationId,
+      userId: actor.user.id,
+      workspaceId: document.workspace_id,
+      cost: file.size,
+    });
     const filename = sanitizePdfFilename(file.name);
     replacementPath = `${document.workspace_id}/${document.id}/${filename}`;
 

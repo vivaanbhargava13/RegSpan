@@ -2,6 +2,7 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { N8nWebhookError, triggerN8nIngestion } from "@/lib/n8n";
+import { workspaceQuotaConfiguration } from "@/lib/rateLimit";
 
 export type QueueDocumentProcessingResult = {
   ok: boolean;
@@ -27,6 +28,13 @@ export function processingError(message: string) {
       status: 429,
       error: "Please wait a few seconds before processing again.",
       code: "processing_rate_limited",
+    };
+  }
+  if (message.includes("workspace_processing_limit_reached")) {
+    return {
+      status: 429,
+      error: "Workspace processing limit reached.",
+      code: "workspace_processing_limit_reached",
     };
   }
   if (message.includes("invalid_idempotency_key")) {
@@ -93,13 +101,14 @@ export async function queueDocumentProcessing({
   workspaceId: string;
   idempotencyKey: string;
 }): Promise<QueueDocumentProcessingResult> {
-  const { data, error } = await supabase.rpc("start_processing_job", {
+  const { data, error } = await supabase.rpc("start_processing_job_with_quota_v1", {
     p_workspace_id: workspaceId,
     p_document_id: documentId,
     p_status: "Queued",
     p_step: "Awaiting n8n ingestion",
     p_idempotency_key: idempotencyKey.slice(0, 128),
     p_request_id: correlationId,
+    p_max_active_jobs: workspaceQuotaConfiguration().maxActiveProcessingJobs,
   });
 
   if (error) {

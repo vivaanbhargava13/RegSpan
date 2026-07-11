@@ -1987,18 +1987,142 @@ test("production path keeps complementary written compliance record evidence", a
   assert.deepEqual(finding.evidence.map((row) => row.quote), [complianceQuote, disposalQuote]);
 });
 
-test("production path keeps vendor questionnaire evidence for service-provider requirements", async () => {
-  const vendorRequirement = {
+function serviceProviderRequirementFixture() {
+  return {
     ...requirement,
     id: "service_provider_incident_oversight_notice",
     title: "Service provider incident oversight and notice",
     coverageElements: [
       { id: "service_provider_scope", label: "Applies to service providers", requiredForCovered: true, signals: ["service providers", "vendor"] },
-      { id: "notice_to_firm", label: "Requires notice to the firm", requiredForCovered: true, signals: ["report affected systems", "date of discovery"] },
-      { id: "cooperation_remediation", label: "Requires cooperation", requiredForCovered: true, signals: ["forensic support", "remediation plan", "recovery evidence"] },
+      { id: "notice_to_firm", label: "Requires notice to the firm", requiredForCovered: true, signals: ["notify", "notification", "report", "reporting deadline"] },
+      { id: "cooperation_remediation", label: "Requires cooperation", requiredForCovered: true, signals: ["status updates", "forensic support", "remediation plan", "recovery evidence"] },
     ],
     requiredElementsForCovered: ["service_provider_scope", "notice_to_firm", "cooperation_remediation"],
   };
+}
+
+test("production path rejects customer-notification and disposal leakage from service-provider evidence", async () => {
+  const vendorRequirement = serviceProviderRequirementFixture();
+  const customerQuote = "The firm communicates promptly with affected customers after customer notification is approved.";
+  const vendorQuote = "Service providers give the firm incident status updates and remediation plans while investigation and recovery work continues.";
+  const duplicateVendorQuote = "Vendors coordinate incident remediation with the firm.";
+  const disposalQuote = "This policy does not define disposal methods for vendor-held customer records or backups.";
+
+  const finding = await productionPathFinding(vendorRequirement, [
+    chunk({
+      chunk_id: "60606060-6060-4606-8606-606060606060",
+      section_path: "Customer communications",
+      content_preview: customerQuote,
+    }),
+    chunk({
+      chunk_id: "61616161-6161-4616-8616-616161616161",
+      section_path: "Third-party incident oversight",
+      content_preview: vendorQuote,
+    }),
+    chunk({
+      chunk_id: "62626262-6262-4626-8626-626262626262",
+      section_path: "Third-party incident oversight",
+      content_preview: duplicateVendorQuote,
+    }),
+    chunk({
+      chunk_id: "63636363-6363-4636-8636-636363636363",
+      section_path: "Records disposal",
+      content_preview: disposalQuote,
+    }),
+  ], [
+    classifierClassification({
+      relationship: "partially_supports",
+      requirement_supported: false,
+      covered_elements: ["notice_to_firm"],
+      missing_elements: ["service_provider_scope", "cooperation_remediation"],
+      supporting_quote: customerQuote,
+    }),
+    classifierClassification({
+      relationship: "partially_supports",
+      requirement_supported: false,
+      covered_elements: ["service_provider_scope", "cooperation_remediation"],
+      missing_elements: ["notice_to_firm"],
+      supporting_quote: vendorQuote,
+    }),
+    classifierClassification({
+      relationship: "partially_supports",
+      requirement_supported: false,
+      covered_elements: ["service_provider_scope", "cooperation_remediation"],
+      missing_elements: ["notice_to_firm"],
+      supporting_quote: duplicateVendorQuote,
+    }),
+    classifierClassification({
+      relationship: "negative_evidence",
+      requirement_supported: false,
+      control_absent_or_out_of_scope: true,
+      covered_elements: [],
+      missing_elements: ["service_provider_scope", "notice_to_firm", "cooperation_remediation"],
+      supporting_quote: disposalQuote,
+    }),
+  ]);
+
+  assert.equal(finding.status, "partial");
+  assert.deepEqual(finding.evidence.map((row) => row.quote), [vendorQuote]);
+  assert.doesNotMatch(JSON.stringify(finding.evidence), /affected customers|disposal methods/i);
+  assert.equal(finding.evidence[0].quote, finding.evidence[0].quote?.trim());
+});
+
+test("production path retains provider-notice limitations only when scoped to provider notice", async () => {
+  const vendorRequirement = serviceProviderRequirementFixture();
+  const vendorQuote = "Vendors provide incident status updates, investigation support, and remediation plans to the firm.";
+  const deadlineQuote = "The firm does not require service providers to notify it within a defined incident-reporting deadline.";
+  const disposalQuote = "This procedure does not establish destruction methods for supplier-held customer records.";
+
+  const finding = await productionPathFinding(vendorRequirement, [
+    chunk({
+      chunk_id: "64646464-6464-4646-8646-646464646464",
+      section_path: "Provider incident coordination",
+      content_preview: vendorQuote,
+    }),
+    chunk({
+      chunk_id: "65656565-6565-4656-8656-656565656565",
+      section_path: "Provider incident reporting",
+      content_preview: deadlineQuote,
+    }),
+    chunk({
+      chunk_id: "66666666-6666-4666-8666-666666666666",
+      section_path: "Records disposal",
+      content_preview: disposalQuote,
+    }),
+  ], [
+    classifierClassification({
+      relationship: "partially_supports",
+      requirement_supported: false,
+      covered_elements: ["service_provider_scope", "cooperation_remediation"],
+      missing_elements: ["notice_to_firm"],
+      supporting_quote: vendorQuote,
+    }),
+    classifierClassification({
+      relationship: "negative_evidence",
+      requirement_supported: false,
+      control_absent_or_out_of_scope: true,
+      covered_elements: [],
+      missing_elements: ["notice_to_firm"],
+      supporting_quote: deadlineQuote,
+    }),
+    classifierClassification({
+      relationship: "negative_evidence",
+      requirement_supported: false,
+      control_absent_or_out_of_scope: true,
+      covered_elements: [],
+      missing_elements: ["service_provider_scope"],
+      supporting_quote: disposalQuote,
+    }),
+  ]);
+
+  assert.equal(finding.status, "partial");
+  assert.deepEqual(finding.evidence.map((row) => row.quote), [vendorQuote, deadlineQuote]);
+  assert.deepEqual(finding.evidence.map((row) => row.relationship), ["partially_supports", "negative_evidence"]);
+  assert.ok(finding.evidence.every((row) => row.quote && [vendorQuote, deadlineQuote].includes(row.quote)));
+});
+
+test("production path keeps vendor questionnaire evidence for service-provider requirements", async () => {
+  const vendorRequirement = serviceProviderRequirementFixture();
   const vendorQuote =
     "The vendor incident questionnaire requires service providers to report affected systems, data categories, date of discovery, containment status, forensic support, remediation plan, and recovery evidence.";
 
@@ -2264,7 +2388,8 @@ test("findings generation schema and routes preserve workspace/security boundari
   assert.match(generator, /retrieveRequirementHybridChunks/);
   assert.match(route, /authenticateRequestOrSession/);
   assert.match(route, /getActorWorkspaceId/);
-  assert.match(route, /\.eq\("status", "completed"\)/);
+  assert.match(route, /get_analysis_report_state_v1/);
+  assert.match(route, /analysis_run_documents/);
   assert.doesNotMatch(route, /workspace_id.*request/i);
   assert.match(securityHelper, /getServerSupabaseAuthClient/);
   assert.match(securityHelper, /export async function authenticateRequestOrSession/);
@@ -2346,8 +2471,9 @@ test("findings UI displays stored client evidence rows and exact quote fallbacks
   assert.match(route, /\.from\("finding_evidence"\)/);
   assert.match(route, /quote, evidence_quote/);
   assert.match(route, /source_quote: row\.quote\?\.trim\(\) \? row\.quote : row\.evidence_quote/);
-  assert.match(route, /\.eq\("status", "completed"\)/);
-  assert.match(route, /\.order\("created_at", \{ ascending: false \}\)/);
+  assert.match(route, /get_analysis_report_state_v1/);
+  assert.match(route, /invalidLatestRun/);
+  assert.match(route, /\.eq\("analysis_run_id", latestRun\.id\)/);
   assert.match(evidenceLookup, /\.in\("finding_id", findingIds\)/);
   assert.doesNotMatch(evidenceLookup, /\.eq\("workspace_id", workspaceId\)/);
   assert.match(route, /evidenceByFindingId\[finding\.id as string\] \?\? \[\]/);
@@ -2547,4 +2673,66 @@ test("findings report keeps client evidence separate from Reg S-P basis", async 
   assert.match(reportHelper, /No client source excerpts were stored for this finding/);
   assert.doesNotMatch(reportHelper, /regulatory_source_chunks/);
   assert.doesNotMatch(reportHelper, /Reg S-P basis:[\s\S]{0,120}Client source excerpts:/);
+});
+
+test("analysis lifecycle uses an active-only run lock, document snapshots, and a database evidence guard", async () => {
+  const [migration, generator, retrieval, hybrid] = await Promise.all([
+    readFile("supabase/migrations/020_fix_analysis_run_quota_and_lifecycle.sql", "utf8"),
+    readFile("lib/findingsGeneration.ts", "utf8"),
+    readFile("lib/retrieval.ts", "utf8"),
+    readFile("lib/hybridRetrieval.ts", "utf8"),
+  ]);
+
+  assert.match(migration, /Query name: 020_fix_analysis_run_quota_and_lifecycle/);
+  assert.match(migration, /create table if not exists public\.analysis_run_documents/);
+  assert.match(migration, /where status = 'running'/);
+  assert.match(migration, /and ar\.status = 'running'/);
+  assert.doesNotMatch(migration, /status\s*!=\s*'failed'/);
+  assert.match(migration, /interval '15 minutes'/);
+  assert.match(migration, /idx_analysis_runs_one_active_per_workspace/);
+  assert.match(migration, /d\.status in \('Processed', 'Ready'\)/);
+  assert.match(migration, /complete_analysis_run_with_evidence_guard_v1/);
+  assert.match(migration, /analysis_primary_evidence_invariant_failed/);
+  assert.match(migration, /get_analysis_report_state_v1/);
+  assert.match(migration, /match_analysis_run_document_chunks_v1/);
+
+  assert.match(generator, /result\.result === "reused_active_run"/);
+  assert.match(generator, /result\.result !== "started_new_run"/);
+  assert.match(generator, /analysisRunId: runStart\.analysisRun\.id/);
+  assert.match(generator, /analysisRunId: analysisRun\.id/);
+  assert.match(generator, /complete_analysis_run_with_evidence_guard_v1/);
+  assert.match(generator, /analysisRunId: analysisRun\.id,[\s\S]{0,100}findingCount/);
+
+  assert.match(retrieval, /analysisRunId\?: string \| null/);
+  assert.match(retrieval, /match_analysis_run_document_chunks_v1/);
+  assert.match(hybrid, /\.from\("analysis_run_documents"\)/);
+  assert.match(hybrid, /documentIds: snapshotDocumentIds/);
+});
+
+test("findings API and client reconcile active, previous, and invalid analysis states", async () => {
+  const [route, generateRoute, client] = await Promise.all([
+    readFile("app/api/findings/route.ts", "utf8"),
+    readFile("app/api/findings/generate/route.ts", "utf8"),
+    readFile("components/FindingsClient.tsx", "utf8"),
+  ]);
+
+  assert.match(route, /get_analysis_report_state_v1/);
+  assert.match(route, /activeRun/);
+  assert.match(route, /invalidLatestRun/);
+  assert.match(route, /reviewedDocuments/);
+  assert.match(route, /invalidCompletedAt > latestCompletedAt/);
+  assert.match(generateRoute, /state: "reused_active_run"/);
+  assert.match(generateRoute, /state: "completed"/);
+  assert.match(generateRoute, /state: rateLimited\.status === 429 \? "rate_limited" : "configuration_error"/);
+
+  assert.match(client, /const submissionInFlight = useRef\(false\)/);
+  assert.match(client, /if \(isGenerating \|\| activeRun \|\| submissionInFlight\.current\) return/);
+  assert.match(client, /setInterval\(\(\) => \{\s+void loadFindings\(\{ silent: true \}\)/);
+  assert.match(client, /body\.state === "reused_active_run"/);
+  assert.match(client, /Analysis is already running\. Showing live progress\./);
+  assert.match(client, /activeRun && !error/);
+  assert.match(client, /Previous analysis/);
+  assert.match(client, /Documents reviewed/);
+  assert.match(client, /const showMessage = useCallback\([\s\S]{0,120}setError\(""\)/);
+  assert.match(client, /const showError = useCallback\([\s\S]{0,120}setMessage\(""\)/);
 });

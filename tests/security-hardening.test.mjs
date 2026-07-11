@@ -7,7 +7,12 @@ import { pathToFileURL } from "node:url";
 import ts from "typescript";
 
 async function importServerUtility(filePath) {
-  const source = (await readFile(filePath, "utf8")).replace(/^import "server-only";\n/, "");
+  const source = (await readFile(filePath, "utf8"))
+    .replace(/^import "server-only";\n/, "")
+    .replace(
+      'import { recordSecurityAuditEvent } from "@/lib/securityAudit";',
+      "const recordSecurityAuditEvent = async () => undefined;",
+    );
   const transpiled = ts.transpileModule(source, {
     compilerOptions: {
       module: ts.ModuleKind.ES2022,
@@ -134,6 +139,7 @@ test("rate limit utility allows requests until the configured threshold and then
     RateLimitError,
     checkRateLimit,
     rateLimitErrorResponse,
+    rateLimitCounterKeys,
     resetRateLimitsForTests,
   } = await importServerUtility("lib/rateLimit.ts");
   resetRateLimitsForTests();
@@ -142,7 +148,7 @@ test("rate limit utility allows requests until the configured threshold and then
     headers: { "x-forwarded-for": "203.0.113.10" },
   });
   for (let index = 0; index < RATE_LIMITS.document_upload.limit; index += 1) {
-    checkRateLimit({
+    await checkRateLimit({
       request,
       category: "document_upload",
       userId: "user-a",
@@ -151,7 +157,7 @@ test("rate limit utility allows requests until the configured threshold and then
     });
   }
 
-  assert.throws(
+  await assert.rejects(
     () => checkRateLimit({
       request,
       category: "document_upload",
@@ -163,7 +169,7 @@ test("rate limit utility allows requests until the configured threshold and then
   );
 
   try {
-    checkRateLimit({
+    await checkRateLimit({
       request,
       category: "document_upload",
       userId: "user-a",
@@ -174,9 +180,74 @@ test("rate limit utility allows requests until the configured threshold and then
     const response = rateLimitErrorResponse(error);
     assert.equal(response.status, 429);
     assert.equal(response.body.code, "rate_limited");
-    assert.match(response.body.error, /Too many upload attempts/);
+    assert.match(response.body.error, /Too many requests/);
     assert.doesNotMatch(JSON.stringify(response.body), /user-a|workspace-a|203\.0\.113\.10/);
   }
+
+  const resetAt = 1_700_000_000_000 + RATE_LIMITS.document_upload.windowMs + 1;
+  await checkRateLimit({
+    request,
+    category: "document_upload",
+    userId: "user-a",
+    workspaceId: "workspace-a",
+    now: resetAt,
+  });
+
+  assert.notDeepEqual(
+    rateLimitCounterKeys({ request, category: "document_upload", userId: "user-a" }),
+    rateLimitCounterKeys({ request, category: "document_upload", userId: "user-b" }),
+  );
+  assert.notDeepEqual(
+    rateLimitCounterKeys({ request, category: "document_upload", workspaceId: "workspace-a" }),
+    rateLimitCounterKeys({ request, category: "document_upload", workspaceId: "workspace-b" }),
+  );
+});
+
+test("durable rate limits use an atomic RPC and production refuses memory fallback", async () => {
+  const {
+    checkRateLimit,
+    rateLimitErrorResponse,
+  } = await importServerUtility("lib/rateLimit.ts");
+  const calls = [];
+  const request = new Request("https://app.example.test/api/documents", {
+    headers: { "x-forwarded-for": "203.0.113.11" },
+  });
+  const supabase = {
+    async rpc(name, args) {
+      calls.push({ name, args });
+      return { data: { allowed: false, retry_after_seconds: 42 }, error: null };
+    },
+  };
+
+  await assert.rejects(
+    () => checkRateLimit({
+      request,
+      category: "workspace_upload_bytes",
+      workspaceId: "workspace-a",
+      cost: 1024,
+      supabase,
+      environment: { REGSPAN_RATE_LIMIT_BACKEND: "supabase" },
+    }),
+    (error) => {
+      const response = rateLimitErrorResponse(error);
+      assert.equal(response.status, 429);
+      assert.equal(response.headers["Retry-After"], "42");
+      assert.equal(response.body.code, "quota_exceeded");
+      return true;
+    },
+  );
+  assert.equal(calls[0].name, "consume_rate_limit_batch_v1");
+  assert.equal(calls[0].args.p_counters[0].increment_by, 1024);
+  assert.doesNotMatch(JSON.stringify(calls), /workspace-a|203\.0\.113\.11/);
+
+  await assert.rejects(
+    () => checkRateLimit({
+      request,
+      category: "document_upload",
+      environment: { NODE_ENV: "production" },
+    }),
+    (error) => rateLimitErrorResponse(error)?.status === 503,
+  );
 });
 
 test("expensive and sensitive routes are wired to app-side rate limiting", async () => {
@@ -200,7 +271,47 @@ test("expensive and sensitive routes are wired to app-side rate limiting", async
     assert.match(route, /checkRateLimit/);
     assert.match(route, /rateLimitErrorResponse/);
     assert.match(route, /status: rateLimited\.status/);
+    assert.match(route, /await checkRateLimit/);
   }
+
+  assert.match(upload, /category: "workspace_document_upload"/);
+  assert.match(upload, /category: "workspace_upload_bytes"/);
+  assert.match(upload, /category: "workspace_processing_request"/);
+  assert.match(process, /category: "workspace_processing_request"/);
+  assert.match(bulk, /category: "workspace_processing_request"/);
+  assert.match(forgot, /identifier: email/);
+  assert.match(forgot, /getServerSupabaseAdminClient/);
+});
+
+test("durable abuse protection migration enforces atomic counters and workspace concurrency", async () => {
+  const [migration, processing, findings, audit, envExample, docs] = await Promise.all([
+    readFile("supabase/migrations/019_add_durable_abuse_protection.sql", "utf8"),
+    readFile("lib/documentProcessing.ts", "utf8"),
+    readFile("lib/findingsGeneration.ts", "utf8"),
+    readFile("lib/securityAudit.ts", "utf8"),
+    readFile(".env.example", "utf8"),
+    readFile("docs/abuse-protection.md", "utf8"),
+  ]);
+
+  assert.match(migration, /019_add_durable_abuse_protection/);
+  assert.match(migration, /rate_limit_counters/);
+  assert.match(migration, /consume_rate_limit_batch_v1/);
+  assert.match(migration, /pg_advisory_xact_lock/);
+  assert.match(migration, /start_processing_job_with_quota_v1/);
+  assert.match(migration, /workspace_processing_limit_reached/);
+  assert.match(migration, /start_analysis_run_with_quota_v1/);
+  assert.match(migration, /already_running/);
+  assert.match(processing, /start_processing_job_with_quota_v1/);
+  assert.match(processing, /workspace_processing_limit_reached/);
+  assert.match(findings, /start_analysis_run_with_quota_v1/);
+  assert.match(findings, /reused_active_run/);
+  assert.match(audit, /security_audit\.insert_failed/);
+  assert.match(envExample, /REGSPAN_RATE_LIMIT_BACKEND=/);
+  assert.match(envExample, /REGSPAN_QUOTA_UPLOAD_BYTES_PER_DAY=/);
+  assert.match(envExample, /REGSPAN_QUOTA_MAX_ACTIVE_ANALYSIS_RUNS=/);
+  assert.match(docs, /REGSPAN_RATE_LIMIT_BACKEND=supabase/);
+  assert.match(docs, /hashed normalized email/i);
+  assert.match(docs, /do not record source excerpts, passwords, tokens, provider keys, or plaintext reset emails/i);
 });
 
 test("auth redirect URLs are server-controlled and origin allow-listed", async () => {

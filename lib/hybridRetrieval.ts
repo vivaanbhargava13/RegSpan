@@ -24,6 +24,7 @@ type RetrieveRequirementHybridChunksInput = {
   topK?: number;
   semanticPoolSize?: number;
   keywordPoolSize?: number;
+  analysisRunId?: string | null;
   supabase?: SupabaseClient;
   provider?: EmbeddingProvider;
 };
@@ -72,11 +73,13 @@ async function fetchKeywordRows({
   workspaceId,
   terms,
   limit,
+  documentIds,
 }: {
   supabase: SupabaseClient;
   workspaceId: string;
   terms: string[];
   limit: number;
+  documentIds?: string[] | null;
 }) {
   const queryTerms = terms
     .map(escapeIlikeTerm)
@@ -89,23 +92,27 @@ async function fetchKeywordRows({
       `content.ilike.%${term}%`,
       `section_path.ilike.%${term}%`,
     ]);
-    const { data, error } = await supabase
+    let query = supabase
       .from("document_chunks")
       .select(selectColumns)
       .eq("workspace_id", workspaceId)
       .or(clauses.join(","))
       .limit(Math.max(limit * 4, 80));
+    if (documentIds) query = query.in("document_id", documentIds);
+    const { data, error } = await query;
 
     if (!error) {
       return (data ?? []) as KeywordChunkRow[];
     }
   }
 
-  const { data, error } = await supabase
+  let query = supabase
     .from("document_chunks")
     .select(selectColumns)
     .eq("workspace_id", workspaceId)
     .limit(Math.max(limit * 4, 120));
+  if (documentIds) query = query.in("document_id", documentIds);
+  const { data, error } = await query;
 
   if (error) {
     throw new EmbeddingProcessingError(
@@ -208,11 +215,13 @@ async function retrieveKeywordCandidates({
   workspaceId,
   requirement,
   keywordPoolSize,
+  documentIds,
 }: {
   supabase: SupabaseClient;
   workspaceId: string;
   requirement: RegSpRequirement;
   keywordPoolSize: number;
+  documentIds?: string[] | null;
 }) {
   const profile = buildRequirementKeywordProfile(requirement);
   const rows = await fetchKeywordRows({
@@ -220,6 +229,7 @@ async function retrieveKeywordCandidates({
     workspaceId,
     terms: profile.keywordTerms,
     limit: keywordPoolSize,
+    documentIds,
   });
 
   const rankedRows = rows
@@ -243,19 +253,41 @@ export async function retrieveRequirementHybridChunks({
   keywordPoolSize = 40,
   supabase = getServerSupabaseAdminClient(),
   provider,
+  analysisRunId = null,
 }: RetrieveRequirementHybridChunksInput): Promise<RetrievedChunk[]> {
+  let snapshotDocumentIds: string[] | null = null;
+  if (analysisRunId) {
+    const { data, error } = await supabase
+      .from("analysis_run_documents")
+      .select("document_id")
+      .eq("analysis_run_id", analysisRunId)
+      .eq("workspace_id", workspaceId)
+      .not("document_id", "is", null);
+    if (error) {
+      throw new EmbeddingProcessingError(
+        "analysis_snapshot_lookup_failed",
+        "Analysis document snapshot could not be loaded.",
+        500,
+      );
+    }
+    snapshotDocumentIds = (data ?? [])
+      .map((row) => row.document_id as string | null)
+      .filter((documentId): documentId is string => Boolean(documentId));
+  }
   const semanticCandidates = await retrieveRelevantChunks({
     workspaceId,
     queryText: requirement.retrievalQuery,
     topK: Math.max(topK, semanticPoolSize),
     supabase,
     provider,
+    analysisRunId,
   });
   const keywordCandidates = await retrieveKeywordCandidates({
     supabase,
     workspaceId,
     requirement,
     keywordPoolSize,
+    documentIds: snapshotDocumentIds,
   });
   const mergedCandidates = mergeHybridCandidates(semanticCandidates, keywordCandidates);
 

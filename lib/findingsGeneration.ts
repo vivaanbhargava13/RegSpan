@@ -15,6 +15,7 @@ import {
   loadWorkspaceExternalAiProcessingPolicy,
 } from "@/lib/aiProcessingPolicy";
 import { createEmbeddingProvider } from "@/lib/embeddings";
+import { workspaceQuotaConfiguration } from "@/lib/rateLimit";
 import { loadRegSpRequirementsForFindings } from "@/lib/regulatoryControls";
 import { getServerSupabaseAdminClient } from "@/lib/supabase/server";
 
@@ -50,6 +51,27 @@ type AnalysisRunRow = {
   error_message: string | null;
   created_at: string;
 };
+
+type AnalysisRunStartResult =
+  | { state: "started_new_run"; analysisRun: AnalysisRunRow; reviewedDocumentCount: number }
+  | { state: "reused_active_run"; analysisRun: AnalysisRunRow };
+
+export type FindingsGenerationResult =
+  | {
+    state: "completed";
+    startedState: "started_new_run";
+    analysisRunId: string;
+    requirementCount: number;
+    findingCount: number;
+    reviewedDocumentCount: number;
+    findings: GeneratedRequirementFinding[];
+  }
+  | {
+    state: "reused_active_run";
+    analysisRunId: string;
+    requirementCount: number;
+    findingCount: number;
+  };
 
 type FindingEvidenceInsertRow = {
   finding_id: string;
@@ -169,18 +191,12 @@ async function createAnalysisRun({
   actorUserId: string;
   requirementCount: number;
 }) {
-  const { data, error } = await supabase
-    .from("analysis_runs")
-    .insert({
-      workspace_id: workspaceId,
-      status: "running",
-      generated_by: actorUserId,
-      requirement_count: requirementCount,
-      finding_count: 0,
-      started_at: new Date().toISOString(),
-    })
-    .select("id, workspace_id, status, started_at, completed_at, generated_by, requirement_count, finding_count, error_message, created_at")
-    .single<AnalysisRunRow>();
+  const { data, error } = await supabase.rpc("start_analysis_run_with_quota_v1", {
+    p_workspace_id: workspaceId,
+    p_actor_user_id: actorUserId,
+    p_requirement_count: requirementCount,
+    p_max_active_runs: workspaceQuotaConfiguration().maxActiveAnalysisRuns,
+  });
 
   if (error || !data) {
     throw new FindingsGenerationError(
@@ -189,7 +205,45 @@ async function createAnalysisRun({
     );
   }
 
-  return data;
+  const result = data as {
+    result?: string;
+    analysis_run_id?: string;
+    reviewed_document_count?: number;
+  } & Partial<AnalysisRunRow>;
+  if (!result.analysis_run_id || !result.workspace_id) {
+    throw new FindingsGenerationError(
+      "analysis_run_create_failed",
+      "Unable to start findings analysis.",
+    );
+  }
+
+  const analysisRun = {
+    id: result.analysis_run_id,
+    workspace_id: result.workspace_id,
+    status: result.status ?? "running",
+    started_at: result.started_at ?? new Date().toISOString(),
+    completed_at: result.completed_at ?? null,
+    generated_by: result.generated_by ?? actorUserId,
+    requirement_count: result.requirement_count ?? requirementCount,
+    finding_count: result.finding_count ?? 0,
+    error_message: result.error_message ?? null,
+    created_at: result.created_at ?? new Date().toISOString(),
+  } satisfies AnalysisRunRow;
+
+  if (result.result === "reused_active_run") {
+    return { state: "reused_active_run", analysisRun } satisfies AnalysisRunStartResult;
+  }
+  if (result.result !== "started_new_run") {
+    throw new FindingsGenerationError(
+      "analysis_run_create_failed",
+      "Unable to start findings analysis.",
+    );
+  }
+  return {
+    state: "started_new_run",
+    analysisRun,
+    reviewedDocumentCount: result.reviewed_document_count ?? 0,
+  } satisfies AnalysisRunStartResult;
 }
 
 async function storeFinding({
@@ -310,28 +364,28 @@ function assertCompletedRunHasPrimaryEvidence(storedFindings: StoredFindingResul
 
 async function completeAnalysisRun({
   supabase,
+  workspaceId,
   analysisRunId,
   findingCount,
 }: {
   supabase: SupabaseClient;
+  workspaceId: string;
   analysisRunId: string;
   findingCount: number;
 }) {
-  const completedAt = new Date().toISOString();
-  const { error } = await supabase
-    .from("analysis_runs")
-    .update({
-      status: "completed",
-      completed_at: completedAt,
-      finding_count: findingCount,
-      error_message: null,
-    })
-    .eq("id", analysisRunId);
+  const { data, error } = await supabase.rpc("complete_analysis_run_with_evidence_guard_v1", {
+    p_analysis_run_id: analysisRunId,
+    p_workspace_id: workspaceId,
+    p_finding_count: findingCount,
+  });
 
-  if (error) {
+  const result = data as { result?: string; code?: string } | null;
+  if (error || result?.result !== "completed") {
     throw new FindingsGenerationError(
-      "analysis_run_complete_failed",
-      "Findings were generated but the analysis run could not be finalized.",
+      result?.code ?? "analysis_run_complete_failed",
+      result?.code === "analysis_primary_evidence_invariant_failed"
+        ? "Analysis could not be completed because primary client source evidence was not persisted."
+        : "Findings were generated but the analysis run could not be finalized.",
     );
   }
 }
@@ -363,12 +417,23 @@ export async function generateFindingsForWorkspace({
 }: GenerateFindingsInput) {
   await assertProcessedEvidenceExists(supabase, workspaceId);
   const requirements = await loadRegSpRequirementsForFindings({ supabase });
-  const analysisRun = await createAnalysisRun({
+  const runStart = await createAnalysisRun({
     supabase,
     workspaceId,
     actorUserId,
     requirementCount: requirements.length,
   });
+
+  if (runStart.state === "reused_active_run") {
+    return {
+      state: "reused_active_run",
+      analysisRunId: runStart.analysisRun.id,
+      requirementCount: runStart.analysisRun.requirement_count,
+      findingCount: runStart.analysisRun.finding_count,
+    } satisfies FindingsGenerationResult;
+  }
+
+  const analysisRun = runStart.analysisRun;
 
   try {
     const workspaceAiPolicy = await loadWorkspaceExternalAiProcessingPolicy({
@@ -394,6 +459,7 @@ export async function generateFindingsForWorkspace({
         topK,
         supabase,
         provider: embeddingProvider,
+        analysisRunId: analysisRun.id,
       });
       const organizationCandidates = candidates.filter(
         (chunk) => chunk.evidence_role === "organization_evidence",
@@ -421,16 +487,20 @@ export async function generateFindingsForWorkspace({
 
     await completeAnalysisRun({
       supabase,
+      workspaceId,
       analysisRunId: analysisRun.id,
       findingCount: generatedFindings.length,
     });
 
     return {
+      state: "completed",
+      startedState: "started_new_run",
       analysisRunId: analysisRun.id,
       requirementCount: requirements.length,
       findingCount: generatedFindings.length,
+      reviewedDocumentCount: runStart.reviewedDocumentCount,
       findings: generatedFindings,
-    };
+    } satisfies FindingsGenerationResult;
   } catch (error) {
     await failAnalysisRun({
       supabase,

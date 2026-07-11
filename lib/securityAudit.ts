@@ -35,7 +35,9 @@ export async function recordSecurityAuditEvent(
   if (error) {
     // Audit writes are best effort so a logging outage does not corrupt lifecycle work.
     console.error("[RegSpan security] Audit event insert failed", {
+      event: "security_audit.insert_failed",
       action: event.action,
+      workspaceId: event.workspaceId ?? null,
       targetId: event.targetId,
       correlationId: event.correlationId,
       stage: event.metadata?.failing_stage ?? "write_audit_event",

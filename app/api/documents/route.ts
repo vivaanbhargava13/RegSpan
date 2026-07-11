@@ -40,15 +40,41 @@ export async function POST(request: Request) {
     const actor = await authenticateRequest(supabase, request);
     actorUserId = actor.user.id;
     workspaceId = await getActorWorkspaceId(supabase, actor.user.id);
-    checkRateLimit({
+    const formData = await request.formData();
+    const file = await validatePdfFile(formData.get("file"));
+    await checkRateLimit({
       request,
       category: "document_upload",
+      supabase,
+      correlationId,
       userId: actor.user.id,
       workspaceId,
     });
-
-    const formData = await request.formData();
-    const file = await validatePdfFile(formData.get("file"));
+    await checkRateLimit({
+      request,
+      category: "workspace_document_upload",
+      supabase,
+      correlationId,
+      userId: actor.user.id,
+      workspaceId,
+    });
+    await checkRateLimit({
+      request,
+      category: "workspace_upload_bytes",
+      supabase,
+      correlationId,
+      userId: actor.user.id,
+      workspaceId,
+      cost: file.size,
+    });
+    await checkRateLimit({
+      request,
+      category: "workspace_processing_request",
+      supabase,
+      correlationId,
+      userId: actor.user.id,
+      workspaceId,
+    });
     const suppliedDocumentType = String(formData.get("documentType") ?? "").trim();
     const documentType = allowedDocumentTypes.has(suppliedDocumentType)
       ? suppliedDocumentType

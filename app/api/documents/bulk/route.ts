@@ -13,6 +13,7 @@ import { N8nWebhookError, triggerN8nIngestion } from "@/lib/n8n";
 import {
   checkRateLimit,
   rateLimitErrorResponse,
+  workspaceQuotaConfiguration,
 } from "@/lib/rateLimit";
 import { recordSecurityAuditEvent } from "@/lib/securityAudit";
 import { getServerSupabaseAdminClient } from "@/lib/supabase/server";
@@ -46,6 +47,12 @@ function processingError(message: string) {
     return {
       error: "Please wait a few seconds before processing again.",
       code: "processing_rate_limited",
+    };
+  }
+  if (message.includes("workspace_processing_limit_reached")) {
+    return {
+      error: "Workspace processing limit reached.",
+      code: "workspace_processing_limit_reached",
     };
   }
   if (message.includes("invalid_idempotency_key")) {
@@ -249,13 +256,14 @@ async function processDocument({
   correlationId: string;
   document: AuthorizedDocument;
 }): Promise<BulkDocumentResult> {
-  const { data, error } = await supabase.rpc("start_processing_job", {
+  const { data, error } = await supabase.rpc("start_processing_job_with_quota_v1", {
     p_workspace_id: document.workspace_id,
     p_document_id: document.id,
     p_status: "Queued",
     p_step: "Awaiting n8n ingestion",
     p_idempotency_key: `${correlationId}:${document.id}`.slice(0, 128),
     p_request_id: correlationId,
+    p_max_active_jobs: workspaceQuotaConfiguration().maxActiveProcessingJobs,
   });
 
   if (error) {
@@ -328,9 +336,11 @@ export async function POST(request: Request) {
     workspaceId = await getActorWorkspaceId(supabase, actor.user.id);
     const parsed = parseBulkRequest(await request.json());
     action = parsed.action;
-    checkRateLimit({
+    await checkRateLimit({
       request,
       category: "document_bulk_action",
+      supabase,
+      correlationId,
       userId: actor.user.id,
       workspaceId,
       identifier: parsed.action,
@@ -341,6 +351,17 @@ export async function POST(request: Request) {
       scope: parsed.scope,
       documentIds: parsed.documentIds,
     });
+    if (parsed.action === "process") {
+      await checkRateLimit({
+        request,
+        category: "workspace_processing_request",
+        supabase,
+        correlationId,
+        userId: actor.user.id,
+        workspaceId,
+        cost: documents.length,
+      });
+    }
 
     const results: BulkDocumentResult[] = [];
     for (const document of documents) {

@@ -559,8 +559,46 @@ function hasDisposalAlignedLanguage(text: string) {
   return /\b(?:dispos(?:al|e|es|ed|ing)|destruct(?:ion)?|destroy(?:s|ed|ing)?|shredd?(?:ing|ed|s)?|wip(?:e|es|ed|ing)|saniti[zs](?:e|es|ed|ing|ation)|media disposal|backup disposal|device return|disposal attestation|records disposal)\b/.test(text);
 }
 
+function hasServiceProviderActor(text: string) {
+  return /\b(?:service[- ]providers?|vendors?|suppliers?|third[- ]part(?:y|ies))\b/.test(text);
+}
+
+function serviceProviderElementMatches(elementId: string, text: string) {
+  if (!hasServiceProviderActor(text)) return false;
+
+  switch (elementId) {
+    case "service_provider_scope":
+      return /\b(?:incidents?|breaches?|security events?|cybersecurity|customer information systems?|protect(?:ion|s|ed|ing)?|safeguards?|contracts?|contractual|oversight|due diligence|monitor(?:ing|s|ed)?)\b/.test(text);
+    case "notice_to_firm":
+      return /\b(?:notify|notifies|notification|notice|report|reports|reporting|escalat(?:e|es|ed|ion)|deadline|timing|hours?)\b/.test(text);
+    case "cooperation_remediation":
+      return /\b(?:cooperat(?:e|es|ed|ion)|coordinat(?:e|es|ed|ion)|investigat(?:e|es|ed|ion)|forensic|status updates?|remediat(?:e|es|ed|ion)|corrective actions?|recover(?:y|ies|ed|ing)|containment support)\b/.test(text);
+    default:
+      return false;
+  }
+}
+
+function serviceProviderNegativeElementMatches(elementId: string, text: string) {
+  if (!hasServiceProviderActor(text)) return false;
+
+  switch (elementId) {
+    case "service_provider_scope":
+      return /\b(?:oversight|due diligence|monitor(?:ing|s|ed)?|contracts?|contractual|customer information protection|cybersecurity requirements?|safeguards?)\b/.test(text);
+    case "notice_to_firm":
+      return /\b(?:notify|notification|notice|report|reporting|escalation|deadline|timing|hours?)\b/.test(text);
+    case "cooperation_remediation":
+      return /\b(?:cooperat(?:e|ion)|coordinat(?:e|ion)|investigation support|forensic support|status updates?|remediation plans?|corrective actions?|recovery support)\b/.test(text);
+    default:
+      return false;
+  }
+}
+
 function elementSignalMatches(requirement: RegSpRequirement, elementId: string, text: string) {
   const signals = elementSignals(requirement, elementId);
+  if (copyRequirementId(requirement) === "vendor_incident_handling") {
+    return serviceProviderElementMatches(elementId, text);
+  }
+
   if (copyRequirementId(requirement) === "evidence_log_preservation" && elementId === "incident_materials") {
     return signals.some((signal) => {
       const normalizedSignal = normalize(signal);
@@ -627,6 +665,10 @@ function isWeakNegativeSignal(signal: string) {
 
 function negativeElementSignalMatches(requirement: RegSpRequirement, elementId: string, text: string) {
   const normalizedText = normalize(text);
+  if (copyRequirementId(requirement) === "vendor_incident_handling") {
+    return serviceProviderNegativeElementMatches(elementId, normalizedText);
+  }
+
   const signals = elementSignals(requirement, elementId)
     .map(normalize)
     .filter((signal) => signal.length >= 4 && !isWeakNegativeSignal(signal));
@@ -735,6 +777,11 @@ function hasSubstantiveExactSourceQuote(requirement: RegSpRequirement, chunk: Gr
 function quoteSupportedElementIds(requirement: RegSpRequirement, chunk: GradedEvidenceChunk) {
   const quote = finalizedSourceQuote(requirement, chunk);
   return quote ? supportedElementIdsForQuote(requirement, quote) : [];
+}
+
+function finalizedEvidenceElementIds(requirement: RegSpRequirement, chunk: GradedEvidenceChunk) {
+  const quote = finalizedSourceQuote(requirement, chunk);
+  return quote ? evidenceElementIdsForQuote(requirement, chunk, quote) : [];
 }
 
 function finalizedEvidenceRelationship(
@@ -1378,15 +1425,13 @@ function buildElementCoverageLedger(
 ): ElementCoverageLedgerEntry[] {
   const sortedSupport = sortByEvidenceWeight(requirement, supportChunks)
     .filter((chunk) => quoteSupportedElementIds(requirement, chunk).length > 0);
-  const sortedNegative = sortByEvidenceWeight(requirement, organizationNegative);
+  const sortedNegative = sortByEvidenceWeight(requirement, organizationNegative)
+    .filter((chunk) => finalizedEvidenceElementIds(requirement, chunk).length > 0);
 
   return requirement.requiredElementsForCovered.map((elementId) => {
     const supportChunk = sortedSupport.find((chunk) => quoteSupportedElementIds(requirement, chunk).includes(elementId)) ?? null;
     const negativeChunk = sortedNegative.find((chunk) =>
-      [
-        ...(chunk.missing_elements ?? []),
-        ...(chunk.vague_elements ?? []),
-      ].includes(elementId),
+      finalizedEvidenceElementIds(requirement, chunk).includes(elementId)
     ) ?? null;
     let relationship: ElementCoverageRelationship = "missing";
     if (supportChunk) {
@@ -1507,17 +1552,27 @@ function curateEvidenceChunks({
   }
 
   if (status === "partial" && selected.length < 3) {
-    const relevantLimitations = sortByEvidenceWeight(requirement, documentScopeLimitations)
-      .filter((chunk) => chunk.missing_elements?.some((elementId) => requirement.requiredElementsForCovered.includes(elementId)));
+    const relevantLimitations = sortByEvidenceWeight(
+      requirement,
+      [...organizationNegative, ...documentScopeLimitations],
+    ).filter((chunk) => finalizedEvidenceElementIds(requirement, chunk).length > 0);
+    const selectedLimitationElements = new Set<string>();
     for (const chunk of relevantLimitations) {
+      const limitationElements = finalizedEvidenceElementIds(requirement, chunk);
+      if (!limitationElements.some((elementId) => !selectedLimitationElements.has(elementId))) continue;
       addUniqueChunk(selected, chunk);
+      for (const elementId of limitationElements) selectedLimitationElements.add(elementId);
       if (selected.length >= 3) return selected;
     }
   }
 
   if (status === "missing") {
+    const selectedNegativeElements = new Set<string>();
     for (const chunk of sortByEvidenceWeight(requirement, organizationNegative)) {
+      const negativeElements = finalizedEvidenceElementIds(requirement, chunk);
+      if (!negativeElements.some((elementId) => !selectedNegativeElements.has(elementId))) continue;
       addUniqueChunk(selected, chunk);
+      for (const elementId of negativeElements) selectedNegativeElements.add(elementId);
       if (selected.length >= 3) return selected;
     }
     const contextualCandidates = sortByEvidenceWeight(requirement, background)

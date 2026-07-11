@@ -22,12 +22,22 @@ export async function POST(request: Request, { params }: RouteContext) {
   try {
     supabase = getServerSupabaseAdminClient();
     const { actor, document } = await authorizeDocumentRequest(supabase, request, id);
-    checkRateLimit({
+    await checkRateLimit({
       request,
       category: "document_reprocess",
+      supabase,
+      correlationId,
       userId: actor.user.id,
       workspaceId: document.workspace_id,
       identifier: document.id,
+    });
+    await checkRateLimit({
+      request,
+      category: "workspace_processing_request",
+      supabase,
+      correlationId,
+      userId: actor.user.id,
+      workspaceId: document.workspace_id,
     });
     const suppliedKey = request.headers.get("idempotency-key")?.trim();
     const idempotencyKey = suppliedKey && suppliedKey.length <= 128
