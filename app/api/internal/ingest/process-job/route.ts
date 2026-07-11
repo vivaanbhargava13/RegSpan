@@ -121,6 +121,7 @@ async function markWorkerFailure(
 }
 
 export async function POST(request: Request) {
+  const processingStartedAt = Date.now();
   let correlationId = getCorrelationId(request);
   let stage = "initialize_admin_client";
   let supabase;
@@ -634,6 +635,7 @@ export async function POST(request: Request) {
       replayed: result.replayed,
     });
   } catch (error) {
+    const elapsedMs = Date.now() - processingStartedAt;
     console.error("[RegSpan worker] Worker request failed", {
       correlationId,
       jobId: payload?.jobId,
@@ -643,6 +645,7 @@ export async function POST(request: Request) {
       code: error instanceof PdfProcessingError || error instanceof EmbeddingProcessingError
         ? error.code
         : "worker_failed",
+      elapsedMs,
     });
 
     if (supabase && payload) {
@@ -665,6 +668,8 @@ export async function POST(request: Request) {
           document_id: payload.documentId,
           failing_stage: stage,
           code: errorCode,
+          elapsed_ms: elapsedMs,
+          ...(error instanceof PdfProcessingError ? error.safeMetadata : {}),
         },
       });
 

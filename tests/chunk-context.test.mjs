@@ -13,9 +13,10 @@ async function loadChunkContextModules() {
     target: ts.ScriptTarget.ES2022,
     verbatimModuleSyntax: false,
   };
-  const [contextSource, processingSource, policySource] = await Promise.all([
+  const [contextSource, processingSource, parserWorkerSource, policySource] = await Promise.all([
     readFile("lib/chunkContext.ts", "utf8"),
     readFile("lib/pdfProcessingCore.ts", "utf8"),
+    readFile("lib/pdfParserWorker.js", "utf8"),
     readFile("lib/aiProcessingPolicy.ts", "utf8"),
   ]);
   const contextOutput = ts.transpileModule(contextSource, {
@@ -36,6 +37,7 @@ async function loadChunkContextModules() {
   await Promise.all([
     writeFile(join(outDir, "lib__chunkContext.mjs"), contextOutput, "utf8"),
     writeFile(join(outDir, "lib__pdfProcessingCore.mjs"), processingOutput, "utf8"),
+    writeFile(join(outDir, "pdfParserWorker.js"), parserWorkerSource, "utf8"),
     writeFile(join(outDir, "lib__aiProcessingPolicy.mjs"), policyOutput, "utf8"),
   ]);
 

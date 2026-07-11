@@ -1,8 +1,12 @@
 import { createHash } from "node:crypto";
+import { Worker } from "node:worker_threads";
+import { isolatedPdfParserWorkerMain } from "./pdfParserWorker.js";
 
-export const PDF_EXTRACTION_VERSION = "pdf-parse-v1";
+export const PDF_EXTRACTION_VERSION = "pdfjs-isolated-v2";
 export const DEFAULT_MAX_PDF_PAGES = 250;
 export const DEFAULT_MAX_EXTRACTED_TEXT_CHARS = 2_000_000;
+export const DEFAULT_MAX_PDF_PAGE_TEXT_CHARS = 500_000;
+export const DEFAULT_PDF_PROCESSING_TIMEOUT_MS = 180_000;
 export const MIN_EXTRACTED_CHARACTERS = 20;
 export const CHUNKING_VERSION = "section-aware-v3-evidence";
 export const CHUNK_CONTEXT_VERSION = "chunk-context-v1";
@@ -17,7 +21,7 @@ export const TARGET_CHUNK_CHARACTERS = TARGET_CHUNK_TOKENS * 4;
 export const CHUNK_OVERLAP_CHARACTERS = CHUNK_OVERLAP_TOKENS * 4;
 export const MAX_DOCUMENT_CHUNKS = 5_000;
 
-const PDF_PARSE_TIMEOUT_MS = 30_000;
+const PDF_SIGNATURE_BYTES = [0x25, 0x50, 0x44, 0x46, 0x2d] as const;
 
 export type ExtractedPdfPage = {
   pageNumber: number;
@@ -49,17 +53,20 @@ export class PdfProcessingError extends Error {
   readonly code: string;
   readonly safeMessage: string;
   readonly status: number;
+  readonly safeMetadata: Record<string, string | number | boolean | null>;
 
   constructor(
     code: string,
     safeMessage: string,
     status: number,
+    safeMetadata: Record<string, string | number | boolean | null> = {},
   ) {
     super(safeMessage);
     this.name = "PdfProcessingError";
     this.code = code;
     this.safeMessage = safeMessage;
     this.status = status;
+    this.safeMetadata = safeMetadata;
   }
 }
 
@@ -68,11 +75,17 @@ type PdfProcessingEnvironment = Record<string, string | undefined>;
 export type PdfProcessingLimits = {
   maxPdfPages: number;
   maxExtractedTextChars: number;
+  maxPdfPageTextChars: number;
+  processingTimeoutMs: number;
 };
 
 function readPositiveIntegerLimit(
   environment: PdfProcessingEnvironment,
-  key: "MAX_PDF_PAGES" | "MAX_EXTRACTED_TEXT_CHARS",
+  key:
+    | "MAX_PDF_PAGES"
+    | "MAX_EXTRACTED_TEXT_CHARS"
+    | "MAX_PDF_PAGE_TEXT_CHARS"
+    | "PDF_PROCESSING_TIMEOUT_MS",
   fallback: number,
 ) {
   const configured = environment[key]?.trim();
@@ -112,6 +125,16 @@ export function loadPdfProcessingLimits(
       "MAX_EXTRACTED_TEXT_CHARS",
       DEFAULT_MAX_EXTRACTED_TEXT_CHARS,
     ),
+    maxPdfPageTextChars: readPositiveIntegerLimit(
+      environment,
+      "MAX_PDF_PAGE_TEXT_CHARS",
+      DEFAULT_MAX_PDF_PAGE_TEXT_CHARS,
+    ),
+    processingTimeoutMs: readPositiveIntegerLimit(
+      environment,
+      "PDF_PROCESSING_TIMEOUT_MS",
+      DEFAULT_PDF_PROCESSING_TIMEOUT_MS,
+    ),
   };
 }
 
@@ -145,6 +168,10 @@ export function normalizeAndValidateExtractedPdfPages(
       "pdf_page_limit_exceeded",
       "This PDF exceeds the supported page limit.",
       422,
+      {
+        limit_name: "max_pdf_pages",
+        limit_value: limits.maxPdfPages,
+      },
     );
   }
 
@@ -152,12 +179,27 @@ export function normalizeAndValidateExtractedPdfPages(
   let totalCharacters = 0;
   for (const page of sourcePages) {
     const text = normalizeExtractedText(page.text);
+    if (text.length > limits.maxPdfPageTextChars) {
+      throw new PdfProcessingError(
+        "pdf_page_text_limit_exceeded",
+        "A page in this PDF contains more text than RegSpan can safely process.",
+        422,
+        {
+          limit_name: "max_pdf_page_text_chars",
+          limit_value: limits.maxPdfPageTextChars,
+        },
+      );
+    }
     totalCharacters += text.length;
     if (totalCharacters > limits.maxExtractedTextChars) {
       throw new PdfProcessingError(
         "pdf_text_limit_exceeded",
         "This PDF contains more text than RegSpan can safely process.",
         422,
+        {
+          limit_name: "max_extracted_text_chars",
+          limit_value: limits.maxExtractedTextChars,
+        },
       );
     }
     pages.push({ pageNumber: page.num, text });
@@ -174,49 +216,176 @@ export function normalizeAndValidateExtractedPdfPages(
   return pages;
 }
 
+export type PdfParserWorkerResult =
+  | {
+      ok: true;
+      pages: ExtractedPdfPage[];
+      cleanupCompleted: true;
+    }
+  | {
+      ok: false;
+      code: string;
+      safeMessage: string;
+      status: number;
+      safeMetadata?: Record<string, string | number | boolean | null>;
+      cleanupCompleted: true;
+    };
+
+export type PdfParserWorkerLike = {
+  once(event: "message", listener: (result: PdfParserWorkerResult) => void): unknown;
+  once(event: "error", listener: (error: Error) => void): unknown;
+  once(event: "exit", listener: (code: number) => void): unknown;
+  removeAllListeners(): unknown;
+  terminate(): Promise<number>;
+};
+
+export type PdfParserRuntime = {
+  createWorker?: (data: Uint8Array, limits: PdfProcessingLimits) => PdfParserWorkerLike;
+  setTimer?: (callback: () => void, timeoutMs: number) => ReturnType<typeof setTimeout>;
+  clearTimer?: (timer: ReturnType<typeof setTimeout>) => void;
+};
+
+function createIsolatedPdfParserWorker(
+  data: Uint8Array,
+  limits: PdfProcessingLimits,
+): PdfParserWorkerLike {
+  const transferable =
+    data.buffer instanceof ArrayBuffer &&
+    data.byteOffset === 0 &&
+    data.byteLength === data.buffer.byteLength
+      ? data.buffer
+      : data.slice().buffer as ArrayBuffer;
+
+  return new Worker(`(${isolatedPdfParserWorkerMain.toString()})()`, {
+    eval: true,
+    name: "regspan-pdf-parser",
+    workerData: { data: transferable, limits },
+    transferList: [transferable],
+    resourceLimits: {
+      maxOldGenerationSizeMb: 192,
+      maxYoungGenerationSizeMb: 32,
+      stackSizeMb: 4,
+    },
+  });
+}
+
+function isPdfParserWorkerResult(value: unknown): value is PdfParserWorkerResult {
+  if (!value || typeof value !== "object") return false;
+  const result = value as Record<string, unknown>;
+  if (result.cleanupCompleted !== true || typeof result.ok !== "boolean") return false;
+  if (result.ok) return Array.isArray(result.pages);
+  return (
+    typeof result.code === "string" &&
+    typeof result.safeMessage === "string" &&
+    typeof result.status === "number"
+  );
+}
+
+async function runIsolatedPdfParser(
+  data: Uint8Array,
+  limits: PdfProcessingLimits,
+  runtime: PdfParserRuntime,
+) {
+  const createWorker = runtime.createWorker ?? createIsolatedPdfParserWorker;
+  const setTimer = runtime.setTimer ?? ((callback, timeoutMs) => setTimeout(callback, timeoutMs));
+  const clearTimer = runtime.clearTimer ?? ((timer) => clearTimeout(timer));
+  const worker = createWorker(data, limits);
+
+  return new Promise<ExtractedPdfPage[]>((resolve, reject) => {
+    let settled = false;
+    const timerState: { current?: ReturnType<typeof setTimeout> } = {};
+
+    const stopWorker = async () => {
+      if (timerState.current !== undefined) clearTimer(timerState.current);
+      worker.removeAllListeners();
+      await worker.terminate().catch(() => undefined);
+    };
+
+    const failOnce = (error: PdfProcessingError) => {
+      if (settled) return;
+      settled = true;
+      void stopWorker().then(() => reject(error));
+    };
+
+    timerState.current = setTimer(() => {
+      failOnce(new PdfProcessingError(
+        "pdf_processing_timeout",
+        "This PDF took too long to process.",
+        422,
+        {
+          limit_name: "pdf_processing_timeout_ms",
+          limit_value: limits.processingTimeoutMs,
+        },
+      ));
+    }, limits.processingTimeoutMs);
+
+    worker.once("message", (result) => {
+      if (settled) return;
+      if (!isPdfParserWorkerResult(result)) {
+        failOnce(new PdfProcessingError(
+          "pdf_processing_failed",
+          "This PDF could not be processed safely.",
+          422,
+        ));
+        return;
+      }
+
+      settled = true;
+      void stopWorker().then(() => {
+        if (result.ok) {
+          resolve(result.pages);
+          return;
+        }
+        reject(new PdfProcessingError(
+          result.code,
+          result.safeMessage,
+          result.status,
+          result.safeMetadata,
+        ));
+      });
+    });
+
+    worker.once("error", () => {
+      failOnce(new PdfProcessingError(
+        "pdf_processing_failed",
+        "This PDF could not be processed safely.",
+        422,
+      ));
+    });
+
+    worker.once("exit", () => {
+      if (!settled) {
+        failOnce(new PdfProcessingError(
+          "pdf_processing_failed",
+          "This PDF could not be processed safely.",
+          422,
+        ));
+      }
+    });
+  });
+}
+
 export async function extractPdfPages(
   data: Uint8Array,
   limits: PdfProcessingLimits = loadPdfProcessingLimits(),
+  runtime: PdfParserRuntime = {},
 ): Promise<ExtractedPdfPage[]> {
   if (data.byteLength === 0) {
     throw new PdfProcessingError("empty_pdf", "The PDF file is empty.", 422);
   }
 
-  // Keep pdf.js out of Next's transformed module graph. The package is also
-  // listed in serverExternalPackages so Node loads its native ESM build.
-  const { PDFParse } = await import("pdf-parse");
-  const parser = new PDFParse({ data });
-  let timeout: ReturnType<typeof setTimeout> | undefined;
-
-  try {
-    const result = await Promise.race([
-      parser.getText({ pageJoiner: "" }),
-      new Promise<never>((_, reject) => {
-        timeout = setTimeout(
-          () => reject(
-            new PdfProcessingError(
-              "pdf_extraction_timeout",
-              "PDF text extraction timed out.",
-              422,
-            ),
-          ),
-          PDF_PARSE_TIMEOUT_MS,
-        );
-      }),
-    ]);
-
-    return normalizeAndValidateExtractedPdfPages(result.pages, result.total, limits);
-  } catch (error) {
-    if (error instanceof PdfProcessingError) throw error;
+  if (
+    data.byteLength < PDF_SIGNATURE_BYTES.length ||
+    !PDF_SIGNATURE_BYTES.every((byte, index) => data[index] === byte)
+  ) {
     throw new PdfProcessingError(
-      "pdf_extraction_failed",
-      "PDF text extraction failed.",
+      "invalid_pdf_signature",
+      "This PDF could not be processed safely.",
       422,
     );
-  } finally {
-    if (timeout) clearTimeout(timeout);
-    await parser.destroy().catch(() => undefined);
   }
+
+  return runIsolatedPdfParser(data, limits, runtime);
 }
 
 type BlockType = "heading" | "paragraph" | "list";
