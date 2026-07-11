@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
   assertSupportedPdf,
   buildDeterministicChunks,
   extractPdfPages,
+  loadPdfProcessingLimits,
+  normalizeAndValidateExtractedPdfPages,
   PdfProcessingError,
 } from "../lib/pdfProcessingCore.ts";
 
@@ -84,6 +87,101 @@ test("empty and low-text PDFs are rejected", async () => {
     () => extractPdfPages(createTextPdf("Hi")),
     (error) => error instanceof PdfProcessingError && error.code === "insufficient_pdf_text",
   );
+});
+
+test("PDF processing limits use safe defaults and reject invalid configuration", () => {
+  assert.deepEqual(loadPdfProcessingLimits({}), {
+    maxPdfPages: 250,
+    maxExtractedTextChars: 2_000_000,
+  });
+  assert.deepEqual(loadPdfProcessingLimits({
+    MAX_PDF_PAGES: "2",
+    MAX_EXTRACTED_TEXT_CHARS: "20",
+  }), {
+    maxPdfPages: 2,
+    maxExtractedTextChars: 20,
+  });
+
+  for (const environment of [
+    { NODE_ENV: "production", MAX_PDF_PAGES: "0" },
+    { NODE_ENV: "production", MAX_PDF_PAGES: "2.5" },
+    { NODE_ENV: "production", MAX_EXTRACTED_TEXT_CHARS: "invalid" },
+  ]) {
+    assert.throws(
+      () => loadPdfProcessingLimits(environment),
+      (error) =>
+        error instanceof PdfProcessingError &&
+        error.code === "invalid_pdf_processing_limits" &&
+        error.status === 500 &&
+        error.safeMessage === "PDF processing limits are not configured correctly.",
+    );
+  }
+});
+
+test("PDF page and extracted-text limits reject before chunking or embeddings", async () => {
+  const belowLimit = normalizeAndValidateExtractedPdfPages(
+    [{ num: 1, text: "policy text ".repeat(3) }],
+    1,
+    { maxPdfPages: 2, maxExtractedTextChars: 100 },
+  );
+  assert.equal(belowLimit.length, 1);
+
+  const atLimit = normalizeAndValidateExtractedPdfPages(
+    [
+      { num: 1, text: "a".repeat(10) },
+      { num: 2, text: "b".repeat(10) },
+    ],
+    2,
+    { maxPdfPages: 2, maxExtractedTextChars: 20 },
+  );
+  assert.equal(atLimit.length, 2);
+  assert.equal(atLimit.reduce((total, page) => total + page.text.length, 0), 20);
+
+  assert.throws(
+    () => normalizeAndValidateExtractedPdfPages(
+      [{ num: 1, text: "policy text".repeat(3) }],
+      3,
+      { maxPdfPages: 2, maxExtractedTextChars: 1_000 },
+    ),
+    (error) =>
+      error instanceof PdfProcessingError &&
+      error.code === "pdf_page_limit_exceeded" &&
+      error.safeMessage === "This PDF exceeds the supported page limit.",
+  );
+
+  const extractedText = "Sensitive client source excerpt ".repeat(2);
+  const laterPage = { num: 2 };
+  Object.defineProperty(laterPage, "text", {
+    get() {
+      throw new Error("text processing continued after the configured limit");
+    },
+  });
+  assert.throws(
+    () => normalizeAndValidateExtractedPdfPages(
+      [{ num: 1, text: extractedText }, laterPage],
+      2,
+      { maxPdfPages: 2, maxExtractedTextChars: 20 },
+    ),
+    (error) =>
+      error instanceof PdfProcessingError &&
+      error.code === "pdf_text_limit_exceeded" &&
+      error.safeMessage === "This PDF contains more text than RegSpan can safely process." &&
+      !error.safeMessage.includes(extractedText),
+  );
+
+  const worker = await readFile("app/api/internal/ingest/process-job/route.ts", "utf8");
+  assert.ok(
+    worker.indexOf("const pages = await extractPdfPages") <
+      worker.indexOf("const { chunks, hierarchy } = buildDeterministicChunks"),
+    "page and text limits must run before chunk construction",
+  );
+  assert.ok(
+    worker.indexOf("const pages = await extractPdfPages") <
+      worker.indexOf("const embeddingResult = await embedDocumentChunks"),
+    "page and text limits must run before embedding",
+  );
+  assert.match(worker, /await markWorkerFailure\(supabase, payload, safeMessage\)/);
+  assert.match(worker, /fail_ingestion_job_v1/);
 });
 
 test("chunk construction is deterministic across retries", () => {

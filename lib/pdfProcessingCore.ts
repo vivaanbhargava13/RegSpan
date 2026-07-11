@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 
 export const PDF_EXTRACTION_VERSION = "pdf-parse-v1";
-export const MAX_PDF_PAGES = 500;
-export const MAX_EXTRACTED_CHARACTERS = 5_000_000;
+export const DEFAULT_MAX_PDF_PAGES = 250;
+export const DEFAULT_MAX_EXTRACTED_TEXT_CHARS = 2_000_000;
 export const MIN_EXTRACTED_CHARACTERS = 20;
 export const CHUNKING_VERSION = "section-aware-v3-evidence";
 export const CHUNK_CONTEXT_VERSION = "chunk-context-v1";
@@ -63,6 +63,58 @@ export class PdfProcessingError extends Error {
   }
 }
 
+type PdfProcessingEnvironment = Record<string, string | undefined>;
+
+export type PdfProcessingLimits = {
+  maxPdfPages: number;
+  maxExtractedTextChars: number;
+};
+
+function readPositiveIntegerLimit(
+  environment: PdfProcessingEnvironment,
+  key: "MAX_PDF_PAGES" | "MAX_EXTRACTED_TEXT_CHARS",
+  fallback: number,
+) {
+  const configured = environment[key]?.trim();
+  if (!configured) return fallback;
+
+  if (!/^[1-9]\d*$/.test(configured)) {
+    throw new PdfProcessingError(
+      "invalid_pdf_processing_limits",
+      "PDF processing limits are not configured correctly.",
+      500,
+    );
+  }
+
+  const value = Number(configured);
+  if (!Number.isSafeInteger(value)) {
+    throw new PdfProcessingError(
+      "invalid_pdf_processing_limits",
+      "PDF processing limits are not configured correctly.",
+      500,
+    );
+  }
+
+  return value;
+}
+
+export function loadPdfProcessingLimits(
+  environment: PdfProcessingEnvironment = process.env,
+): PdfProcessingLimits {
+  return {
+    maxPdfPages: readPositiveIntegerLimit(
+      environment,
+      "MAX_PDF_PAGES",
+      DEFAULT_MAX_PDF_PAGES,
+    ),
+    maxExtractedTextChars: readPositiveIntegerLimit(
+      environment,
+      "MAX_EXTRACTED_TEXT_CHARS",
+      DEFAULT_MAX_EXTRACTED_TEXT_CHARS,
+    ),
+  };
+}
+
 function normalizeExtractedText(text: string) {
   return text
     .replace(/\u0000/g, "")
@@ -83,7 +135,49 @@ export function assertSupportedPdf(filename: string, mimeType: string | null) {
   }
 }
 
-export async function extractPdfPages(data: Uint8Array): Promise<ExtractedPdfPage[]> {
+export function normalizeAndValidateExtractedPdfPages(
+  sourcePages: ReadonlyArray<{ num: number; text: string }>,
+  pageCount: number,
+  limits: PdfProcessingLimits,
+): ExtractedPdfPage[] {
+  if (pageCount > limits.maxPdfPages) {
+    throw new PdfProcessingError(
+      "pdf_page_limit_exceeded",
+      "This PDF exceeds the supported page limit.",
+      422,
+    );
+  }
+
+  const pages: ExtractedPdfPage[] = [];
+  let totalCharacters = 0;
+  for (const page of sourcePages) {
+    const text = normalizeExtractedText(page.text);
+    totalCharacters += text.length;
+    if (totalCharacters > limits.maxExtractedTextChars) {
+      throw new PdfProcessingError(
+        "pdf_text_limit_exceeded",
+        "This PDF contains more text than RegSpan can safely process.",
+        422,
+      );
+    }
+    pages.push({ pageNumber: page.num, text });
+  }
+
+  if (totalCharacters < MIN_EXTRACTED_CHARACTERS) {
+    throw new PdfProcessingError(
+      "insufficient_pdf_text",
+      "The PDF does not contain enough extractable text.",
+      422,
+    );
+  }
+
+  return pages;
+}
+
+export async function extractPdfPages(
+  data: Uint8Array,
+  limits: PdfProcessingLimits = loadPdfProcessingLimits(),
+): Promise<ExtractedPdfPage[]> {
   if (data.byteLength === 0) {
     throw new PdfProcessingError("empty_pdf", "The PDF file is empty.", 422);
   }
@@ -111,37 +205,7 @@ export async function extractPdfPages(data: Uint8Array): Promise<ExtractedPdfPag
       }),
     ]);
 
-    if (result.total > MAX_PDF_PAGES) {
-      throw new PdfProcessingError(
-        "pdf_page_limit_exceeded",
-        `PDF documents cannot exceed ${MAX_PDF_PAGES} pages.`,
-        422,
-      );
-    }
-
-    const pages = result.pages.map((page) => ({
-      pageNumber: page.num,
-      text: normalizeExtractedText(page.text),
-    }));
-    const totalCharacters = pages.reduce((sum, page) => sum + page.text.length, 0);
-
-    if (totalCharacters < MIN_EXTRACTED_CHARACTERS) {
-      throw new PdfProcessingError(
-        "insufficient_pdf_text",
-        "The PDF does not contain enough extractable text.",
-        422,
-      );
-    }
-
-    if (totalCharacters > MAX_EXTRACTED_CHARACTERS) {
-      throw new PdfProcessingError(
-        "pdf_text_limit_exceeded",
-        "The PDF contains too much extractable text.",
-        422,
-      );
-    }
-
-    return pages;
+    return normalizeAndValidateExtractedPdfPages(result.pages, result.total, limits);
   } catch (error) {
     if (error instanceof PdfProcessingError) throw error;
     throw new PdfProcessingError(
