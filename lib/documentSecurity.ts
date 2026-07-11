@@ -6,6 +6,7 @@ import { getServerSupabaseAuthClient } from "@/lib/supabase/authServer";
 
 export const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
 export const PDF_MIME_TYPE = "application/pdf";
+const PDF_SIGNATURE_BYTES = [0x25, 0x50, 0x44, 0x46, 0x2d] as const;
 
 export class DocumentRequestError extends Error {
   constructor(
@@ -203,6 +204,17 @@ export function sanitizePdfFilename(filename: string) {
   return `${safeStem || "document"}.pdf`;
 }
 
+export async function hasValidPdfSignature(file: Blob) {
+  const signature = new Uint8Array(
+    await file.slice(0, PDF_SIGNATURE_BYTES.length).arrayBuffer(),
+  );
+
+  return (
+    signature.length === PDF_SIGNATURE_BYTES.length &&
+    PDF_SIGNATURE_BYTES.every((byte, index) => signature[index] === byte)
+  );
+}
+
 export async function validatePdfFile(value: FormDataEntryValue | null) {
   if (!(value instanceof File)) {
     throw new DocumentRequestError("Choose a PDF file.", 400, "file_required");
@@ -224,19 +236,10 @@ export async function validatePdfFile(value: FormDataEntryValue | null) {
     throw new DocumentRequestError("Only PDF files are accepted.", 415, "invalid_file_type");
   }
 
-  const signature = new Uint8Array(await value.slice(0, 5).arrayBuffer());
-  const isPdfSignature =
-    signature.length === 5 &&
-    signature[0] === 0x25 &&
-    signature[1] === 0x50 &&
-    signature[2] === 0x44 &&
-    signature[3] === 0x46 &&
-    signature[4] === 0x2d;
-
-  if (!isPdfSignature) {
+  if (!(await hasValidPdfSignature(value))) {
     throw new DocumentRequestError(
-      "The uploaded file is not a valid PDF.",
-      415,
+      "The selected file is not a valid PDF.",
+      400,
       "invalid_pdf_signature",
     );
   }
