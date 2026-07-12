@@ -10,6 +10,7 @@ export type RateLimitCategory =
   | "document_reprocess"
   | "document_bulk_action"
   | "findings_generate"
+  | "findings_generate_eval"
   | "password_reset"
   | "workspace_document_upload"
   | "workspace_upload_bytes"
@@ -115,6 +116,11 @@ export function rateLimitConfiguration(
     },
     findings_generate: {
       limit: positiveInteger(environment.REGSPAN_RATE_LIMIT_ANALYSIS_PER_HOUR, 8),
+      windowMs: HOUR_MS,
+      publicMessage: "Too many requests. Try again later.",
+    },
+    findings_generate_eval: {
+      limit: positiveInteger(environment.REGSPAN_RATE_LIMIT_EVAL_ANALYSIS_PER_HOUR, 25),
       windowMs: HOUR_MS,
       publicMessage: "Too many requests. Try again later.",
     },

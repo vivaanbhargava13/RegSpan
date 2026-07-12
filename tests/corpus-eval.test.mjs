@@ -11,6 +11,7 @@ import {
   CorpusEvaluationSafetyError,
   assertCorpusEvaluationSafety,
   assertCorpusEvaluationExternalAiOptIn,
+  evaluationAnalysisRateLimitCategory,
   assertFreshEvaluationWorkspace,
   CorpusManifestError,
   createOneShotEvaluationState,
@@ -208,6 +209,32 @@ test("production safety fails closed", () => {
 test("external AI opt-in is required before evaluation workspaces are created", () => {
   assert.throws(() => assertCorpusEvaluationExternalAiOptIn(false), CorpusEvaluationSafetyError);
   assert.doesNotThrow(() => assertCorpusEvaluationExternalAiOptIn(true));
+});
+
+test("evaluator-only Analysis quota requires an authorized evaluation workspace", () => {
+  const input = {
+    evaluationAuthorized: true,
+    workspaceName: "regspan-eval-regspan-v1-isolated-run-case",
+    workspacePrefix: "regspan-eval-",
+    actorOwnsWorkspace: true,
+    environment: { NODE_ENV: "development" },
+  };
+  assert.equal(evaluationAnalysisRateLimitCategory(input), "findings_generate_eval");
+  assert.throws(
+    () => evaluationAnalysisRateLimitCategory({ ...input, workspaceName: "normal-workspace" }),
+    CorpusEvaluationSafetyError,
+  );
+  assert.throws(
+    () => evaluationAnalysisRateLimitCategory({ ...input, actorOwnsWorkspace: false }),
+    CorpusEvaluationSafetyError,
+  );
+  assert.throws(
+    () => evaluationAnalysisRateLimitCategory({
+      ...input,
+      environment: { NODE_ENV: "production" },
+    }),
+    CorpusEvaluationSafetyError,
+  );
 });
 
 test("failed processing is reported with only safe job details", () => {
@@ -493,6 +520,7 @@ test("corpus runner is one-shot and contains no resume, adoption, or cleanup pat
   assert.match(runner, /--allow-external-ai/);
   assert.match(runner, /assertExternalAiProcessingServerAvailable/);
   assert.match(runner, /error instanceof RateLimitError/);
+  assert.match(runner, /findings_generate_eval/);
   assert.match(runner, /recoverWorkspaceAnalysis/);
   assert.match(runner, /rateLimitWaitCount/);
   assert.match(runner, /rateLimitWaitMs/);
@@ -502,7 +530,7 @@ test("corpus runner is one-shot and contains no resume, adoption, or cleanup pat
     "external AI checks must run before evaluation workspaces can be created",
   );
   assert.doesNotMatch(runner, /--resume|--cleanup|cleanupEvaluation|recoverEvaluation|process\.once\("SIG/);
-  assert.match(evaluator, /category: "findings_generate"/);
+  assert.match(evaluator, /evaluationAnalysisRateLimitForContext/);
   assert.match(evaluator, /assertExactAnalysisSnapshot/);
   assert.match(evaluator, /createFreshEvaluationWorkspace/);
   assert.match(evaluator, /\.in\("status", \["queued", "running", "completed"\]\)/);

@@ -138,6 +138,27 @@ export function assertCorpusEvaluationExternalAiOptIn(allowExternalAi) {
   }
 }
 
+export function evaluationAnalysisRateLimitCategory({
+  evaluationAuthorized,
+  workspaceName,
+  workspacePrefix,
+  actorOwnsWorkspace,
+  environment,
+}) {
+  if (evaluationAuthorized !== true
+    || actorOwnsWorkspace !== true
+    || typeof workspaceName !== "string"
+    || typeof workspacePrefix !== "string"
+    || !workspaceName.startsWith(workspacePrefix)
+    || !/^regspan-eval-[a-z0-9-]*$/.test(workspacePrefix)) {
+    throw new CorpusEvaluationSafetyError("Evaluation Analysis quota is not authorized for this workspace.");
+  }
+  if (environment?.NODE_ENV === "production" && environment.REGSPAN_EVAL_ENABLED !== "true") {
+    throw new CorpusEvaluationSafetyError("Corpus evaluation is disabled in production.");
+  }
+  return "findings_generate_eval";
+}
+
 function safeProcessingValue(value) {
   const normalized = typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
   return normalized ? normalized.slice(0, 500) : undefined;

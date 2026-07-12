@@ -3,11 +3,12 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { uploadDocumentForWorkspace } from "@/lib/documentUpload";
 import { generateFindingsForWorkspace } from "@/lib/findingsGeneration";
-import { checkRateLimit } from "@/lib/rateLimit";
+import { checkRateLimit, type RateLimitCategory } from "@/lib/rateLimit";
 import {
   CorpusEvaluationTimeoutError,
   assertFreshEvaluationWorkspace,
   evaluationWorkspaceName,
+  evaluationAnalysisRateLimitCategory,
   newEvaluationWorkspaceValues,
   pollForTerminal,
   snapshotSetViolations,
@@ -32,6 +33,7 @@ export type EvaluationRunContext = {
   mode: "isolated" | "combined";
   workspacePrefix: string;
   externalAiProcessingEnabled: true;
+  evaluationAnalysisQuotaAuthorized: true;
 };
 
 export type EvaluationWorkspaceContext = EvaluationRunContext & {
@@ -156,6 +158,16 @@ async function verifyEvaluationWorkspace(supabase: SupabaseClient, context: Eval
   if (workspaceError || membershipError || !workspace || !membership) {
     throw new CorpusEvaluationError("Evaluation workspace authorization could not be verified.");
   }
+}
+
+function evaluationAnalysisRateLimitForContext(context: EvaluationWorkspaceContext): RateLimitCategory {
+  return evaluationAnalysisRateLimitCategory({
+    evaluationAuthorized: context.evaluationAnalysisQuotaAuthorized,
+    workspaceName: context.workspaceName,
+    workspacePrefix: context.workspacePrefix,
+    actorOwnsWorkspace: true,
+    environment: process.env,
+  });
 }
 
 function evaluationRequest(correlationId: string) {
@@ -384,7 +396,7 @@ export async function runWorkspaceAnalysis({
   if (existing) return existing;
   await checkRateLimit({
     request: evaluationRequest(correlationId),
-    category: "findings_generate",
+    category: evaluationAnalysisRateLimitForContext(context),
     supabase,
     correlationId,
     userId: context.actorUserId,

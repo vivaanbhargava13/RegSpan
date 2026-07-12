@@ -53,6 +53,14 @@ bounded by `--max-rate-limit-wait-ms` (default: `3600000`). Use
 `--no-wait-on-rate-limit` to preserve fail-fast behavior. Waiting never
 re-uploads a document, reprocesses it, or creates another workspace.
 
+Corpus evaluations use the separate durable `findings_generate_eval` action,
+which defaults to 25 Analysis starts per hour. This prevents a 12-case isolated
+evaluation from consuming or waiting on the browser-facing
+`findings_generate` quota. The evaluator action is available only after the
+runner's production safeguards pass and only for verified owner-created
+`regspan-eval-` workspaces. It remains rate limited and uses the same durable
+backend as browser traffic.
+
 The runner requires `--allow-external-ai`. Before it creates a workspace, it
 also verifies that the server-side external AI policy is enabled. When both
 checks pass, only the new run-specific evaluation workspaces are created with

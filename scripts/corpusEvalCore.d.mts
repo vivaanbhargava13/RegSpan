@@ -1,5 +1,6 @@
 export class CorpusManifestError extends Error {}
 export class CorpusEvaluationTimeoutError extends Error {}
+export class CorpusEvaluationRateLimitWaitExceededError extends Error {}
 export class CorpusEvaluationSafetyError extends Error {}
 export function validateCorpusManifest(manifest: unknown): {
   id: string;
@@ -7,6 +8,15 @@ export function validateCorpusManifest(manifest: unknown): {
   cases: Array<Record<string, unknown>>;
 };
 export function pollForTerminal<T>(input: Record<string, unknown>): Promise<T>;
+export function retryRateLimitedOperation<T>(input: {
+  operation: () => Promise<T>;
+  beforeRetry?: () => Promise<T | null>;
+  isRateLimitError: (error: unknown) => boolean;
+  waitOnRateLimit?: boolean;
+  maxRateLimitWaitMs: number;
+  sleep?: (milliseconds: number) => Promise<void>;
+  onWait?: (details: { rateLimitWaitCount: number; rateLimitWaitMs: number; waitMs: number }) => Promise<void>;
+}): Promise<{ value: T; rateLimitWaitCount: number; rateLimitWaitMs: number }>;
 export function scoreCaseFindings(input: Record<string, unknown>): Record<string, unknown>;
 export function evidenceIntegrityViolations(input: Record<string, unknown>): string[];
 export function assertCorpusEvaluationSafety(input: Record<string, unknown>): {
@@ -14,6 +24,13 @@ export function assertCorpusEvaluationSafety(input: Record<string, unknown>): {
   workspacePrefix: string;
 };
 export function assertCorpusEvaluationExternalAiOptIn(allowExternalAi: boolean): void;
+export function evaluationAnalysisRateLimitCategory(input: {
+  evaluationAuthorized: boolean;
+  workspaceName: string;
+  workspacePrefix: string;
+  actorOwnsWorkspace: boolean;
+  environment?: Record<string, string | undefined>;
+}): "findings_generate_eval";
 export function processingResultForReport(input: {
   status: string;
   step?: string | null;

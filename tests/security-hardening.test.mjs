@@ -204,6 +204,60 @@ test("rate limit utility allows requests until the configured threshold and then
   );
 });
 
+test("evaluator Analysis quota is separate from browser Analysis quota and fits the v1 corpus", async () => {
+  const {
+    RATE_LIMITS,
+    RateLimitError,
+    checkRateLimit,
+    rateLimitCounterKeys,
+    resetRateLimitsForTests,
+  } = await importServerUtility("lib/rateLimit.ts");
+  resetRateLimitsForTests();
+  assert.equal(RATE_LIMITS.findings_generate_eval.limit, 25);
+  assert.notDeepEqual(
+    rateLimitCounterKeys({ request: new Request("https://app.example.test"), category: "findings_generate", workspaceId: "workspace-a" }),
+    rateLimitCounterKeys({ request: new Request("https://app.example.test"), category: "findings_generate_eval", workspaceId: "workspace-a" }),
+  );
+  const request = new Request("https://app.example.test/api/findings/generate", {
+    headers: { "x-forwarded-for": "203.0.113.12" },
+  });
+  for (let index = 0; index < 12; index += 1) {
+    await checkRateLimit({
+      request,
+      category: "findings_generate_eval",
+      userId: "eval-user",
+      workspaceId: "eval-workspace",
+      now: 1_700_000_000_000,
+    });
+  }
+  for (let index = 12; index < RATE_LIMITS.findings_generate_eval.limit; index += 1) {
+    await checkRateLimit({
+      request,
+      category: "findings_generate_eval",
+      userId: "eval-user",
+      workspaceId: "eval-workspace",
+      now: 1_700_000_000_000,
+    });
+  }
+  await assert.rejects(
+    () => checkRateLimit({
+      request,
+      category: "findings_generate_eval",
+      userId: "eval-user",
+      workspaceId: "eval-workspace",
+      now: 1_700_000_000_000,
+    }),
+    RateLimitError,
+  );
+  await checkRateLimit({
+    request,
+    category: "findings_generate",
+    userId: "eval-user",
+    workspaceId: "eval-workspace",
+    now: 1_700_000_000_000,
+  });
+});
+
 test("durable rate limits use an atomic RPC and production refuses memory fallback", async () => {
   const {
     checkRateLimit,

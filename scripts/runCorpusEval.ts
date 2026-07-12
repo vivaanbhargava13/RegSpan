@@ -222,6 +222,7 @@ function runContext(state: RunState): EvaluationRunContext {
     mode: state.mode,
     workspacePrefix: state.workspacePrefix,
     externalAiProcessingEnabled: true,
+    evaluationAnalysisQuotaAuthorized: true,
   };
 }
 
@@ -378,7 +379,7 @@ async function analyzeAndScore({
       pollTimeoutMs,
     }),
     isRateLimitError: (error) => error instanceof RateLimitError
-      && error.category === "findings_generate"
+      && error.category === "findings_generate_eval"
       && error.code === "rate_limited",
     waitOnRateLimit,
     maxRateLimitWaitMs,
