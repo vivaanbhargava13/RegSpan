@@ -1,15 +1,13 @@
 import { NextResponse } from "next/server";
 import {
   authenticateRequest,
-  DocumentRequestError,
   documentErrorResponse,
   getActorWorkspaceId,
   getCorrelationId,
   PDF_MIME_TYPE,
-  sanitizePdfFilename,
   validatePdfFile,
 } from "@/lib/documentSecurity";
-import { queueDocumentProcessing } from "@/lib/documentProcessing";
+import { uploadDocumentForWorkspace } from "@/lib/documentUpload";
 import {
   checkRateLimit,
   rateLimitErrorResponse,
@@ -17,23 +15,12 @@ import {
 import { recordSecurityAuditEvent } from "@/lib/securityAudit";
 import { getServerSupabaseAdminClient } from "@/lib/supabase/server";
 
-const DEFAULT_DOCUMENT_TYPE = "Information Security";
-const allowedDocumentTypes = new Set([
-  "Incident Response",
-  "Vendor Oversight",
-  "Privacy",
-  "Disposal",
-  DEFAULT_DOCUMENT_TYPE,
-  "Other",
-]);
-
 export async function POST(request: Request) {
   const correlationId = getCorrelationId(request);
   let supabase;
   let actorUserId: string | null = null;
   let workspaceId: string | null = null;
   let documentId: string | null = null;
-  let storagePath: string | null = null;
 
   try {
     supabase = getServerSupabaseAdminClient();
@@ -75,70 +62,16 @@ export async function POST(request: Request) {
       userId: actor.user.id,
       workspaceId,
     });
-    const suppliedDocumentType = String(formData.get("documentType") ?? "").trim();
-    const documentType = allowedDocumentTypes.has(suppliedDocumentType)
-      ? suppliedDocumentType
-      : DEFAULT_DOCUMENT_TYPE;
-    const notes = String(formData.get("notes") ?? "").trim();
-    if (notes.length > 4000) {
-      throw new DocumentRequestError(
-        "Notes cannot exceed 4,000 characters.",
-        400,
-        "notes_too_long",
-      );
-    }
-
-    documentId = crypto.randomUUID();
-    const filename = sanitizePdfFilename(file.name);
-    storagePath = `${workspaceId}/${documentId}/${filename}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from("documents")
-      .upload(storagePath, file, {
-        contentType: PDF_MIME_TYPE,
-        upsert: false,
-      });
-
-    if (uploadError) {
-      console.error("[RegSpan documents] Storage upload failed", {
-        correlationId,
-        documentId,
-        error: uploadError.message,
-      });
-      throw new Error("storage_upload_failed");
-    }
-
-    const { error: insertError } = await supabase.from("documents").insert({
-      id: documentId,
-      workspace_id: workspaceId,
-      filename,
-      document_type: documentType,
-      notes: notes || null,
-      status: "Uploaded",
-      chunks_label: "Pending",
-      storage_path: storagePath,
-      file_size: file.size,
-      mime_type: PDF_MIME_TYPE,
-      uploaded_at: new Date().toISOString(),
-    });
-
-    if (insertError) {
-      console.error("[RegSpan documents] Metadata insert failed", {
-        correlationId,
-        documentId,
-        error: insertError.message,
-      });
-      await supabase.storage.from("documents").remove([storagePath]);
-      throw new Error("metadata_insert_failed");
-    }
-
-    const processingResult = await queueDocumentProcessing({
+    const uploadedDocument = await uploadDocumentForWorkspace({
       supabase,
       correlationId,
-      documentId,
       workspaceId,
-      idempotencyKey: `${correlationId}:upload:${documentId}`,
+      file,
+      documentType: String(formData.get("documentType") ?? ""),
+      notes: String(formData.get("notes") ?? ""),
     });
+    documentId = uploadedDocument.documentId;
+    const processingResult = uploadedDocument.processing;
 
     await recordSecurityAuditEvent(supabase, {
       request,

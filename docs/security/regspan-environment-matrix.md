@@ -110,3 +110,6 @@ environment-specific workspace or file.
 | `RETRIEVAL_EVAL_WORKSPACE_NAME` | Retrieval evaluation script | Local developer process | Workspace display name | No application restart |
 | `REQUIREMENT_EVAL_WORKSPACE_ID` | Requirement evaluation script | Local developer process | Staging/local workspace UUID | No application restart |
 | `REQUIREMENT_EVAL_WORKSPACE_NAME` | Requirement evaluation script | Local developer process | Workspace display name | No application restart |
+| `REGSPAN_EVAL_ENABLED` | Corpus evaluation runner | Server-only | `true` only for intentional production evaluation | Restart not required |
+| `REGSPAN_EVAL_ACTOR_USER_ID` | Corpus evaluation runner | Server-only | Non-production actor UUID | Restart not required |
+| `REGSPAN_EVAL_WORKSPACE_PREFIX` | Corpus evaluation runner | Server-only | Explicit `regspan-eval-` prefix | Restart not required |

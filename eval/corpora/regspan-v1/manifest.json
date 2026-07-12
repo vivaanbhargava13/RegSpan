@@ -1,0 +1,126 @@
+{
+  "version": 1,
+  "id": "regspan-v1",
+  "cases": [
+    {
+      "id": "weak-no-written-program",
+      "filename": "weak-no-written-program.pdf",
+      "tier": "weak",
+      "expectedStatuses": { "written_incident_response_program": "missing" },
+      "acceptableAlternateStatuses": { "written_incident_response_program": ["partial"] },
+      "forbiddenMatches": { "written_incident_response_program": ["complete written incident response program"] },
+      "expectedEvidenceConcepts": {},
+      "include": { "isolated": true, "combined": true }
+    },
+    {
+      "id": "weak-no-disposal-methods",
+      "filename": "weak-no-disposal-methods.pdf",
+      "tier": "weak",
+      "expectedStatuses": { "disposal_consumer_customer_information": "missing" },
+      "acceptableAlternateStatuses": { "disposal_consumer_customer_information": ["partial"] },
+      "forbiddenMatches": { "disposal_consumer_customer_information": ["escalate unusual events"] },
+      "expectedEvidenceConcepts": {},
+      "include": { "isolated": true, "combined": true }
+    },
+    {
+      "id": "weak-notification-gap",
+      "filename": "weak-notification-gap.pdf",
+      "tier": "weak",
+      "expectedStatuses": { "customer_notification_trigger_timing": "missing" },
+      "acceptableAlternateStatuses": { "customer_notification_trigger_timing": ["partial"] },
+      "forbiddenMatches": { "disposal_consumer_customer_information": ["customer notification decision standard"] },
+      "expectedEvidenceConcepts": {},
+      "include": { "isolated": true, "combined": true }
+    },
+    {
+      "id": "partial-incident-assessment",
+      "filename": "partial-incident-assessment.pdf",
+      "tier": "partial",
+      "expectedStatuses": { "incident_assessment_containment_control": "partial" },
+      "acceptableAlternateStatuses": { "incident_assessment_containment_control": ["covered"] },
+      "forbiddenMatches": { "incident_assessment_containment_control": ["Current page focus:"] },
+      "expectedEvidenceConcepts": { "incident_assessment_containment_control": ["containment"] },
+      "include": { "isolated": true, "combined": true }
+    },
+    {
+      "id": "partial-evidence-preservation",
+      "filename": "partial-evidence-preservation.pdf",
+      "tier": "partial",
+      "expectedStatuses": { "incident_evidence_log_preservation": "partial" },
+      "acceptableAlternateStatuses": { "incident_evidence_log_preservation": ["covered"] },
+      "forbiddenMatches": { "incident_evidence_log_preservation": ["containment actions, and closure approval"] },
+      "expectedEvidenceConcepts": { "incident_evidence_log_preservation": ["retained"] },
+      "include": { "isolated": true, "combined": true }
+    },
+    {
+      "id": "partial-vendor-notice",
+      "filename": "partial-vendor-notice.pdf",
+      "tier": "partial",
+      "expectedStatuses": { "service_provider_incident_oversight_notice": "partial" },
+      "acceptableAlternateStatuses": { "service_provider_incident_oversight_notice": ["missing"] },
+      "forbiddenMatches": { "service_provider_incident_oversight_notice": ["approved disposal methods"] },
+      "expectedEvidenceConcepts": { "service_provider_incident_oversight_notice": ["vendor"] },
+      "include": { "isolated": true, "combined": true }
+    },
+    {
+      "id": "partial-recovery-validation",
+      "filename": "partial-recovery-validation.pdf",
+      "tier": "partial",
+      "expectedStatuses": { "response_recovery_remediation_validation": "partial" },
+      "acceptableAlternateStatuses": { "response_recovery_remediation_validation": ["covered"] },
+      "forbiddenMatches": { "response_recovery_remediation_validation": ["vendor incident questionnaire"] },
+      "expectedEvidenceConcepts": { "response_recovery_remediation_validation": ["recovery"] },
+      "include": { "isolated": true, "combined": true }
+    },
+    {
+      "id": "strong-safeguards",
+      "filename": "strong-safeguards.pdf",
+      "tier": "strong",
+      "expectedStatuses": { "safeguards_customer_information": "covered" },
+      "acceptableAlternateStatuses": { "safeguards_customer_information": ["partial"] },
+      "forbiddenMatches": { "safeguards_customer_information": ["Current page focus:"] },
+      "expectedEvidenceConcepts": { "safeguards_customer_information": ["encryption", "access"] },
+      "include": { "isolated": true, "combined": true }
+    },
+    {
+      "id": "strong-notice-content",
+      "filename": "strong-notice-content.pdf",
+      "tier": "strong",
+      "expectedStatuses": { "customer_notification_content": "covered" },
+      "acceptableAlternateStatuses": { "customer_notification_content": ["partial"] },
+      "forbiddenMatches": { "customer_notification_content": ["vendor incident questionnaire"] },
+      "expectedEvidenceConcepts": { "customer_notification_content": ["contact", "incident"] },
+      "include": { "isolated": true, "combined": true }
+    },
+    {
+      "id": "strong-compliance-records",
+      "filename": "strong-compliance-records.pdf",
+      "tier": "strong",
+      "expectedStatuses": { "written_compliance_records": "covered" },
+      "acceptableAlternateStatuses": { "written_compliance_records": ["partial"] },
+      "forbiddenMatches": { "written_compliance_records": ["Certificates of destruction are retained with the disposal register."] },
+      "expectedEvidenceConcepts": { "written_compliance_records": ["records"] },
+      "include": { "isolated": true, "combined": true }
+    },
+    {
+      "id": "adversarial-scaffolding",
+      "filename": "adversarial-scaffolding.pdf",
+      "tier": "adversarial",
+      "expectedStatuses": { "written_incident_response_program": "missing" },
+      "acceptableAlternateStatuses": { "written_incident_response_program": ["partial"] },
+      "forbiddenMatches": { "written_incident_response_program": ["Current page focus:", "does not define a complete"] },
+      "expectedEvidenceConcepts": {},
+      "include": { "isolated": true, "combined": true }
+    },
+    {
+      "id": "adversarial-cross-requirement",
+      "filename": "adversarial-cross-requirement.pdf",
+      "tier": "adversarial",
+      "expectedStatuses": { "service_provider_incident_oversight_notice": "missing" },
+      "acceptableAlternateStatuses": { "service_provider_incident_oversight_notice": ["partial"] },
+      "forbiddenMatches": { "service_provider_incident_oversight_notice": ["approved disposal methods", "communicate promptly when customer notification"] },
+      "expectedEvidenceConcepts": {},
+      "include": { "isolated": true, "combined": true }
+    }
+  ]
+}

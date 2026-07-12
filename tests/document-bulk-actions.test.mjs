@@ -81,13 +81,17 @@ test("documents upload field uses the full upload-card width after metadata remo
 });
 
 test("document upload API defaults type and starts source preparation", async () => {
-  const route = await readFile("app/api/documents/route.ts", "utf8");
-  const processing = await readFile("lib/documentProcessing.ts", "utf8");
+  const [route, uploadService, processing] = await Promise.all([
+    readFile("app/api/documents/route.ts", "utf8"),
+    readFile("lib/documentUpload.ts", "utf8"),
+    readFile("lib/documentProcessing.ts", "utf8"),
+  ]);
 
-  assert.match(route, /DEFAULT_DOCUMENT_TYPE = "Information Security"/);
-  assert.match(route, /queueDocumentProcessing/);
+  assert.match(route, /uploadDocumentForWorkspace/);
+  assert.match(uploadService, /DEFAULT_DOCUMENT_TYPE = "Information Security"/);
+  assert.match(uploadService, /queueDocumentProcessing/);
   assert.match(route, /processingQueued/);
-  assert.doesNotMatch(route, /invalid_document_type/);
+  assert.doesNotMatch(uploadService, /invalid_document_type/);
   assert.match(processing, /start_processing_job/);
   assert.match(processing, /triggerN8nIngestion/);
 });

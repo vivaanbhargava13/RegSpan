@@ -9,7 +9,8 @@
     "lint": "eslint . --max-warnings=0",
     "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/*.test.mjs",
     "eval:retrieval": "node scripts/runRetrievalEval.mjs",
-    "eval:requirements": "node scripts/runRequirementEval.mjs"
+    "eval:requirements": "node scripts/runRequirementEval.mjs",
+    "eval:corpus": "node --conditions=react-server --import ./scripts/registerServerTsLoader.mjs scripts/runCorpusEval.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",
@@ -29,6 +30,7 @@
     "eslint": "^9.0.0",
     "eslint-config-next": "^16.2.10",
     "postcss": "^8.5.16",
+    "server-only": "^0.0.1",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.2"
   },

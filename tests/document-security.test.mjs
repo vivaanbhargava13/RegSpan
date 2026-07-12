@@ -64,8 +64,9 @@ test("empty files are rejected before PDF signature validation can accept them",
 });
 
 test("upload and replacement routes validate the same PDF file before storage or processing", async () => {
-  const [uploadRoute, replaceRoute, documentSecurity] = await Promise.all([
+  const [uploadRoute, uploadService, replaceRoute, documentSecurity] = await Promise.all([
     readFile("app/api/documents/route.ts", "utf8"),
+    readFile("lib/documentUpload.ts", "utf8"),
     readFile("app/api/documents/[id]/replace/route.ts", "utf8"),
     readFile("lib/documentSecurity.ts", "utf8"),
   ]);
@@ -73,8 +74,11 @@ test("upload and replacement routes validate the same PDF file before storage or
   assert.match(documentSecurity, /file\.slice\(0, PDF_SIGNATURE_BYTES\.length\)/);
   assert.match(documentSecurity, /PDF_SIGNATURE_BYTES = \[0x25, 0x50, 0x44, 0x46, 0x2d\]/);
 
-  for (const route of [uploadRoute, replaceRoute]) {
-    const validation = route.indexOf('validatePdfFile(formData.get("file"))');
+  for (const [route, validationCall] of [
+    [uploadService, "validatePdfFile(suppliedFile)"],
+    [replaceRoute, 'validatePdfFile(formData.get("file"))'],
+  ]) {
+    const validation = route.indexOf(validationCall);
     const storageUpload = route.indexOf('.upload(');
     assert.ok(validation >= 0, "route should use the shared PDF validator");
     assert.ok(
@@ -83,9 +87,10 @@ test("upload and replacement routes validate the same PDF file before storage or
     );
   }
 
+  assert.match(uploadRoute, /uploadDocumentForWorkspace/);
   assert.ok(
-    uploadRoute.indexOf('validatePdfFile(formData.get("file"))') <
-      uploadRoute.indexOf("queueDocumentProcessing({"),
+    uploadService.indexOf("validatePdfFile(suppliedFile)") <
+      uploadService.indexOf("queueDocumentProcessing({"),
     "invalid uploads must be rejected before processing work is created",
   );
 });
