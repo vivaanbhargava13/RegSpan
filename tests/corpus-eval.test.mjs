@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import test from "node:test";
 import {
   CorpusEvaluationTimeoutError,
+  CorpusEvaluationRateLimitWaitExceededError,
   CorpusEvaluationSafetyError,
   assertCorpusEvaluationSafety,
   assertCorpusEvaluationExternalAiOptIn,
@@ -16,6 +17,7 @@ import {
   newEvaluationWorkspaceValues,
   evidenceIntegrityViolations,
   pollForTerminal,
+  retryRateLimitedOperation,
   recordEvaluationFailure,
   processingResultForReport,
   scoreCaseFindings,
@@ -102,6 +104,88 @@ test("terminal polling completes and times out safely", async () => {
       wait: async () => { now += 5; },
     }),
     CorpusEvaluationTimeoutError,
+  );
+});
+
+test("rate-limited Analysis waits, rechecks, and retries without repeating prior work", async () => {
+  const rateLimitError = Object.assign(new Error("Too many requests."), {
+    retryAfterSeconds: 2,
+    category: "findings_generate",
+    code: "rate_limited",
+  });
+  let analysisAttempts = 0;
+  let recoveryChecks = 0;
+  const waits = [];
+  const result = await retryRateLimitedOperation({
+    operation: async () => {
+      analysisAttempts += 1;
+      if (analysisAttempts === 1) throw rateLimitError;
+      return { analysisRunId: "analysis-a" };
+    },
+    beforeRetry: async () => {
+      recoveryChecks += 1;
+      return null;
+    },
+    isRateLimitError: (error) => error === rateLimitError,
+    maxRateLimitWaitMs: 10_000,
+    sleep: async (milliseconds) => { waits.push(milliseconds); },
+  });
+  assert.equal(analysisAttempts, 2);
+  assert.equal(recoveryChecks, 1);
+  assert.deepEqual(waits, [2_000]);
+  assert.deepEqual(result, {
+    value: { analysisRunId: "analysis-a" },
+    rateLimitWaitCount: 1,
+    rateLimitWaitMs: 2_000,
+  });
+});
+
+test("rate-limit retry recovers an existing Analysis before retrying generation", async () => {
+  const rateLimitError = Object.assign(new Error("Too many requests."), { retryAfterSeconds: 1 });
+  let analysisAttempts = 0;
+  const result = await retryRateLimitedOperation({
+    operation: async () => {
+      analysisAttempts += 1;
+      throw rateLimitError;
+    },
+    beforeRetry: async () => ({ analysisRunId: "completed-analysis" }),
+    isRateLimitError: (error) => error === rateLimitError,
+    maxRateLimitWaitMs: 10_000,
+    sleep: async () => {},
+  });
+  assert.equal(analysisAttempts, 1);
+  assert.equal(result.value.analysisRunId, "completed-analysis");
+  assert.equal(result.rateLimitWaitCount, 1);
+});
+
+test("rate-limit retry fails fast when disabled, bounded, or unrelated", async () => {
+  const rateLimitError = Object.assign(new Error("Too many requests."), { retryAfterSeconds: 2 });
+  await assert.rejects(
+    () => retryRateLimitedOperation({
+      operation: async () => { throw rateLimitError; },
+      isRateLimitError: (error) => error === rateLimitError,
+      waitOnRateLimit: false,
+      maxRateLimitWaitMs: 10_000,
+    }),
+    (error) => error === rateLimitError,
+  );
+  await assert.rejects(
+    () => retryRateLimitedOperation({
+      operation: async () => { throw rateLimitError; },
+      isRateLimitError: (error) => error === rateLimitError,
+      maxRateLimitWaitMs: 1_000,
+      sleep: async () => {},
+    }),
+    CorpusEvaluationRateLimitWaitExceededError,
+  );
+  const otherError = new Error("Analysis failed.");
+  await assert.rejects(
+    () => retryRateLimitedOperation({
+      operation: async () => { throw otherError; },
+      isRateLimitError: () => false,
+      maxRateLimitWaitMs: 10_000,
+    }),
+    (error) => error === otherError,
   );
 });
 
@@ -408,6 +492,10 @@ test("corpus runner is one-shot and contains no resume, adoption, or cleanup pat
   assert.match(runner, /runWorkspaceAnalysis/);
   assert.match(runner, /--allow-external-ai/);
   assert.match(runner, /assertExternalAiProcessingServerAvailable/);
+  assert.match(runner, /error instanceof RateLimitError/);
+  assert.match(runner, /recoverWorkspaceAnalysis/);
+  assert.match(runner, /rateLimitWaitCount/);
+  assert.match(runner, /rateLimitWaitMs/);
   assert.ok(
     runner.indexOf("assertExternalAiEvaluationSafety(args)")
       < runner.indexOf("const state = createState"),
@@ -417,6 +505,7 @@ test("corpus runner is one-shot and contains no resume, adoption, or cleanup pat
   assert.match(evaluator, /category: "findings_generate"/);
   assert.match(evaluator, /assertExactAnalysisSnapshot/);
   assert.match(evaluator, /createFreshEvaluationWorkspace/);
+  assert.match(evaluator, /\.in\("status", \["queued", "running", "completed"\]\)/);
   assert.match(evaluatorCore, /external_ai_processing_enabled: true/);
   assert.doesNotMatch(evaluator, /\.update\(\{\s*external_ai_processing_enabled/);
   assert.doesNotMatch(evaluator, /deleteDocumentForWorkspace|cleanupEvaluation|recoverEvaluation/);

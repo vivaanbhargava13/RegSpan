@@ -265,6 +265,78 @@ async function assertExactEligibleDocuments(
   }
 }
 
+async function waitForCompletedAnalysisRun({
+  supabase,
+  context,
+  analysisRun,
+  expectedDocumentIds,
+  pollTimeoutMs,
+}: {
+  supabase: SupabaseClient;
+  context: EvaluationWorkspaceContext;
+  analysisRun: AnalysisRunRow;
+  expectedDocumentIds: string[];
+  pollTimeoutMs: number;
+}) {
+  await assertExactAnalysisSnapshot({
+    supabase,
+    context,
+    analysisRunId: analysisRun.id,
+    expectedDocumentIds,
+  });
+  const run = await pollForTerminal<AnalysisRunRow>({
+    label: "Analysis polling",
+    timeoutMs: pollTimeoutMs,
+    terminalStatuses: ANALYSIS_TERMINAL_STATUSES,
+    load: async () => {
+      const { data, error } = await supabase
+        .from("analysis_runs")
+        .select("id, workspace_id, generated_by, status, error_message, completed_at, started_at")
+        .eq("id", analysisRun.id)
+        .eq("workspace_id", context.workspaceId)
+        .eq("generated_by", context.actorUserId)
+        .maybeSingle<AnalysisRunRow>();
+      if (error || !data) throw new CorpusEvaluationError("Analysis run could not be loaded.");
+      return data;
+    },
+  });
+  if (run.status !== "completed") throw new CorpusEvaluationError("Analysis failed or did not complete.");
+  return run;
+}
+
+export async function recoverWorkspaceAnalysis({
+  supabase,
+  context,
+  expectedDocumentIds,
+  pollTimeoutMs,
+}: {
+  supabase: SupabaseClient;
+  context: EvaluationWorkspaceContext;
+  expectedDocumentIds: string[];
+  pollTimeoutMs: number;
+}) {
+  await verifyEvaluationWorkspace(supabase, context);
+  const { data, error } = await supabase
+    .from("analysis_runs")
+    .select("id, workspace_id, generated_by, status, error_message, completed_at, started_at")
+    .eq("workspace_id", context.workspaceId)
+    .eq("generated_by", context.actorUserId)
+    .in("status", ["queued", "running", "completed"])
+    .order("started_at", { ascending: false })
+    .limit(1);
+  if (error) throw new CorpusEvaluationError("Existing Analysis run could not be loaded.");
+  const existing = (data ?? [])[0] as AnalysisRunRow | undefined;
+  if (!existing) return null;
+  const analysisRun = await waitForCompletedAnalysisRun({
+    supabase,
+    context,
+    analysisRun: existing,
+    expectedDocumentIds,
+    pollTimeoutMs,
+  });
+  return { analysisRunId: analysisRun.id, analysisRun };
+}
+
 export async function assertExactAnalysisSnapshot({
   supabase,
   context,
@@ -303,6 +375,13 @@ export async function runWorkspaceAnalysis({
 }) {
   await verifyEvaluationWorkspace(supabase, context);
   await assertExactEligibleDocuments(supabase, context, expectedDocumentIds);
+  const existing = await recoverWorkspaceAnalysis({
+    supabase,
+    context,
+    expectedDocumentIds,
+    pollTimeoutMs,
+  });
+  if (existing) return existing;
   await checkRateLimit({
     request: evaluationRequest(correlationId),
     category: "findings_generate",
@@ -317,32 +396,31 @@ export async function runWorkspaceAnalysis({
     actorUserId: context.actorUserId,
   });
   if (result.state === "reused_active_run") {
-    throw new CorpusEvaluationError("Fresh evaluation workspace unexpectedly had an active Analysis run.");
+    const recovered = await recoverWorkspaceAnalysis({
+      supabase,
+      context,
+      expectedDocumentIds,
+      pollTimeoutMs,
+    });
+    if (recovered) return recovered;
+    throw new CorpusEvaluationError("Existing Analysis run could not be recovered.");
   }
-  const run = await pollForTerminal<AnalysisRunRow>({
-    label: "Analysis polling",
-    timeoutMs: pollTimeoutMs,
-    terminalStatuses: ANALYSIS_TERMINAL_STATUSES,
-    load: async () => {
-      const { data, error } = await supabase
-        .from("analysis_runs")
-        .select("id, workspace_id, generated_by, status, error_message, completed_at, started_at")
-        .eq("id", result.analysisRunId)
-        .eq("workspace_id", context.workspaceId)
-        .eq("generated_by", context.actorUserId)
-        .maybeSingle<AnalysisRunRow>();
-      if (error || !data) throw new CorpusEvaluationError("Analysis run could not be loaded.");
-      return data;
-    },
-  });
-  if (run.status !== "completed") throw new CorpusEvaluationError("Analysis failed or did not complete.");
-  await assertExactAnalysisSnapshot({
+  const { data: startedRun, error: startedRunError } = await supabase
+    .from("analysis_runs")
+    .select("id, workspace_id, generated_by, status, error_message, completed_at, started_at")
+    .eq("id", result.analysisRunId)
+    .eq("workspace_id", context.workspaceId)
+    .eq("generated_by", context.actorUserId)
+    .maybeSingle<AnalysisRunRow>();
+  if (startedRunError || !startedRun) throw new CorpusEvaluationError("Analysis run could not be loaded.");
+  const analysisRun = await waitForCompletedAnalysisRun({
     supabase,
     context,
-    analysisRunId: result.analysisRunId,
+    analysisRun: startedRun,
     expectedDocumentIds,
+    pollTimeoutMs,
   });
-  return { ...result, analysisRun: run };
+  return { ...result, analysisRunId: analysisRun.id, analysisRun };
 }
 
 export async function loadEvaluationRunData({

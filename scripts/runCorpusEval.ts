@@ -3,11 +3,13 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { assertExternalAiProcessingServerAvailable } from "@/lib/aiProcessingPolicy";
+import { RateLimitError } from "@/lib/rateLimit";
 import { getServerSupabaseAdminClient } from "@/lib/supabase/server";
 import {
   CorpusEvaluationError,
   createFreshEvaluationWorkspace,
   loadEvaluationRunData,
+  recoverWorkspaceAnalysis,
   runWorkspaceAnalysis,
   uploadCorpusDocument,
   waitForProcessingJob,
@@ -16,6 +18,7 @@ import {
 } from "@/lib/corpusEvaluation";
 import {
   CorpusEvaluationTimeoutError,
+  CorpusEvaluationRateLimitWaitExceededError,
   CorpusManifestError,
   assertCorpusEvaluationExternalAiOptIn,
   assertCorpusEvaluationSafety,
@@ -24,6 +27,7 @@ import {
   scoreCaseFindings,
   recordEvaluationFailure,
   processingResultForReport,
+  retryRateLimitedOperation,
   snapshotSetViolations,
   validateCorpusManifest,
 } from "@/scripts/corpusEvalCore.mjs";
@@ -32,6 +36,7 @@ import { writeJsonAtomically } from "@/scripts/corpusEvalState.mjs";
 const DEFAULT_CORPUS = "eval/corpora/regspan-v1";
 const DEFAULT_POLL_TIMEOUT_MS = 300_000;
 const DEFAULT_MIN_SCORE = 0.8;
+const DEFAULT_MAX_RATE_LIMIT_WAIT_MS = 3_600_000;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 type RunnerArgs = {
@@ -42,6 +47,8 @@ type RunnerArgs = {
   actorUserId: string | null;
   workspacePrefix: string | null;
   allowExternalAi: boolean;
+  waitOnRateLimit: boolean;
+  maxRateLimitWaitMs: number;
   help: boolean;
 };
 
@@ -79,6 +86,8 @@ type CaseState = {
   analysisStatus?: string;
   processingDurationMs?: number;
   analysisDurationMs?: number;
+  rateLimitWaitCount?: number;
+  rateLimitWaitMs?: number;
   score?: CaseScore;
   integrityViolations?: string[];
   error?: string;
@@ -115,6 +124,9 @@ Options:
   --actor-user-id <uuid>       Evaluation workspace owner; overrides REGSPAN_EVAL_ACTOR_USER_ID.
   --workspace-prefix <prefix>  Explicit prefix beginning regspan-eval-; overrides REGSPAN_EVAL_WORKSPACE_PREFIX.
   --allow-external-ai          Allow external AI for newly created evaluation workspaces.
+  --wait-on-rate-limit         Wait and retry Analysis rate limits (default).
+  --no-wait-on-rate-limit      Fail immediately when Analysis is rate limited.
+  --max-rate-limit-wait-ms <n> Maximum total wait for Analysis rate limits. Defaults to ${DEFAULT_MAX_RATE_LIMIT_WAIT_MS}.
   --help                       Show this help.
 
 Every invocation creates new workspaces. Interrupted or failed resources are
@@ -131,6 +143,8 @@ function parseArgs(argv: string[]): RunnerArgs {
     actorUserId: null,
     workspacePrefix: null,
     allowExternalAi: false,
+    waitOnRateLimit: true,
+    maxRateLimitWaitMs: DEFAULT_MAX_RATE_LIMIT_WAIT_MS,
     help: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -144,6 +158,9 @@ function parseArgs(argv: string[]): RunnerArgs {
     else if (arg === "--actor-user-id") { args.actorUserId = next ?? null; index += 1; }
     else if (arg === "--workspace-prefix") { args.workspacePrefix = next ?? null; index += 1; }
     else if (arg === "--allow-external-ai") args.allowExternalAi = true;
+    else if (arg === "--wait-on-rate-limit") args.waitOnRateLimit = true;
+    else if (arg === "--no-wait-on-rate-limit") args.waitOnRateLimit = false;
+    else if (arg === "--max-rate-limit-wait-ms") { args.maxRateLimitWaitMs = Number(next); index += 1; }
     else throw new Error(`Unknown option: ${arg}`);
   }
   if (args.mode !== "isolated" && args.mode !== "combined") throw new Error("--mode must be isolated or combined.");
@@ -152,6 +169,11 @@ function parseArgs(argv: string[]): RunnerArgs {
   }
   if (!Number.isFinite(args.minScore) || args.minScore < 0 || args.minScore > 1) {
     throw new Error("--min-score must be from 0 through 1.");
+  }
+  if (!Number.isSafeInteger(args.maxRateLimitWaitMs)
+    || args.maxRateLimitWaitMs < 1_000
+    || args.maxRateLimitWaitMs > 3_600_000) {
+    throw new Error("--max-rate-limit-wait-ms must be an integer from 1000 through 3600000.");
   }
   return args;
 }
@@ -230,21 +252,21 @@ function summarize(state: RunState) {
 function markdown(state: RunState) {
   const summary = summarize(state);
   const rows = Object.values(state.cases).map((entry) =>
-    `| ${entry.caseId} | ${entry.tier} | ${entry.processingStatus ?? "not started"} | ${entry.processingStep ?? ""} | ${entry.processingError ?? ""} | ${entry.analysisStatus ?? "not started"} | ${entry.score ? `${entry.score.matchedStatuses}/${entry.score.expectedStatuses}` : "-"} | ${entry.diagnosticCode ?? ""} | ${entry.error ?? ""} |`,
+    `| ${entry.caseId} | ${entry.tier} | ${entry.processingStatus ?? "not started"} | ${entry.processingStep ?? ""} | ${entry.processingError ?? ""} | ${entry.analysisStatus ?? "not started"} | ${entry.rateLimitWaitCount ?? 0} | ${entry.rateLimitWaitMs ?? 0} | ${entry.score ? `${entry.score.matchedStatuses}/${entry.score.expectedStatuses}` : "-"} | ${entry.diagnosticCode ?? ""} | ${entry.error ?? ""} |`,
   );
   return `# RegSpan Corpus Evaluation\n\nStatus: ${state.status}\n\nRun ID: ${state.runId}\n\n`
     + `Expected status score: ${(summary.score * 100).toFixed(1)}% (${summary.matched}/${summary.expected})\n\n`
     + `Evidence concepts: ${summary.conceptsMatched}/${summary.conceptsExpected}; unexpected covered/partial: ${summary.unexpectedCovered}\n\n`
-    + `| Case | Tier | Processing | Step | Processing error | Analysis | Status score | Diagnostic code | Error |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n${rows.join("\n")}\n`;
+    + `| Case | Tier | Processing | Step | Processing error | Analysis | Rate-limit waits | Rate-limit wait ms | Status score | Diagnostic code | Error |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n${rows.join("\n")}\n`;
 }
 
 function csv(state: RunState) {
   const quote = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
-  const rows = ["case_id,tier,workspace_id,document_id,processing_job_id,analysis_run_id,processing_status,processing_step,processing_error,analysis_status,status_matches,status_expected,diagnostic_code,error"];
+  const rows = ["case_id,tier,workspace_id,document_id,processing_job_id,analysis_run_id,processing_status,processing_step,processing_error,analysis_status,rate_limit_wait_count,rate_limit_wait_ms,status_matches,status_expected,diagnostic_code,error"];
   for (const entry of Object.values(state.cases)) {
     rows.push([
       entry.caseId, entry.tier, state.workspaces[entry.workspaceKey]?.id, entry.documentId,
-      entry.processingJobId, entry.analysisRunId, entry.processingStatus, entry.processingStep, entry.processingError, entry.analysisStatus,
+      entry.processingJobId, entry.analysisRunId, entry.processingStatus, entry.processingStep, entry.processingError, entry.analysisStatus, entry.rateLimitWaitCount, entry.rateLimitWaitMs,
       entry.score?.matchedStatuses, entry.score?.expectedStatuses, entry.diagnosticCode, entry.error,
     ].map(quote).join(","));
   }
@@ -326,28 +348,56 @@ async function analyzeAndScore({
   context,
   outputDir,
   pollTimeoutMs,
+  waitOnRateLimit,
+  maxRateLimitWaitMs,
 }: {
   definitions: CorpusCase[];
   state: RunState;
   context: EvaluationWorkspaceContext;
   outputDir: string;
   pollTimeoutMs: number;
+  waitOnRateLimit: boolean;
+  maxRateLimitWaitMs: number;
 }) {
   const entries = definitions.map((definition) => state.cases[definition.id]);
   const documentIds = entries.map((entry) => entry.documentId).filter((id): id is string => Boolean(id));
   if (documentIds.length !== definitions.length) throw new CorpusEvaluationError("Evaluation document set is incomplete.");
   const startedAt = Date.now();
-  const analysis = await runWorkspaceAnalysis({
-    supabase: getServerSupabaseAdminClient(),
-    context,
-    expectedDocumentIds: documentIds,
-    pollTimeoutMs,
-    correlationId: crypto.randomUUID(),
+  const retry = await retryRateLimitedOperation({
+    operation: () => runWorkspaceAnalysis({
+      supabase: getServerSupabaseAdminClient(),
+      context,
+      expectedDocumentIds: documentIds,
+      pollTimeoutMs,
+      correlationId: crypto.randomUUID(),
+    }),
+    beforeRetry: () => recoverWorkspaceAnalysis({
+      supabase: getServerSupabaseAdminClient(),
+      context,
+      expectedDocumentIds: documentIds,
+      pollTimeoutMs,
+    }),
+    isRateLimitError: (error) => error instanceof RateLimitError
+      && error.category === "findings_generate"
+      && error.code === "rate_limited",
+    waitOnRateLimit,
+    maxRateLimitWaitMs,
+    onWait: async ({ rateLimitWaitCount, rateLimitWaitMs, waitMs }) => {
+      for (const entry of entries) {
+        entry.rateLimitWaitCount = rateLimitWaitCount;
+        entry.rateLimitWaitMs = rateLimitWaitMs;
+      }
+      await persistState(outputDir, state);
+      console.log(`Analysis rate limited. Waiting ${Math.ceil(waitMs / 1_000)} seconds before retrying.`);
+    },
   });
+  const analysis = retry.value;
   for (const entry of entries) {
     entry.analysisRunId = analysis.analysisRunId;
     entry.analysisStatus = analysis.analysisRun.status;
     entry.analysisDurationMs = Date.now() - startedAt;
+    entry.rateLimitWaitCount = retry.rateLimitWaitCount;
+    entry.rateLimitWaitMs = retry.rateLimitWaitMs;
   }
   await persistState(outputDir, state);
 
@@ -434,13 +484,13 @@ async function main() {
         activeCaseId = definition.id;
         await processCase({ definition, state, context, corpusDir, outputDir, pollTimeoutMs: args.pollTimeoutMs });
       }
-      await analyzeAndScore({ definitions: selectedCases, state, context, outputDir, pollTimeoutMs: args.pollTimeoutMs });
+      await analyzeAndScore({ definitions: selectedCases, state, context, outputDir, pollTimeoutMs: args.pollTimeoutMs, waitOnRateLimit: args.waitOnRateLimit, maxRateLimitWaitMs: args.maxRateLimitWaitMs });
     } else {
       for (const definition of selectedCases) {
         activeCaseId = definition.id;
         const context = await createWorkspace(state, definition.id, outputDir);
         await processCase({ definition, state, context, corpusDir, outputDir, pollTimeoutMs: args.pollTimeoutMs });
-        await analyzeAndScore({ definitions: [definition], state, context, outputDir, pollTimeoutMs: args.pollTimeoutMs });
+        await analyzeAndScore({ definitions: [definition], state, context, outputDir, pollTimeoutMs: args.pollTimeoutMs, waitOnRateLimit: args.waitOnRateLimit, maxRateLimitWaitMs: args.maxRateLimitWaitMs });
       }
     }
     const summary = summarize(state);
@@ -457,7 +507,11 @@ async function main() {
       state,
       activeCaseId,
       message,
-      error instanceof CorpusEvaluationError ? error.diagnosticCode : "corpus_evaluation_failed",
+      error instanceof CorpusEvaluationError
+        ? error.diagnosticCode
+        : error instanceof CorpusEvaluationRateLimitWaitExceededError
+          ? "analysis_rate_limit_wait_exceeded"
+          : "corpus_evaluation_failed",
     );
   }
   state.completedAt = new Date().toISOString();

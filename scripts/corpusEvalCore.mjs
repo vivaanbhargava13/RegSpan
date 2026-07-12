@@ -15,6 +15,7 @@ const CLIENT_EVIDENCE_SOURCE_TYPES = new Set([
 
 export class CorpusManifestError extends Error {}
 export class CorpusEvaluationTimeoutError extends Error {}
+export class CorpusEvaluationRateLimitWaitExceededError extends Error {}
 export class CorpusEvaluationSafetyError extends Error {}
 
 function normalizedStatus(value) {
@@ -255,6 +256,40 @@ export async function pollForTerminal({
     latest = await load();
   }
   return latest;
+}
+
+export async function retryRateLimitedOperation({
+  operation,
+  beforeRetry = async () => null,
+  isRateLimitError,
+  waitOnRateLimit = true,
+  maxRateLimitWaitMs,
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  onWait = async () => {},
+}) {
+  let rateLimitWaitCount = 0;
+  let rateLimitWaitMs = 0;
+
+  while (true) {
+    try {
+      const value = await operation();
+      return { value, rateLimitWaitCount, rateLimitWaitMs };
+    } catch (error) {
+      if (!isRateLimitError(error) || !waitOnRateLimit) throw error;
+      const waitMs = Math.max(1_000, Math.ceil(Number(error.retryAfterSeconds) * 1_000) || 1_000);
+      if (rateLimitWaitMs + waitMs > maxRateLimitWaitMs) {
+        throw new CorpusEvaluationRateLimitWaitExceededError(
+          "Analysis rate-limit wait exceeded the configured maximum.",
+        );
+      }
+      rateLimitWaitCount += 1;
+      rateLimitWaitMs += waitMs;
+      await onWait({ rateLimitWaitCount, rateLimitWaitMs, waitMs });
+      await sleep(waitMs);
+      const recovered = await beforeRetry();
+      if (recovered) return { value: recovered, rateLimitWaitCount, rateLimitWaitMs };
+    }
+  }
 }
 
 function evidenceTextForFinding(finding, evidenceRows) {

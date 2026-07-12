@@ -46,6 +46,13 @@ A rerun always creates a new run ID and new workspace names.
 Analysis runs. Findings generation currently executes synchronously in the
 application service and is not cancelled by this flag.
 
+Analysis rate limits are respected. `--wait-on-rate-limit` is enabled by
+default; it waits for the authoritative retry duration and rechecks for an
+existing active or completed Analysis run before retrying. The total wait is
+bounded by `--max-rate-limit-wait-ms` (default: `3600000`). Use
+`--no-wait-on-rate-limit` to preserve fail-fast behavior. Waiting never
+re-uploads a document, reprocesses it, or creates another workspace.
+
 The runner requires `--allow-external-ai`. Before it creates a workspace, it
 also verifies that the server-side external AI policy is enabled. When both
 checks pass, only the new run-specific evaluation workspaces are created with
