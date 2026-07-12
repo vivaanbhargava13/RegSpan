@@ -249,8 +249,12 @@ test("evaluator evidence compatibility accepts quote and evidence_quote without 
       workspace_members: [{ workspace_id: "workspace-a" }],
       analysis_run_documents: [{ document_id: "document-a", filename: "fixture.pdf", document_status: "Processed" }],
       findings: [{ id: "finding-a", requirement_id: "safeguards_customer_information", status: "partial" }],
-      finding_evidence: [{ id: "evidence-a", finding_id: "finding-a", workspace_id: "workspace-a", document_id: "document-a", chunk_id: "chunk-a", relationship: "supports", quote: null, evidence_quote: "Encryption is required." }],
-      document_chunks: [{ id: "chunk-a", document_id: "document-a", metadata: { source_type: "client_policy" } }],
+      finding_evidence: [
+        { id: "evidence-a", finding_id: "finding-a", workspace_id: "workspace-a", document_id: "document-a", chunk_id: "chunk-a", relationship: "supports", quote: null, evidence_quote: "Encryption is required." },
+        { id: "evidence-regulatory", finding_id: "finding-a", workspace_id: "workspace-a", document_id: "document-a", chunk_id: "regulatory-a", relationship: "background_context", quote: null, evidence_quote: "Reference text." },
+      ],
+      document_chunks: [{ id: "chunk-a", document_id: "document-a", workspace_id: "workspace-a", metadata: { source_type: "client_policy" } }],
+      regulatory_source_chunks: [{ id: "regulatory-a" }],
     };
     function query(table) {
       const chain = {
@@ -282,7 +286,12 @@ test("evaluator evidence compatibility accepts quote and evidence_quote without 
     "id, finding_id, workspace_id, document_id, chunk_id, relationship, quote, evidence_quote",
   );
   assert.equal(loaded.evidence[0].evidence_quote, "Encryption is required.");
+  assert.equal(loaded.evidence[0].source_resolution, "client_document_chunk");
+  assert.equal(loaded.evidence[0].chunk_document_id, "document-a");
+  assert.equal(loaded.evidence[0].chunk_workspace_id, "workspace-a");
   assert.equal(loaded.evidence[0].source_type, "client_policy");
+  assert.equal(loaded.evidence[1].source_resolution, "regulatory_source_chunk");
+  assert.equal(loaded.evidence[1].chunk_document_id, null);
 });
 
 test("evaluator diagnostics retain only a fixed evidence-query category", () => {
@@ -321,6 +330,9 @@ test("evidence integrity catches missing support, snapshot leakage, regulatory e
         document_id: "document-b",
         relationship: "supports",
         quote: "source text",
+        source_resolution: "regulatory_source_chunk",
+        chunk_document_id: null,
+        chunk_workspace_id: null,
         source_type: "agency_guidance",
       },
     ],
@@ -329,8 +341,51 @@ test("evidence integrity catches missing support, snapshot leakage, regulatory e
     "evidence_workspace_mismatch",
     "evidence_outside_run_snapshot",
     "cross_case_evidence",
+    "evidence_source_not_client_document_chunk",
+    "evidence_chunk_document_mismatch",
+    "evidence_chunk_workspace_mismatch",
     "regulatory_or_non_client_evidence",
+    "missing_primary_evidence:safeguards_customer_information",
     "missing_primary_evidence:written_compliance_records",
+  ]);
+});
+
+test("evidence integrity accepts only resolved client chunks with matching document and workspace provenance", () => {
+  const base = {
+    finding_id: "finding-a",
+    workspace_id: "workspace-a",
+    document_id: "document-a",
+    chunk_document_id: "document-a",
+    chunk_workspace_id: "workspace-a",
+    source_resolution: "client_document_chunk",
+    relationship: "supports",
+    evidence_quote: "Encryption is required.",
+  };
+  const input = (evidenceRows) => evidenceIntegrityViolations({
+    workspaceId: "workspace-a",
+    snapshotDocumentIds: ["document-a"],
+    caseDocumentIds: ["document-a"],
+    findings: [{ id: "finding-a", requirement_id: "safeguards_customer_information", status: "partial" }],
+    evidenceRows,
+  });
+
+  assert.deepEqual(input([{ ...base, source_type: "unknown" }]), []);
+  assert.deepEqual(input([{ ...base, source_type: "client_procedure" }]), []);
+  assert.deepEqual(input([{ ...base, source_resolution: "regulatory_source_chunk", source_type: "regulatory_reference" }]), [
+    "evidence_source_not_client_document_chunk",
+    "regulatory_or_non_client_evidence",
+    "missing_primary_evidence:safeguards_customer_information",
+  ]);
+  assert.deepEqual(input([{ ...base, source_resolution: "unresolved", chunk_document_id: null, chunk_workspace_id: null }]), [
+    "evidence_source_not_client_document_chunk",
+    "evidence_chunk_document_mismatch",
+    "evidence_chunk_workspace_mismatch",
+    "missing_primary_evidence:safeguards_customer_information",
+  ]);
+  assert.deepEqual(input([{ ...base, chunk_document_id: "document-b", chunk_workspace_id: "workspace-b" }]), [
+    "evidence_chunk_document_mismatch",
+    "evidence_chunk_workspace_mismatch",
+    "missing_primary_evidence:safeguards_customer_information",
   ]);
 });
 

@@ -6,6 +6,12 @@ const VALID_STATUSES = new Set([
   "conflicting",
   "needs_review",
 ]);
+const CLIENT_EVIDENCE_SOURCE_TYPES = new Set([
+  "unknown",
+  "client_policy",
+  "client_procedure",
+  "client_standard",
+]);
 
 export class CorpusManifestError extends Error {}
 export class CorpusEvaluationTimeoutError extends Error {}
@@ -319,6 +325,15 @@ export function evidenceIntegrityViolations({
   const evidenceByFinding = new Map();
   const violations = [];
 
+  const hasAcceptedProvenance = (evidence) => {
+    const sourceType = String(evidence.source_type ?? "").trim().toLowerCase();
+    return evidence.source_resolution === "client_document_chunk"
+      && evidence.chunk_document_id === evidence.document_id
+      && evidence.chunk_workspace_id === workspaceId
+      && Boolean(evidence.document_id && snapshotIds.has(evidence.document_id))
+      && (!sourceType || CLIENT_EVIDENCE_SOURCE_TYPES.has(sourceType));
+  };
+
   for (const evidence of evidenceRows) {
     const rows = evidenceByFinding.get(evidence.finding_id) ?? [];
     rows.push(evidence);
@@ -330,7 +345,17 @@ export function evidenceIntegrityViolations({
     if (evidence.document_id && !caseIds.has(evidence.document_id)) {
       violations.push("cross_case_evidence");
     }
-    if (evidence.source_type && evidence.source_type !== "client_policy") {
+    if (evidence.source_resolution !== "client_document_chunk") {
+      violations.push("evidence_source_not_client_document_chunk");
+    }
+    if (evidence.chunk_document_id !== evidence.document_id) {
+      violations.push("evidence_chunk_document_mismatch");
+    }
+    if (evidence.chunk_workspace_id !== workspaceId) {
+      violations.push("evidence_chunk_workspace_mismatch");
+    }
+    const sourceType = String(evidence.source_type ?? "").trim().toLowerCase();
+    if (sourceType && !CLIENT_EVIDENCE_SOURCE_TYPES.has(sourceType)) {
       violations.push("regulatory_or_non_client_evidence");
     }
   }
@@ -339,6 +364,7 @@ export function evidenceIntegrityViolations({
     if (!["covered", "partial"].includes(normalizedStatus(finding.status))) continue;
     const primary = (evidenceByFinding.get(finding.id) ?? []).filter((evidence) =>
       ["supports", "partially_supports", "negative_evidence"].includes(evidence.relationship)
+      && hasAcceptedProvenance(evidence)
       && String(evidence.quote ?? evidence.evidence_quote ?? evidence.source_quote ?? "").trim(),
     );
     if (primary.length === 0) violations.push(`missing_primary_evidence:${finding.requirement_id}`);

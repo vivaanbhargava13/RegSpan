@@ -47,6 +47,13 @@ type ProcessingJobRow = {
   error_message: string | null;
   completed_at: string | null;
 };
+type DocumentChunkProvenanceRow = {
+  id: string;
+  document_id: string;
+  workspace_id: string;
+  metadata: Record<string, unknown> | null;
+};
+type RegulatorySourceChunkProvenanceRow = { id: string };
 type AnalysisRunRow = {
   id: string;
   workspace_id: string;
@@ -375,22 +382,45 @@ export async function loadEvaluationRunData({
       "finding_evidence_query_failed",
     );
   }
-  const chunkIds = (evidence ?? []).map((row) => row.chunk_id).filter(Boolean);
+  const chunkIds = [...new Set((evidence ?? []).map((row) => row.chunk_id).filter(Boolean))];
   const { data: chunks, error: chunksError } = chunkIds.length === 0
     ? { data: [], error: null }
     : await supabase.from("document_chunks")
-      .select("id, document_id, metadata")
-      .eq("workspace_id", context.workspaceId)
-      .in("id", chunkIds);
-  if (chunksError) throw new CorpusEvaluationError("Evidence chunks could not be loaded.");
+      .select("id, document_id, workspace_id, metadata")
+      .in("id", chunkIds) as unknown as { data: DocumentChunkProvenanceRow[] | null; error: unknown };
+  if (chunksError) {
+    throw new CorpusEvaluationError(
+      "Evidence provenance could not be loaded.",
+      "evidence_provenance_query_failed",
+    );
+  }
   const chunkById = new Map((chunks ?? []).map((chunk) => [chunk.id, chunk]));
+  const unresolvedChunkIds = chunkIds.filter((chunkId) => !chunkById.has(chunkId));
+  const { data: regulatoryChunks, error: regulatoryChunksError } = unresolvedChunkIds.length === 0
+    ? { data: [], error: null }
+    : await supabase.from("regulatory_source_chunks")
+      .select("id")
+      .in("id", unresolvedChunkIds) as unknown as { data: RegulatorySourceChunkProvenanceRow[] | null; error: unknown };
+  if (regulatoryChunksError) {
+    throw new CorpusEvaluationError(
+      "Evidence provenance could not be loaded.",
+      "evidence_provenance_query_failed",
+    );
+  }
+  const regulatoryChunkIds = new Set((regulatoryChunks ?? []).map((chunk) => chunk.id));
   return {
     snapshots: snapshots ?? [],
     findings: findings ?? [],
     evidence: (evidence ?? []).map((row) => ({
       ...row,
-      source_type: (chunkById.get(row.chunk_id)?.metadata as Record<string, unknown> | undefined)
-        ?.source_type ?? "unknown",
+      source_resolution: chunkById.has(row.chunk_id)
+        ? "client_document_chunk"
+        : regulatoryChunkIds.has(row.chunk_id)
+          ? "regulatory_source_chunk"
+          : "unresolved",
+      chunk_document_id: chunkById.get(row.chunk_id)?.document_id ?? null,
+      chunk_workspace_id: chunkById.get(row.chunk_id)?.workspace_id ?? null,
+      source_type: chunkById.get(row.chunk_id)?.metadata?.source_type,
     })),
   };
 }
