@@ -161,10 +161,47 @@ function normalizeWhitespace(value: string | null | undefined) {
 }
 
 function evidenceSentences(rawText: string) {
-  return (rawText.match(/[^.!?]+[.!?]?/g) ?? [rawText])
-    .flatMap((sentence) => sentence.split("\n"))
+  return (rawText.match(/[^.!?]+[.!?]+|[^.!?]+$/g) ?? [rawText])
     .map((sentence) => sentence.trim())
     .filter(Boolean);
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function normalizedQuoteTokens(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/([a-z0-9])-\s*\n\s*([a-z0-9])/gi, "$1$2")
+    .match(/[a-z0-9]+/g) ?? [];
+}
+
+function quoteTokenPattern(token: string) {
+  return token
+    .split("")
+    .map(escapeRegExp)
+    .join("(?:-\\s*)?");
+}
+
+function normalizedSourceQuoteSpan(chunkContent: string, quote: string) {
+  const tokens = normalizedQuoteTokens(quote);
+  if (tokens.length < 4) return null;
+  const separator = "(?:[\\s\\p{P}]+)";
+  const expression = new RegExp(`\\b${tokens.map(quoteTokenPattern).join(separator)}\\b`, "iu");
+  const match = expression.exec(chunkContent);
+  return match?.[0] ?? null;
+}
+
+function hasOperativePolicyAction(value: string) {
+  return /\b(?:must|shall|will|is required to|are required to|maintains?|requires?|assigns?|responsible for|reviews?|retains?|preserves?|collects?|notifies?|protects?|implements?|approves?)\b/i.test(value);
+}
+
+export function isAdministrativeMetadataOnlyQuote(value: string | null | undefined) {
+  const text = normalizeWhitespace(value);
+  if (!text) return true;
+  const administrativeMarker = /\b(?:revision history|version history|change log|release notes?|document control|effective date|policy code|approved initial release|draft circulated|updated (?:ownership|terminology|responsibilities|metadata|formatting)|version\s+\d+(?:\.\d+)?|date\s+change\s+approved by)\b/i;
+  return administrativeMarker.test(text) && !hasOperativePolicyAction(text);
 }
 
 function normalizeForNegativePosition(value: string | null | undefined) {
@@ -548,7 +585,9 @@ function quoteSupportedElementIds(
         return normalizedSignal && text.includes(normalizedSignal);
       });
       if (classifierLegacyRequirementId(input.requirement.id) === "evidence_log_preservation" && element.id === "incident_materials") {
-        return matches && /\b(?:preserv|retain|retaining|retained|logs?|evidence|investigation materials|forensic|recordkeeping)\b/.test(text);
+        const retentionAction = /\b(?:preserv|retain|retaining|retained|recordkeeping)\b/.test(text);
+        const incidentMaterial = /\b(?:logs?|evidence|investigation materials|forensic|recordkeeping|security[- ]console exports?)\b/.test(text);
+        return (matches || incidentMaterial) && retentionAction && incidentMaterial;
       }
       return matches;
     })
@@ -583,6 +622,7 @@ function quoteIsValidForRelationship(
   }
 
   if (hasAbsenceLanguage(quote)) return false;
+  if (isAdministrativeMetadataOnlyQuote(quote)) return false;
 
   if (
     input.requirement.id === "customer_notification_content"
@@ -980,7 +1020,10 @@ function sanitizeSupportingQuote(quote: string | null, chunkContent: string) {
     normalizeWhitespace(sentence) === normalizedQuote
     || normalizeWhitespace(sentence).includes(normalizedQuote)
   );
-  return matched ? completedSourceQuote(chunkContent, matched) : null;
+  if (matched) return completedSourceQuote(chunkContent, matched);
+
+  const normalizedSpan = normalizedSourceQuoteSpan(chunkContent, trimmed);
+  return normalizedSpan ? completedSourceQuote(chunkContent, normalizedSpan) : null;
 }
 
 function relationshipRequiresSourceQuote(relationship: RequirementEvidenceRelationship) {

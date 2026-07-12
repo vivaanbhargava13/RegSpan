@@ -146,7 +146,15 @@ function trimHeadingBoundaryLines(span: TextSpan): TextSpan {
 
   let first = 0;
   let last = lines.length - 1;
-  while (first <= last && looksLikeHeadingOnly(lines[first].text)) first += 1;
+  while (first <= last && looksLikeHeadingOnly(lines[first].text)) {
+    const nextLine = lines[first + 1]?.text ?? "";
+    const wrapsIntoNextLine = !endsAtSentenceBoundary(lines[first].text)
+      && Boolean(nextLine)
+      && (/\b(?:a|an|the|and|or|to|of|for|with|in|on|at|by|from|during|after|before|unless|where|when)$/i.test(lines[first].text)
+        || /^[a-z]/.test(nextLine));
+    if (wrapsIntoNextLine) break;
+    first += 1;
+  }
   while (last >= first && looksLikeHeadingOnly(lines[last].text)) last -= 1;
   if (first > last) return span;
   return trimSpan(span.text, lines[first].start - span.start, lines[last].end - span.start)
@@ -232,7 +240,14 @@ function substantiveQuoteText(value: string) {
     .map((line) => line.trim())
     .filter(Boolean);
   if (lines.length <= 1) return value;
-  const substantiveLines = lines.filter((line) => !looksLikeHeadingOnly(line) && !isScaffoldingQuote(line));
+  const substantiveLines = lines.filter((line, index) => {
+    const nextLine = lines[index + 1] ?? "";
+    const wrapsIntoNextLine = !endsAtSentenceBoundary(line)
+      && Boolean(nextLine)
+      && (/\b(?:a|an|the|and|or|to|of|for|with|in|on|at|by|from|during|after|before|unless|where|when)$/i.test(line)
+        || /^[a-z]/.test(nextLine));
+    return (!looksLikeHeadingOnly(line) || wrapsIntoNextLine) && !isScaffoldingQuote(line);
+  });
   return (substantiveLines.length > 0 ? substantiveLines : lines).join(" ");
 }
 
@@ -272,7 +287,12 @@ function hasInternalNonEvidenceLine(value: string) {
   return lines.some((line, index) => {
     const text = line.trim();
     if (!text) return false;
-    if (looksLikeHeadingOnly(text) || isScaffoldingQuote(text)) return true;
+    const nextLine = lines[index + 1]?.trim() ?? "";
+    const wrapsIntoNextLine = !endsAtSentenceBoundary(text)
+      && Boolean(nextLine)
+      && (/\b(?:a|an|the|and|or|to|of|for|with|in|on|at|by|from|during|after|before|unless|where|when)$/i.test(text)
+        || /^[a-z]/.test(nextLine));
+    if ((looksLikeHeadingOnly(text) && !wrapsIntoNextLine) || isScaffoldingQuote(text)) return true;
     const previousLine = lines[index - 1]?.trim() ?? "";
     return isOrphanFragmentLine(text) && (!previousLine || index === 0);
   });
@@ -288,7 +308,16 @@ function hasSubstantiveQuoteShape(value: string) {
     && !hasInternalNonEvidenceLine(value)
     && !hasDanglingEnding(substantiveText)
     && !startsWithContinuationFragment(substantiveText)
-    && !startsWithLowercaseFragment(substantiveText);
+    && !startsWithLowercaseFragment(substantiveText)
+    && !isAdministrativeMetadataOnlyQuote(substantiveText);
+}
+
+function isAdministrativeMetadataOnlyQuote(value: string) {
+  const text = value.replace(/\s+/g, " ").trim();
+  if (!text) return true;
+  const administrativeMarker = /\b(?:revision history|version history|change log|release notes?|document control|effective date|policy code|approved initial release|draft circulated|updated (?:ownership|terminology|responsibilities|metadata|formatting)|version\s+\d+(?:\.\d+)?|date\s+change\s+approved by)\b/i;
+  const operativeAction = /\b(?:must|shall|will|is required to|are required to|maintains?|requires?|assigns?|responsible for|reviews?|retains?|preserves?|collects?|notifies?|protects?|implements?|approves?)\b/i;
+  return administrativeMarker.test(text) && !operativeAction.test(text);
 }
 
 const additionalElementSignals: Partial<Record<RegSpRequirementId, Record<string, string[]>>> = {
@@ -545,7 +574,7 @@ function elementSignals(requirement: RegSpRequirement, elementId: string) {
 
 function evidencePreservationElementMatches(text: string) {
   const hasSpecificIncidentMaterial =
-    /\b(?:logs?|forensic|investigation materials?|incident records?|recordkeeping|chain of custody)\b/.test(text);
+    /\b(?:logs?|forensic|investigation materials?|incident records?|recordkeeping|chain of custody|security[- ]console exports?)\b/.test(text);
   const hasPreservationAction =
     /\b(?:preserv\w*|retain\w*|retention|recordkeeping|maintain\w*)\b/.test(text);
   const hasDedicatedEvidencePreservation =
@@ -600,10 +629,12 @@ function elementSignalMatches(requirement: RegSpRequirement, elementId: string, 
   }
 
   if (copyRequirementId(requirement) === "evidence_log_preservation" && elementId === "incident_materials") {
-    return signals.some((signal) => {
+    const signalMatch = signals.some((signal) => {
       const normalizedSignal = normalize(signal);
       return normalizedSignal && text.includes(normalizedSignal);
-    }) && evidencePreservationElementMatches(text);
+    });
+    return (signalMatch || /\bsecurity[- ]console exports?\b/.test(text))
+      && evidencePreservationElementMatches(text);
   }
 
   if (copyRequirementId(requirement) === "disposal_consumer_customer_information" && !hasDisposalAlignedLanguage(text)) {
@@ -789,12 +820,15 @@ function finalizedEvidenceRelationship(
   chunk: GradedEvidenceChunk,
 ): GradedEvidenceChunk["evidence_relationship"] {
   if (chunk.evidence_relationship === "supports") {
-    return "supports";
+    return quoteSupportedElementIds(requirement, chunk).length > 0
+      ? "supports"
+      : "background_context";
   }
   if (chunk.evidence_relationship !== "partially_supports") {
     return chunk.evidence_relationship;
   }
   const supportedElements = quoteSupportedElementIds(requirement, chunk);
+  if (supportedElements.length === 0) return "background_context";
   return requirement.requiredElementsForCovered.every((elementId) => supportedElements.includes(elementId))
     ? "supports"
     : "partially_supports";
@@ -805,12 +839,13 @@ function finalSupportRelationship(
   chunk: GradedEvidenceChunk,
 ): ElementCoverageRelationship {
   if (chunk.evidence_relationship === "supports") {
-    return "supports";
+    return quoteSupportedElementIds(requirement, chunk).length > 0 ? "supports" : "missing";
   }
   if (chunk.evidence_relationship !== "partially_supports") {
     return chunk.evidence_relationship === "negative_evidence" ? "negative_evidence" : "missing";
   }
   const supportedElements = quoteSupportedElementIds(requirement, chunk);
+  if (supportedElements.length === 0) return "missing";
   return requirement.requiredElementsForCovered.every((elementId) => supportedElements.includes(elementId))
     ? "supports"
     : "partially_supports";
@@ -819,7 +854,7 @@ function finalSupportRelationship(
 function isSourceGroundedDirectSupport(requirement: RegSpRequirement, chunk: GradedEvidenceChunk) {
   return isDirectSupport(chunk)
     && hasSubstantiveExactSourceQuote(requirement, chunk)
-    && (chunk.missing_elements ?? []).length === 0;
+    && quoteSupportedElementIds(requirement, chunk).length > 0;
 }
 
 function isSourceGroundedPartialSupport(requirement: RegSpRequirement, chunk: GradedEvidenceChunk) {
@@ -1792,6 +1827,8 @@ function whatWeFoundForFinding({
 function evidenceReasonForStorage(
   requirement: RegSpRequirement,
   chunk: GradedEvidenceChunk,
+  relationship: GeneratedFindingEvidence["relationship"],
+  quoteCovered: string[],
   negativeScopeByChunkId: Map<string, NegativeEvidenceScope>,
 ) {
   const reason = chunk.grade_reason
@@ -1809,9 +1846,8 @@ function evidenceReasonForStorage(
       ? `This document points to another policy or procedure for this requirement. ${reason}`
       : `This document limits what it covers for this requirement. RegSpan does not treat that as a contradiction by itself. ${reason}`;
   }
-  if (chunk.evidence_relationship === "supports") {
-    const covered = renderedElementList(requirement, quoteSupportedElementIds(requirement, chunk), "found");
-    const quoteCovered = quoteSupportedElementIds(requirement, chunk);
+  if (relationship === "supports") {
+    const covered = renderedElementList(requirement, quoteCovered, "found");
     const quoteMissing = requirement.requiredElementsForCovered.filter((elementId) => !quoteCovered.includes(elementId));
     if (covered.length > 0 && quoteMissing.length === 0) {
       return `The cited section ${covered}.`;
@@ -1822,9 +1858,8 @@ function evidenceReasonForStorage(
     }
     return "The selected quote is related to the requirement but does not prove a required element.";
   }
-  if (chunk.evidence_relationship === "partially_supports") {
-    const covered = renderedElementList(requirement, quoteSupportedElementIds(requirement, chunk), "partial");
-    const quoteCovered = quoteSupportedElementIds(requirement, chunk);
+  if (relationship === "partially_supports") {
+    const covered = renderedElementList(requirement, quoteCovered, "partial");
     const quoteMissing = requirement.requiredElementsForCovered.filter((elementId) => !quoteCovered.includes(elementId));
     const missing = renderedElementList(requirement, quoteMissing, "missing");
     return [
@@ -1850,19 +1885,32 @@ function evidenceForStorage(
   return chunks
     .filter((chunk) => chunk.evidence_relationship === "background_context" || hasSubstantiveExactSourceQuote(requirement, chunk))
     .slice(0, 3)
-    .map((chunk) => ({
-    chunk_id: chunk.chunk_id,
-    document_id: chunk.document_id,
-    relationship: finalizedEvidenceRelationship(requirement, chunk),
-    quote: hasSubstantiveExactSourceQuote(requirement, chunk) ? finalizedSourceQuote(requirement, chunk) : null,
-    reason: evidenceReasonForStorage(requirement, chunk, negativeScopeByChunkId),
-    confidence: chunk.classifier_confidence,
-    filename: chunk.filename,
-    page_start: chunk.page_start,
-    page_end: chunk.page_end,
-    section_path: chunk.section_path,
-    chunk_index: chunk.chunk_index,
-  }));
+    .map((chunk) => {
+      const quote = hasSubstantiveExactSourceQuote(requirement, chunk)
+        ? finalizedSourceQuote(requirement, chunk)
+        : null;
+      const relationship = finalizedEvidenceRelationship(requirement, chunk);
+      const quoteCovered = quote ? evidenceElementIdsForQuote(requirement, chunk, quote) : [];
+      return {
+        chunk_id: chunk.chunk_id,
+        document_id: chunk.document_id,
+        relationship,
+        quote,
+        reason: evidenceReasonForStorage(
+          requirement,
+          chunk,
+          relationship,
+          quoteCovered,
+          negativeScopeByChunkId,
+        ),
+        confidence: chunk.classifier_confidence,
+        filename: chunk.filename,
+        page_start: chunk.page_start,
+        page_end: chunk.page_end,
+        section_path: chunk.section_path,
+        chunk_index: chunk.chunk_index,
+      };
+    });
 }
 
 export function aggregateFindingForRequirement(

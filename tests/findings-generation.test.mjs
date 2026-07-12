@@ -34,6 +34,14 @@ async function loadTsModule(sourcePath) {
   )
     .replaceAll('from "./aiProcessingPolicy"', 'from "./lib__aiProcessingPolicy.mjs"')
     .replaceAll('from "./negativeEvidence"', 'from "./lib__negativeEvidence.mjs"');
+  if (sourcePath === "lib/requirementEvidenceClassifier.ts") {
+    await Promise.all([
+      writeFile(join(outDir, "lib__aiProcessingPolicy.mjs"), policyOutput, "utf8"),
+      writeFile(join(outDir, "lib__negativeEvidence.mjs"), negativeOutput, "utf8"),
+      writeFile(outPath, classifierOutput, "utf8"),
+    ]);
+    return import(pathToFileURL(outPath).href);
+  }
   const outputText = transpile(source, sourcePath)
     .replaceAll('from "./requirementEvidenceClassifier"', 'from "./lib__requirementEvidenceClassifier.mjs"');
 
@@ -1594,6 +1602,144 @@ test("production path starts preservation quotes at the retention sentence", asy
 
   assert.equal(finding.status, "covered");
   assert.equal(finding.evidence[0].quote, "Investigation materials are retained with the incident record for seven years.");
+});
+
+test("production path rejects revision-history metadata but keeps operative responsibility statements", async () => {
+  const writtenProgramRequirement = {
+    ...requirement,
+    id: "written_incident_response_program",
+    title: "Written incident response program",
+    coverageElements: [
+      {
+        id: "written_program",
+        label: "Maintains a written incident response program",
+        requiredForCovered: true,
+        signals: ["written incident response program"],
+      },
+    ],
+    requiredElementsForCovered: ["written_program"],
+  };
+  const revisionHistory = "Updated ownership, terminology, and responsibilities.";
+  const metadataFinding = await productionPathFinding(writtenProgramRequirement, [
+    chunk({ content_preview: `Revision history\n${revisionHistory}` }),
+  ], [
+    classifierClassification({
+      relationship: "partially_supports",
+      requirement_supported: false,
+      covered_elements: ["written_program"],
+      missing_elements: [],
+      supporting_quote: revisionHistory,
+    }),
+  ]);
+  assert.equal(metadataFinding.status, "missing");
+  assert.equal(metadataFinding.evidence.length, 0);
+
+  const operativeStatement =
+    "The firm maintains a written incident response program and assigns the incident manager responsibility for response coordination.";
+  const operativeFinding = await productionPathFinding(writtenProgramRequirement, [
+    chunk({ content_preview: operativeStatement }),
+  ], [
+    classifierClassification({
+      covered_elements: ["written_program"],
+      supporting_quote: operativeStatement,
+    }),
+  ]);
+  assert.equal(operativeFinding.status, "covered");
+  assert.equal(operativeFinding.evidence[0].quote, operativeStatement);
+});
+
+test("production path derives containment support and its reason from the final quote", async () => {
+  const assessmentRequirement = {
+    ...requirement,
+    id: "incident_assessment_containment_control",
+    title: "Incident assessment and containment",
+    coverageElements: [
+      { id: "assesses_scope", label: "Assesses scope", requiredForCovered: true, signals: ["assesses the nature and scope"] },
+      { id: "customer_information_systems", label: "Identifies affected systems", requiredForCovered: true, signals: ["affected customer information systems"] },
+      { id: "containment_control", label: "Requires containment", requiredForCovered: true, signals: ["containment and control"] },
+    ],
+    requiredElementsForCovered: ["assesses_scope", "customer_information_systems", "containment_control"],
+  };
+  const genericQuote = "The depth of review depends on the sensitivity of customer information.";
+  const scopeQuote = "The incident manager assesses the nature and scope and identifies affected customer information systems.";
+  const containmentQuote = "The technical lead takes containment and control steps to limit ongoing harm.";
+  const finding = await productionPathFinding(assessmentRequirement, [
+    chunk({ content_preview: `${genericQuote}\n${scopeQuote}\n${containmentQuote}` }),
+  ], [
+    classifierClassification({
+      covered_elements: ["assesses_scope", "customer_information_systems", "containment_control"],
+      supporting_quote: genericQuote,
+    }),
+  ]);
+
+  assert.equal(finding.status, "covered");
+  assert.match(finding.evidence[0].quote ?? "", /containment and control/i);
+  assert.doesNotMatch(finding.evidence[0].quote ?? "", /^The depth of review/i);
+  assert.match(finding.evidence[0].reason, /containment or control steps/i);
+  assert.match(finding.evidence[0].reason, /assessment of the nature and scope/i);
+});
+
+test("classifier recovers a line-wrapped retention sentence without merging unrelated sentences", async () => {
+  const preservationRequirement = {
+    ...requirement,
+    id: "incident_evidence_log_preservation",
+    title: "Incident evidence and log preservation",
+    coverageElements: [
+      {
+        id: "incident_materials",
+        label: "Preserves incident logs or evidence",
+        requiredForCovered: true,
+        signals: ["preserve logs"],
+      },
+      {
+        id: "evidence_integrity",
+        label: "Preserves evidence integrity",
+        requiredForCovered: true,
+        signals: ["chain of custody"],
+      },
+    ],
+    requiredElementsForCovered: ["incident_materials", "evidence_integrity"],
+  };
+  const unrelated = "The ticket remains available under the standard service-management retention schedule.";
+  const retained = "Security-console exports used during the\nresponse are retained for at least 90 days unless ordinary platform limits provide a longer period.";
+  const content = `${unrelated}\n${retained}`;
+  const { postProcessOpenAiClassification } = await loadTsModule("lib/requirementEvidenceClassifier.ts");
+  const classification = postProcessOpenAiClassification({
+    relationship: "partially_supports",
+    confidence: "medium",
+    requirement_supported: false,
+    control_absent_or_out_of_scope: false,
+    covered_elements: ["incident_materials"],
+    missing_elements: [],
+    vague_elements: [],
+    reason: "The cited text retains security-console exports.",
+    supporting_quote:
+      "Security-console exports used during the response are retained for at least 90 days unless ordinary platform limits provide a longer period.",
+  }, {
+    requirement: preservationRequirement,
+    evaluationGuidance: "Test guidance.",
+    chunkContent: content,
+    chunkMetadata: {
+      filename: "Incident Record Procedure.pdf",
+      sectionPath: "Log collection",
+      pageStart: 4,
+      pageEnd: 4,
+      chunkIndex: 3,
+      sourceType: "client_procedure",
+      evidenceRole: "organization_evidence",
+      evidenceReason: "substantive requirement or procedure",
+    },
+  });
+
+  assert.equal(classification.relationship, "partially_supports");
+  assert.equal(classification.supporting_quote, retained);
+  assert.doesNotMatch(classification.supporting_quote ?? "", /ticket remains available/i);
+
+  const finding = await productionPathFinding(preservationRequirement, [
+    chunk({ content_preview: content }),
+  ], [classification]);
+  assert.equal(finding.status, "partial");
+  assert.equal(finding.evidence[0].quote, retained);
 });
 
 test("production path omits truncated recovery follow-on sentences", async () => {
