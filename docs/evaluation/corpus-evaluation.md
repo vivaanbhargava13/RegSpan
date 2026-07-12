@@ -85,6 +85,13 @@ Expected status, concept, and forbidden-phrase assertions are scored;
 forbidden matches fail the run and `--min-score` controls the expected-status
 threshold.
 
+Each manifest case declares `sourceType` as `client_policy`,
+`client_procedure`, or `client_standard`. The evaluator carries that explicit
+classification through the normal document upload notes, and verifies the
+stored chunk metadata before Analysis. Non-adversarial fixtures must persist as
+`organization_evidence`; a classification mismatch fails the case before it
+can produce a misleading Analysis result.
+
 When a processing job fails, the reports label it `failed` and include its
 safe stored processing step and error message. Reports never include document
 text, excerpts, request headers, or secrets.

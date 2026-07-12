@@ -15,6 +15,7 @@ import {
   assertFreshEvaluationWorkspace,
   CorpusManifestError,
   createOneShotEvaluationState,
+  corpusChunkClassificationViolations,
   newEvaluationWorkspaceValues,
   evidenceIntegrityViolations,
   pollForTerminal,
@@ -40,6 +41,7 @@ function manifestCase(id = "case-one") {
     id,
     filename: `${id}.pdf`,
     tier: "partial",
+    sourceType: "client_procedure",
     include: { isolated: true, combined: true },
     expectedStatuses: { safeguards_customer_information: "partial" },
     acceptableAlternateStatuses: { safeguards_customer_information: ["covered"] },
@@ -59,6 +61,25 @@ test("corpus manifest validates the committed 12-case tiered structure", async (
     "strong",
     "adversarial",
   ]));
+  assert.deepEqual(new Set(validated.cases.map((entry) => entry.sourceType)), new Set([
+    "client_policy",
+    "client_procedure",
+    "client_standard",
+  ]));
+  const notification = validated.cases.find((entry) => entry.id === "weak-notification-gap");
+  assert.deepEqual(notification.expectedStatuses, {
+    customer_notification_unauthorized_access: ["missing"],
+  });
+  const score = scoreCaseFindings({
+    caseDefinition: notification,
+    findings: [{
+      id: "notification-finding",
+      requirement_id: "customer_notification_unauthorized_access",
+      status: "missing",
+    }],
+    evidenceRows: [],
+  });
+  assert.equal(score.statusResults[0].matched, true);
 });
 
 test("corpus manifest rejects unsafe filenames and malformed status definitions", () => {
@@ -81,6 +102,36 @@ test("corpus manifest rejects unsafe filenames and malformed status definitions"
     }),
     CorpusManifestError,
   );
+  assert.throws(
+    () => validateCorpusManifest({
+      ...valid,
+      cases: [{ ...valid.cases[0], sourceType: "unknown" }, ...valid.cases.slice(1)],
+    }),
+    CorpusManifestError,
+  );
+  assert.throws(
+    () => validateCorpusManifest({
+      ...valid,
+      cases: [{
+        ...valid.cases[0],
+        expectedStatuses: { customer_notification_trigger_timing: "missing" },
+      }, ...valid.cases.slice(1)],
+    }),
+    CorpusManifestError,
+  );
+});
+
+test("corpus pre-Analysis classification requires declared organization evidence", () => {
+  assert.deepEqual(corpusChunkClassificationViolations({
+    sourceType: "client_standard",
+    requireOrganizationEvidence: true,
+    chunks: [{ metadata: { source_type: "client_standard", evidence_role: "organization_evidence" } }],
+  }), []);
+  assert.deepEqual(corpusChunkClassificationViolations({
+    sourceType: "client_policy",
+    requireOrganizationEvidence: true,
+    chunks: [{ metadata: { source_type: "unknown", evidence_role: "supporting_context" } }],
+  }), ["source_type_mismatch", "evidence_role_not_organization_evidence"]);
 });
 
 test("terminal polling completes and times out safely", async () => {
@@ -516,6 +567,7 @@ test("corpus runner is one-shot and contains no resume, adoption, or cleanup pat
   ]);
   assert.match(runner, /writeJsonAtomically/);
   assert.match(runner, /uploadCorpusDocument/);
+  assert.match(runner, /sourceType: definition\.sourceType/);
   assert.match(runner, /runWorkspaceAnalysis/);
   assert.match(runner, /--allow-external-ai/);
   assert.match(runner, /assertExternalAiProcessingServerAvailable/);
@@ -533,6 +585,8 @@ test("corpus runner is one-shot and contains no resume, adoption, or cleanup pat
   assert.match(evaluator, /evaluationAnalysisRateLimitForContext/);
   assert.match(evaluator, /assertExactAnalysisSnapshot/);
   assert.match(evaluator, /createFreshEvaluationWorkspace/);
+  assert.match(evaluator, /Source type: \$\{sourceType\.replace/);
+  assert.match(evaluator, /assertCorpusDocumentClassification/);
   assert.match(evaluator, /\.in\("status", \["queued", "running", "completed"\]\)/);
   assert.match(evaluatorCore, /external_ai_processing_enabled: true/);
   assert.doesNotMatch(evaluator, /\.update\(\{\s*external_ai_processing_enabled/);

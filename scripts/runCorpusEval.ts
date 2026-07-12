@@ -7,6 +7,7 @@ import { RateLimitError } from "@/lib/rateLimit";
 import { getServerSupabaseAdminClient } from "@/lib/supabase/server";
 import {
   CorpusEvaluationError,
+  assertCorpusDocumentClassification,
   createFreshEvaluationWorkspace,
   loadEvaluationRunData,
   recoverWorkspaceAnalysis,
@@ -56,6 +57,7 @@ type CorpusCase = {
   id: string;
   filename: string;
   tier: string;
+  sourceType: "client_policy" | "client_procedure" | "client_standard";
   include: { isolated: boolean; combined: boolean };
   expectedStatuses: Record<string, string[]>;
   acceptableAlternateStatuses: Record<string, string[]>;
@@ -313,6 +315,7 @@ async function processCase({
     supabase: getServerSupabaseAdminClient(),
     context,
     filename: definition.filename,
+    sourceType: definition.sourceType,
     bytes,
     correlationId: crypto.randomUUID(),
   });
@@ -341,6 +344,13 @@ async function processCase({
   if (job.status !== "Processed") {
     throw new CorpusEvaluationError("Document processing failed.");
   }
+  await assertCorpusDocumentClassification({
+    supabase: getServerSupabaseAdminClient(),
+    context,
+    documentId: uploaded.documentId,
+    sourceType: definition.sourceType,
+    requireOrganizationEvidence: definition.tier !== "adversarial",
+  });
 }
 
 async function analyzeAndScore({

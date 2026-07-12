@@ -6,6 +6,24 @@ const VALID_STATUSES = new Set([
   "conflicting",
   "needs_review",
 ]);
+const VALID_CORPUS_SOURCE_TYPES = new Set([
+  "client_policy",
+  "client_procedure",
+  "client_standard",
+]);
+const CANONICAL_REQUIREMENT_IDS = new Set([
+  "written_incident_response_program",
+  "customer_notification_unauthorized_access",
+  "incident_assessment_containment_control",
+  "safeguards_customer_information",
+  "written_compliance_records",
+  "incident_evidence_log_preservation",
+  "response_recovery_remediation_validation",
+  "customer_notification_content",
+  "service_provider_incident_oversight_notice",
+  "disposal_consumer_customer_information",
+  "regulator_law_enforcement_notification_coordination",
+]);
 const CLIENT_EVIDENCE_SOURCE_TYPES = new Set([
   "unknown",
   "client_policy",
@@ -36,7 +54,9 @@ function statusMap(value, label, arrayValues = false) {
 
   const normalized = {};
   for (const [requirementId, rawStatus] of Object.entries(value)) {
-    if (!requirementId.trim()) throw new CorpusManifestError(`${label} has an empty requirement id.`);
+    if (!CANONICAL_REQUIREMENT_IDS.has(requirementId)) {
+      throw new CorpusManifestError(`${label}.${requirementId} is not a canonical requirement id.`);
+    }
     const statuses = arrayValues ? stringArray(rawStatus, `${label}.${requirementId}`) : [rawStatus];
     normalized[requirementId] = statuses.map((status) => {
       const value = normalizedStatus(status);
@@ -78,6 +98,9 @@ export function validateCorpusManifest(manifest) {
     if (!VALID_TIERS.has(entry.tier)) {
       throw new CorpusManifestError(`Case ${entry.id} tier is invalid.`);
     }
+    if (!VALID_CORPUS_SOURCE_TYPES.has(entry.sourceType)) {
+      throw new CorpusManifestError(`Case ${entry.id} sourceType is invalid.`);
+    }
 
     const include = entry.include ?? { isolated: true, combined: true };
     if (!include || typeof include !== "object" || (!include.isolated && !include.combined)) {
@@ -88,6 +111,7 @@ export function validateCorpusManifest(manifest) {
       id: entry.id,
       filename: entry.filename,
       tier: entry.tier,
+      sourceType: entry.sourceType,
       include: { isolated: include.isolated !== false, combined: include.combined !== false },
       expectedStatuses: statusMap(entry.expectedStatuses ?? {}, `cases.${entry.id}.expectedStatuses`),
       acceptableAlternateStatuses: statusMap(
@@ -111,6 +135,19 @@ export function validateCorpusManifest(manifest) {
   });
 
   return { id: manifest.id, version: manifest.version, cases };
+}
+
+export function corpusChunkClassificationViolations({ chunks, sourceType, requireOrganizationEvidence }) {
+  const violations = [];
+  if (!Array.isArray(chunks) || chunks.length === 0) violations.push("missing_document_chunks");
+  for (const chunk of chunks ?? []) {
+    const metadata = chunk?.metadata ?? {};
+    if (metadata.source_type !== sourceType) violations.push("source_type_mismatch");
+    if (requireOrganizationEvidence && metadata.evidence_role !== "organization_evidence") {
+      violations.push("evidence_role_not_organization_evidence");
+    }
+  }
+  return [...new Set(violations)];
 }
 
 export function assertCorpusEvaluationSafety({

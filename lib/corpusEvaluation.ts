@@ -7,6 +7,7 @@ import { checkRateLimit, type RateLimitCategory } from "@/lib/rateLimit";
 import {
   CorpusEvaluationTimeoutError,
   assertFreshEvaluationWorkspace,
+  corpusChunkClassificationViolations,
   evaluationWorkspaceName,
   evaluationAnalysisRateLimitCategory,
   newEvaluationWorkspaceValues,
@@ -180,12 +181,14 @@ export async function uploadCorpusDocument({
   supabase,
   context,
   filename,
+  sourceType,
   bytes,
   correlationId,
 }: {
   supabase: SupabaseClient;
   context: EvaluationWorkspaceContext;
   filename: string;
+  sourceType: "client_policy" | "client_procedure" | "client_standard";
   bytes: Uint8Array;
   correlationId: string;
 }) {
@@ -223,8 +226,46 @@ export async function uploadCorpusDocument({
     workspaceId: context.workspaceId,
     file,
     documentType: "Information Security",
-    notes: `Automated corpus evaluation run ${context.runId}.`,
+    notes: `Automated corpus evaluation run ${context.runId}. Source type: ${sourceType.replace("_", " ")}.`,
   });
+}
+
+export async function assertCorpusDocumentClassification({
+  supabase,
+  context,
+  documentId,
+  sourceType,
+  requireOrganizationEvidence,
+}: {
+  supabase: SupabaseClient;
+  context: EvaluationWorkspaceContext;
+  documentId: string;
+  sourceType: "client_policy" | "client_procedure" | "client_standard";
+  requireOrganizationEvidence: boolean;
+}) {
+  await verifyEvaluationWorkspace(supabase, context);
+  const { data: chunks, error } = await supabase
+    .from("document_chunks")
+    .select("metadata")
+    .eq("workspace_id", context.workspaceId)
+    .eq("document_id", documentId);
+  if (error) {
+    throw new CorpusEvaluationError(
+      "Corpus document classification could not be verified.",
+      "corpus_source_classification_lookup_failed",
+    );
+  }
+  const violations = corpusChunkClassificationViolations({
+    chunks: chunks ?? [],
+    sourceType,
+    requireOrganizationEvidence,
+  });
+  if (violations.length > 0) {
+    throw new CorpusEvaluationError(
+      "Corpus document source classification is invalid.",
+      "corpus_source_classification_invalid",
+    );
+  }
 }
 
 export async function waitForProcessingJob({

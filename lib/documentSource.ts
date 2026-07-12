@@ -1,6 +1,7 @@
 export type DocumentSourceType =
   | "client_policy"
   | "client_procedure"
+  | "client_standard"
   | "vendor_contract"
   | "regulatory_guidance"
   | "control_framework"
@@ -80,6 +81,11 @@ const explicitSourceTypeSignals: Array<[DocumentSourceType, RegExp[]]> = [
     /\bdocument\s+class\s+client\s+procedure\b/,
     /\bsource\s*type\s*client\s*procedure\b/,
     /\bsource\s*type\s*organization\s*procedure\b/,
+  ]],
+  ["client_standard", [
+    /\bdocument\s+class\s+client\s+standard\b/,
+    /\bsource\s*type\s*client\s*standard\b/,
+    /\bsource\s*type\s*organization\s*standard\b/,
   ]],
   ["vendor_contract", [
     /\bdocument\s+class\s+vendor\s+contract\b/,
@@ -248,6 +254,7 @@ export function evidenceRoleForSourceType(sourceType: DocumentSourceType): Evide
   if (
     sourceType === "client_policy"
     || sourceType === "client_procedure"
+    || sourceType === "client_standard"
     || sourceType === "vendor_contract"
   ) {
     return "organization_evidence";
