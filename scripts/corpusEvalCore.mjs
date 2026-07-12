@@ -69,7 +69,28 @@ function statusMap(value, label, arrayValues = false) {
   return normalized;
 }
 
-export function validateCorpusManifest(manifest) {
+function expectedEvidenceElementMap(value, label, canonicalRequirementElements) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new CorpusManifestError(`${label} must be an object.`);
+  }
+
+  const normalized = {};
+  for (const [requirementId, elements] of Object.entries(value)) {
+    if (!CANONICAL_REQUIREMENT_IDS.has(requirementId)) {
+      throw new CorpusManifestError(`${label}.${requirementId} is not a canonical requirement id.`);
+    }
+    const elementIds = stringArray(elements, `${label}.${requirementId}`);
+    const knownElements = canonicalRequirementElements?.[requirementId];
+    if (canonicalRequirementElements && (!Array.isArray(knownElements)
+      || elementIds.some((elementId) => !knownElements.includes(elementId)))) {
+      throw new CorpusManifestError(`${label}.${requirementId} contains an unknown canonical element id.`);
+    }
+    normalized[requirementId] = elementIds;
+  }
+  return normalized;
+}
+
+export function validateCorpusManifest(manifest, { canonicalRequirementElements } = {}) {
   if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
     throw new CorpusManifestError("Corpus manifest must be an object.");
   }
@@ -131,6 +152,11 @@ export function validateCorpusManifest(manifest) {
           stringArray(concepts, `cases.${entry.id}.expectedEvidenceConcepts.${requirementId}`),
         ],
       )),
+      expectedEvidenceElements: expectedEvidenceElementMap(
+        entry.expectedEvidenceElements ?? {},
+        `cases.${entry.id}.expectedEvidenceElements`,
+        canonicalRequirementElements,
+      ),
     };
   });
 
@@ -364,19 +390,29 @@ const POSITIVE_EVIDENCE_RELATIONSHIPS = new Set([
   "partially_supports",
 ]);
 
-function positiveEvidenceTextForFinding(finding, evidenceRows) {
+function positiveEvidenceForFinding(finding, evidenceRows) {
   return evidenceRows
     .filter((row) => row.finding_id === finding.id)
-    .filter((row) => POSITIVE_EVIDENCE_RELATIONSHIPS.has(String(row.relationship ?? "").trim()))
+    .filter((row) => POSITIVE_EVIDENCE_RELATIONSHIPS.has(String(row.relationship ?? "").trim()));
+}
+
+function positiveEvidenceTextForFinding(finding, evidenceRows) {
+  return positiveEvidenceForFinding(finding, evidenceRows)
     .map((row) => String(row.quote ?? row.evidence_quote ?? row.source_quote ?? ""))
     .join("\n")
     .toLowerCase();
 }
 
-export function scoreCaseFindings({ caseDefinition, findings, evidenceRows }) {
+export function scoreCaseFindings({
+  caseDefinition,
+  findings,
+  evidenceRows,
+  resolveFinalQuoteElementIds = () => [],
+}) {
   const findingsByRequirement = new Map(findings.map((finding) => [finding.requirement_id, finding]));
   const statusResults = [];
   const conceptResults = [];
+  const elementResults = [];
   const forbiddenResults = [];
 
   for (const [requirementId, statuses] of Object.entries(caseDefinition.expectedStatuses)) {
@@ -399,6 +435,28 @@ export function scoreCaseFindings({ caseDefinition, findings, evidenceRows }) {
     conceptResults.push({ requirementId, concepts, missingConcepts, matched: missingConcepts.length === 0 });
   }
 
+  for (const [requirementId, elements] of Object.entries(caseDefinition.expectedEvidenceElements ?? {})) {
+    const finding = findingsByRequirement.get(requirementId);
+    const matchedElements = new Set();
+    if (finding) {
+      for (const evidence of positiveEvidenceForFinding(finding, evidenceRows)) {
+        const quote = String(evidence.quote ?? evidence.evidence_quote ?? evidence.source_quote ?? "").trim();
+        if (!quote) continue;
+        for (const elementId of resolveFinalQuoteElementIds({ requirementId, finding, evidence, quote }) ?? []) {
+          if (elements.includes(elementId)) matchedElements.add(elementId);
+        }
+      }
+    }
+    const missingElements = elements.filter((elementId) => !matchedElements.has(elementId));
+    elementResults.push({
+      requirementId,
+      elements,
+      matchedElements: [...matchedElements],
+      missingElements,
+      matched: missingElements.length === 0,
+    });
+  }
+
   for (const [requirementId, phrases] of Object.entries(caseDefinition.forbiddenMatches)) {
     const finding = findingsByRequirement.get(requirementId);
     const text = finding ? positiveEvidenceTextForFinding(finding, evidenceRows) : "";
@@ -418,6 +476,7 @@ export function scoreCaseFindings({ caseDefinition, findings, evidenceRows }) {
   return {
     statusResults,
     conceptResults,
+    elementResults,
     forbiddenResults,
     unexpectedCovered,
     matchedStatuses: statusResults.filter((result) => result.matched).length,

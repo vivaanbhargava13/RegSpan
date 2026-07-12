@@ -659,14 +659,22 @@ function elementSignalMatchesText(requirement: RegSpRequirement, elementId: stri
   return elementSignalMatches(requirement, elementId, normalize(text));
 }
 
-function baseSupportedElementIdsForText(requirement: RegSpRequirement, text: string) {
+function baseSupportedElementIdsForText(
+  requirement: RegSpRequirement,
+  text: string,
+  includeOptionalElements = false,
+) {
   return (requirement.coverageElements ?? [])
-    .filter((element) => requirement.requiredElementsForCovered.includes(element.id))
+    .filter((element) => includeOptionalElements || requirement.requiredElementsForCovered.includes(element.id))
     .filter((element) => elementSignalMatchesText(requirement, element.id, text))
     .map((element) => element.id);
 }
 
-function supportedElementIdsForQuote(requirement: RegSpRequirement, quote: string) {
+function supportedElementIdsForQuote(
+  requirement: RegSpRequirement,
+  quote: string,
+  includeOptionalElements = false,
+) {
   const substantiveText = substantiveQuoteText(quote);
   if (isScaffoldingQuote(substantiveText)) return [];
 
@@ -675,11 +683,18 @@ function supportedElementIdsForQuote(requirement: RegSpRequirement, quote: strin
     return uniqueStrings(
       sentenceTexts
         .filter((sentence) => !hasAbsenceLanguage(sentence) && !isScaffoldingQuote(sentence))
-        .flatMap((sentence) => baseSupportedElementIdsForText(requirement, sentence)),
+        .flatMap((sentence) => baseSupportedElementIdsForText(requirement, sentence, includeOptionalElements)),
     );
   }
 
-  return baseSupportedElementIdsForText(requirement, substantiveText);
+  return baseSupportedElementIdsForText(requirement, substantiveText, includeOptionalElements);
+}
+
+export function canonicalElementIdsForFinalPositiveQuote(
+  requirement: RegSpRequirement,
+  quote: string,
+) {
+  return supportedElementIdsForQuote(requirement, quote, true);
 }
 
 function isWeakNegativeSignal(signal: string) {

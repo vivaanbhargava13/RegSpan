@@ -48,6 +48,7 @@ function manifestCase(id = "case-one") {
     acceptableAlternateStatuses: { safeguards_customer_information: ["covered"] },
     forbiddenMatches: { safeguards_customer_information: ["current page focus:"] },
     expectedEvidenceConcepts: { safeguards_customer_information: ["encryption"] },
+    expectedEvidenceElements: {},
   };
 }
 
@@ -119,6 +120,20 @@ test("corpus manifest rejects unsafe filenames and malformed status definitions"
       }, ...valid.cases.slice(1)],
     }),
     CorpusManifestError,
+  );
+  assert.throws(
+    () => validateCorpusManifest({
+      ...valid,
+      cases: [{
+        ...valid.cases[0],
+        expectedEvidenceElements: { safeguards_customer_information: ["not_a_real_element"] },
+      }, ...valid.cases.slice(1)],
+    }, {
+      canonicalRequirementElements: {
+        safeguards_customer_information: ["access_controls", "encryption"],
+      },
+    }),
+    /unknown canonical element id/,
   );
 });
 
@@ -426,11 +441,81 @@ test("case scoring uses only positive evidence for concepts and forbidden phrase
   assert.equal(positive.forbiddenResults[0].matched, false);
 });
 
+test("case scoring evaluates canonical elements from final positive evidence quotes only", () => {
+  const definition = {
+    expectedStatuses: {},
+    acceptableAlternateStatuses: {},
+    expectedEvidenceConcepts: {},
+    expectedEvidenceElements: { incident_assessment_containment_control: ["containment_control"] },
+    forbiddenMatches: {},
+  };
+  const finding = {
+    id: "finding-containment",
+    requirement_id: "incident_assessment_containment_control",
+    status: "partial",
+  };
+  const resolverCalls = [];
+  const resolver = ({ quote }) => {
+    resolverCalls.push(quote);
+    return /selects containment actions/i.test(quote) ? ["containment_control"] : [];
+  };
+
+  const positive = scoreCaseFindings({
+    caseDefinition: definition,
+    findings: [finding],
+    evidenceRows: [{
+      finding_id: finding.id,
+      relationship: "supports",
+      quote: "The technical lead selects containment actions intended to limit ongoing harm.",
+      reason: "The broader chunk also discusses containment.",
+      content_preview: "The broader chunk says containment even when the quote does not.",
+    }],
+    resolveFinalQuoteElementIds: resolver,
+  });
+  assert.deepEqual(positive.elementResults[0], {
+    requirementId: "incident_assessment_containment_control",
+    elements: ["containment_control"],
+    matchedElements: ["containment_control"],
+    missingElements: [],
+    matched: true,
+  });
+  assert.deepEqual(resolverCalls, ["The technical lead selects containment actions intended to limit ongoing harm."]);
+
+  const negative = scoreCaseFindings({
+    caseDefinition: definition,
+    findings: [finding],
+    evidenceRows: [{
+      finding_id: finding.id,
+      relationship: "negative_evidence",
+      quote: "The technical lead selects containment actions intended to limit ongoing harm.",
+    }],
+    resolveFinalQuoteElementIds: resolver,
+  });
+  assert.equal(negative.elementResults[0].matched, false);
+  assert.deepEqual(negative.elementResults[0].missingElements, ["containment_control"]);
+
+  const reasonOnly = scoreCaseFindings({
+    caseDefinition: definition,
+    findings: [finding],
+    evidenceRows: [{
+      finding_id: finding.id,
+      relationship: "supports",
+      quote: "The review was completed.",
+      reason: "The broader chunk proves containment.",
+      content_preview: "Containment actions are described elsewhere in the chunk.",
+    }],
+    resolveFinalQuoteElementIds: resolver,
+  });
+  assert.equal(reasonOnly.elementResults[0].matched, false);
+  assert.deepEqual(reasonOnly.elementResults[0].missingElements, ["containment_control"]);
+});
+
 test("case scoring excludes expected and alternate positive statuses from unexpectedCovered", () => {
   const definition = {
     expectedStatuses: { written_incident_response_program: ["missing"] },
     acceptableAlternateStatuses: { written_incident_response_program: ["partial"] },
     expectedEvidenceConcepts: {},
+    expectedEvidenceElements: {},
     forbiddenMatches: {},
   };
 
@@ -460,6 +545,14 @@ test("audited manifest cases encode their corrected status and concept expectati
 
   const safeguards = byId.get("strong-safeguards");
   assert.deepEqual(safeguards.expectedEvidenceConcepts.safeguards_customer_information, ["encryption"]);
+
+  const assessment = byId.get("partial-incident-assessment");
+  assert.deepEqual(assessment.expectedEvidenceConcepts, {});
+  assert.deepEqual(assessment.expectedEvidenceElements.incident_assessment_containment_control, ["containment_control"]);
+
+  const recovery = byId.get("partial-recovery-validation");
+  assert.deepEqual(recovery.expectedEvidenceConcepts, {});
+  assert.deepEqual(recovery.expectedEvidenceElements.response_recovery_remediation_validation, ["recovery_steps"]);
 });
 
 test("evaluator evidence compatibility accepts quote and evidence_quote without source_quote", async () => {

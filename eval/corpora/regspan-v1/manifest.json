@@ -43,7 +43,8 @@
       "expectedStatuses": { "incident_assessment_containment_control": "partial" },
       "acceptableAlternateStatuses": { "incident_assessment_containment_control": ["covered"] },
       "forbiddenMatches": { "incident_assessment_containment_control": ["Current page focus:"] },
-      "expectedEvidenceConcepts": { "incident_assessment_containment_control": ["containment"] },
+      "expectedEvidenceConcepts": {},
+      "expectedEvidenceElements": { "incident_assessment_containment_control": ["containment_control"] },
       "include": { "isolated": true, "combined": true }
     },
     {
@@ -76,7 +77,8 @@
       "expectedStatuses": { "response_recovery_remediation_validation": "partial" },
       "acceptableAlternateStatuses": { "response_recovery_remediation_validation": ["covered"] },
       "forbiddenMatches": { "response_recovery_remediation_validation": ["vendor incident questionnaire"] },
-      "expectedEvidenceConcepts": { "response_recovery_remediation_validation": ["recovery"] },
+      "expectedEvidenceConcepts": {},
+      "expectedEvidenceElements": { "response_recovery_remediation_validation": ["recovery_steps"] },
       "include": { "isolated": true, "combined": true }
     },
     {

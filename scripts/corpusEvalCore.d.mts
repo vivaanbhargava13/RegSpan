@@ -2,7 +2,9 @@ export class CorpusManifestError extends Error {}
 export class CorpusEvaluationTimeoutError extends Error {}
 export class CorpusEvaluationRateLimitWaitExceededError extends Error {}
 export class CorpusEvaluationSafetyError extends Error {}
-export function validateCorpusManifest(manifest: unknown): {
+export function validateCorpusManifest(manifest: unknown, options?: {
+  canonicalRequirementElements?: Record<string, string[]>;
+}): {
   id: string;
   version: 1;
   cases: Array<Record<string, unknown>>;
@@ -22,7 +24,14 @@ export function retryRateLimitedOperation<T>(input: {
   sleep?: (milliseconds: number) => Promise<void>;
   onWait?: (details: { rateLimitWaitCount: number; rateLimitWaitMs: number; waitMs: number }) => Promise<void>;
 }): Promise<{ value: T; rateLimitWaitCount: number; rateLimitWaitMs: number }>;
-export function scoreCaseFindings(input: Record<string, unknown>): Record<string, unknown>;
+export function scoreCaseFindings(input: Record<string, unknown> & {
+  resolveFinalQuoteElementIds?: (input: {
+    requirementId: string;
+    finding: Record<string, unknown>;
+    evidence: Record<string, unknown>;
+    quote: string;
+  }) => string[];
+}): Record<string, unknown>;
 export function evidenceIntegrityViolations(input: Record<string, unknown>): string[];
 export function assertCorpusEvaluationSafety(input: Record<string, unknown>): {
   actorUserId: string;

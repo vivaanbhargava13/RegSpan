@@ -10,6 +10,12 @@ fixture metadata, passed through the normal upload path so extracted chunks are
 classified as organization evidence without changing how ordinary uploads are
 handled.
 
+Cases may declare `expectedEvidenceElements` for canonical RegSpan requirement
+element IDs. The evaluator checks those IDs only against final persisted
+positive evidence quotes, using the same requirement-element signals as
+production Analysis. Use `expectedEvidenceConcepts` when a fixture deliberately
+requires literal wording.
+
 Run isolated cases after setting a local evaluation actor and explicit workspace
 prefix:
 

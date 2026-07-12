@@ -3,7 +3,11 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { assertExternalAiProcessingServerAvailable } from "@/lib/aiProcessingPolicy";
+import { canonicalElementIdsForFinalPositiveQuote } from "@/lib/findingsAggregation";
 import { RateLimitError } from "@/lib/rateLimit";
+import { canonicalControlKeyForRequirement } from "@/lib/regulatoryControlFramework";
+import { loadRegSpRequirementsForFindings } from "@/lib/regulatoryControls";
+import type { RegSpRequirement } from "@/lib/regSpRequirements";
 import { getServerSupabaseAdminClient } from "@/lib/supabase/server";
 import {
   CorpusEvaluationError,
@@ -63,11 +67,18 @@ type CorpusCase = {
   acceptableAlternateStatuses: Record<string, string[]>;
   forbiddenMatches: Record<string, string[]>;
   expectedEvidenceConcepts: Record<string, string[]>;
+  expectedEvidenceElements: Record<string, string[]>;
 };
 
 type CaseScore = {
   statusResults: Array<{ actual: string | null; matched: boolean }>;
   conceptResults: Array<{ matched: boolean }>;
+  elementResults: Array<{
+    elements: string[];
+    matchedElements: string[];
+    missingElements: string[];
+    matched: boolean;
+  }>;
   forbiddenResults: Array<{ matched: boolean }>;
   unexpectedCovered: string[];
   matchedStatuses: number;
@@ -203,8 +214,18 @@ function assertRunnerSafety(args: RunnerArgs) {
   return assertCorpusEvaluationSafety({ environment: process.env, actorUserId, workspacePrefix });
 }
 
-async function loadManifest(corpusDir: string) {
-  return validateCorpusManifest(JSON.parse(await readFile(join(corpusDir, "manifest.json"), "utf8"))) as unknown as {
+function canonicalRequirementElements(requirements: RegSpRequirement[]) {
+  return Object.fromEntries(requirements.map((requirement) => [
+    canonicalControlKeyForRequirement(requirement),
+    requirement.coverageElements.map((element) => element.id),
+  ]));
+}
+
+async function loadManifest(corpusDir: string, requirements: RegSpRequirement[]) {
+  return validateCorpusManifest(
+    JSON.parse(await readFile(join(corpusDir, "manifest.json"), "utf8")),
+    { canonicalRequirementElements: canonicalRequirementElements(requirements) },
+  ) as unknown as {
     id: string; version: 1; cases: CorpusCase[];
   };
 }
@@ -242,35 +263,49 @@ function summarize(state: RunState) {
   const expected = scored.reduce((total, entry) => total + (entry.score?.expectedStatuses ?? 0), 0);
   const matched = scored.reduce((total, entry) => total + (entry.score?.matchedStatuses ?? 0), 0);
   const concepts = scored.flatMap((entry) => entry.score?.conceptResults ?? []);
+  const elements = scored.flatMap((entry) => entry.score?.elementResults ?? []);
   return {
     expected,
     matched,
     score: expected === 0 ? 1 : matched / expected,
     conceptsExpected: concepts.length,
     conceptsMatched: concepts.filter((entry) => entry.matched).length,
+    elementsExpected: elements.length,
+    elementsMatched: elements.filter((entry) => entry.matched).length,
     unexpectedCovered: scored.flatMap((entry) => entry.score?.unexpectedCovered ?? []).length,
   };
 }
 
 function markdown(state: RunState) {
   const summary = summarize(state);
-  const rows = Object.values(state.cases).map((entry) =>
-    `| ${entry.caseId} | ${entry.tier} | ${entry.processingStatus ?? "not started"} | ${entry.processingStep ?? ""} | ${entry.processingError ?? ""} | ${entry.analysisStatus ?? "not started"} | ${entry.rateLimitWaitCount ?? 0} | ${entry.rateLimitWaitMs ?? 0} | ${entry.score ? `${entry.score.matchedStatuses}/${entry.score.expectedStatuses}` : "-"} | ${entry.diagnosticCode ?? ""} | ${entry.error ?? ""} |`,
-  );
+  const rows = Object.values(state.cases).map((entry) => {
+    const elementResults = entry.score?.elementResults ?? [];
+    const expectedElements = elementResults.flatMap((result) => result.elements).join(", ");
+    const matchedElements = elementResults.flatMap((result) => result.matchedElements).join(", ");
+    const missingElements = elementResults.flatMap((result) => result.missingElements).join(", ");
+    const elementPass = elementResults.length === 0 ? "-" : elementResults.every((result) => result.matched) ? "pass" : "fail";
+    return `| ${entry.caseId} | ${entry.tier} | ${entry.processingStatus ?? "not started"} | ${entry.processingStep ?? ""} | ${entry.processingError ?? ""} | ${entry.analysisStatus ?? "not started"} | ${entry.rateLimitWaitCount ?? 0} | ${entry.rateLimitWaitMs ?? 0} | ${entry.score ? `${entry.score.matchedStatuses}/${entry.score.expectedStatuses}` : "-"} | ${expectedElements} | ${matchedElements} | ${missingElements} | ${elementPass} | ${entry.diagnosticCode ?? ""} | ${entry.error ?? ""} |`;
+  });
   return `# RegSpan Corpus Evaluation\n\nStatus: ${state.status}\n\nRun ID: ${state.runId}\n\n`
     + `Expected status score: ${(summary.score * 100).toFixed(1)}% (${summary.matched}/${summary.expected})\n\n`
-    + `Evidence concepts: ${summary.conceptsMatched}/${summary.conceptsExpected}; unexpected covered/partial: ${summary.unexpectedCovered}\n\n`
-    + `| Case | Tier | Processing | Step | Processing error | Analysis | Rate-limit waits | Rate-limit wait ms | Status score | Diagnostic code | Error |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n${rows.join("\n")}\n`;
+    + `Evidence concepts: ${summary.conceptsMatched}/${summary.conceptsExpected}; evidence elements: ${summary.elementsMatched}/${summary.elementsExpected}; unexpected covered/partial: ${summary.unexpectedCovered}\n\n`
+    + `| Case | Tier | Processing | Step | Processing error | Analysis | Rate-limit waits | Rate-limit wait ms | Status score | Expected elements | Matched elements | Missing elements | Element result | Diagnostic code | Error |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n${rows.join("\n")}\n`;
 }
 
 function csv(state: RunState) {
   const quote = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
-  const rows = ["case_id,tier,workspace_id,document_id,processing_job_id,analysis_run_id,processing_status,processing_step,processing_error,analysis_status,rate_limit_wait_count,rate_limit_wait_ms,status_matches,status_expected,diagnostic_code,error"];
+  const rows = ["case_id,tier,workspace_id,document_id,processing_job_id,analysis_run_id,processing_status,processing_step,processing_error,analysis_status,rate_limit_wait_count,rate_limit_wait_ms,status_matches,status_expected,expected_evidence_elements,matched_evidence_elements,missing_evidence_elements,evidence_elements_passed,diagnostic_code,error"];
   for (const entry of Object.values(state.cases)) {
+    const elementResults = entry.score?.elementResults ?? [];
     rows.push([
       entry.caseId, entry.tier, state.workspaces[entry.workspaceKey]?.id, entry.documentId,
       entry.processingJobId, entry.analysisRunId, entry.processingStatus, entry.processingStep, entry.processingError, entry.analysisStatus, entry.rateLimitWaitCount, entry.rateLimitWaitMs,
-      entry.score?.matchedStatuses, entry.score?.expectedStatuses, entry.diagnosticCode, entry.error,
+      entry.score?.matchedStatuses, entry.score?.expectedStatuses,
+      elementResults.flatMap((result) => result.elements).join("|"),
+      elementResults.flatMap((result) => result.matchedElements).join("|"),
+      elementResults.flatMap((result) => result.missingElements).join("|"),
+      elementResults.length === 0 ? "" : String(elementResults.every((result) => result.matched)),
+      entry.diagnosticCode, entry.error,
     ].map(quote).join(","));
   }
   return `${rows.join("\n")}\n`;
@@ -361,6 +396,7 @@ async function analyzeAndScore({
   pollTimeoutMs,
   waitOnRateLimit,
   maxRateLimitWaitMs,
+  requirementsById,
 }: {
   definitions: CorpusCase[];
   state: RunState;
@@ -369,6 +405,7 @@ async function analyzeAndScore({
   pollTimeoutMs: number;
   waitOnRateLimit: boolean;
   maxRateLimitWaitMs: number;
+  requirementsById: Map<string, RegSpRequirement>;
 }) {
   const entries = definitions.map((definition) => state.cases[definition.id]);
   const documentIds = entries.map((entry) => entry.documentId).filter((id): id is string => Boolean(id));
@@ -441,6 +478,10 @@ async function analyzeAndScore({
       caseDefinition: definition,
       findings: data.findings,
       evidenceRows: data.evidence,
+      resolveFinalQuoteElementIds: ({ requirementId, quote }) => {
+        const requirement = requirementsById.get(requirementId);
+        return requirement ? canonicalElementIdsForFinalPositiveQuote(requirement, quote) : [];
+      },
     }) as unknown as CaseScore;
     entry.completed = true;
   }
@@ -479,7 +520,12 @@ async function main() {
   const { actorUserId, workspacePrefix } = assertRunnerSafety(args);
   assertExternalAiEvaluationSafety(args);
   const corpusDir = resolve(args.corpus);
-  const manifest = await loadManifest(corpusDir);
+  const requirements = await loadRegSpRequirementsForFindings({ supabase: getServerSupabaseAdminClient() });
+  const requirementsById = new Map(requirements.map((requirement) => [
+    canonicalControlKeyForRequirement(requirement),
+    requirement,
+  ]));
+  const manifest = await loadManifest(corpusDir, requirements);
   const selectedCases = manifest.cases.filter((definition) => definition.include[args.mode]);
   if (selectedCases.length === 0) throw new Error(`No corpus cases are enabled for ${args.mode} mode.`);
 
@@ -495,13 +541,13 @@ async function main() {
         activeCaseId = definition.id;
         await processCase({ definition, state, context, corpusDir, outputDir, pollTimeoutMs: args.pollTimeoutMs });
       }
-      await analyzeAndScore({ definitions: selectedCases, state, context, outputDir, pollTimeoutMs: args.pollTimeoutMs, waitOnRateLimit: args.waitOnRateLimit, maxRateLimitWaitMs: args.maxRateLimitWaitMs });
+      await analyzeAndScore({ definitions: selectedCases, state, context, outputDir, pollTimeoutMs: args.pollTimeoutMs, waitOnRateLimit: args.waitOnRateLimit, maxRateLimitWaitMs: args.maxRateLimitWaitMs, requirementsById });
     } else {
       for (const definition of selectedCases) {
         activeCaseId = definition.id;
         const context = await createWorkspace(state, definition.id, outputDir);
         await processCase({ definition, state, context, corpusDir, outputDir, pollTimeoutMs: args.pollTimeoutMs });
-        await analyzeAndScore({ definitions: [definition], state, context, outputDir, pollTimeoutMs: args.pollTimeoutMs, waitOnRateLimit: args.waitOnRateLimit, maxRateLimitWaitMs: args.maxRateLimitWaitMs });
+        await analyzeAndScore({ definitions: [definition], state, context, outputDir, pollTimeoutMs: args.pollTimeoutMs, waitOnRateLimit: args.waitOnRateLimit, maxRateLimitWaitMs: args.maxRateLimitWaitMs, requirementsById });
       }
     }
     const summary = summarize(state);

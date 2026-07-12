@@ -7,6 +7,7 @@ import test from "node:test";
 import ts from "typescript";
 import {
   aggregateFindingForRequirement,
+  canonicalElementIdsForFinalPositiveQuote,
   classifyNegativeEvidenceScope,
 } from "../lib/findingsAggregation.ts";
 import {
@@ -1896,6 +1897,49 @@ test("final curation prefers direct recovery validation over generic restoration
   const restorationOnly = aggregateFindingForRequirement(recoveryRequirement, [generic]);
   assert.equal(restorationOnly.status, "partial");
   assert.equal(restorationOnly.evidence[0].quote, generic.supporting_quote);
+});
+
+test("canonical element matching evaluates only the final positive quote", () => {
+  const assessmentRequirement = {
+    ...requirement,
+    id: "incident_assessment_containment_control",
+    title: "Incident assessment and containment",
+    coverageElements: [
+      { id: "containment_control", label: "Requires containment or control", requiredForCovered: true, signals: ["containment"] },
+    ],
+    requiredElementsForCovered: ["containment_control"],
+  };
+  const recoveryRequirement = {
+    ...requirement,
+    id: "response_recovery_remediation_validation",
+    title: "Response recovery and remediation validation",
+    coverageElements: [
+      { id: "recovery_steps", label: "Defines recovery steps", requiredForCovered: true, signals: ["recovery", "restoration"] },
+    ],
+    requiredElementsForCovered: ["recovery_steps"],
+  };
+
+  assert.deepEqual(
+    canonicalElementIdsForFinalPositiveQuote(
+      assessmentRequirement,
+      "The technical lead selects containment actions intended to limit ongoing harm.",
+    ),
+    ["containment_control"],
+  );
+  assert.deepEqual(
+    canonicalElementIdsForFinalPositiveQuote(
+      recoveryRequirement,
+      "Technical teams follow approved runbooks for restoration from backups.",
+    ),
+    ["recovery_steps"],
+  );
+  assert.deepEqual(
+    canonicalElementIdsForFinalPositiveQuote(
+      assessmentRequirement,
+      "The depth of review depends on the sensitivity of customer information.",
+    ),
+    [],
+  );
 });
 
 test("production path omits truncated recovery follow-on sentences", async () => {

@@ -87,9 +87,16 @@ covered/partial finding without primary evidence, an extra or missing snapshot
 document, non-client/regulatory evidence, or evidence from another case
 workspace. Isolated snapshots must contain exactly one planned case document;
 combined snapshots must exactly match the selected corpus document set.
-Expected status, concept, and forbidden-phrase assertions are scored;
+Expected status, concept, canonical-element, and forbidden-phrase assertions are scored;
 forbidden matches fail the run and `--min-score` controls the expected-status
 threshold.
+
+`expectedEvidenceElements` uses canonical IDs from the active Reg S-P
+requirement definitions. The runner validates IDs before creating workspaces
+and evaluates them only from final persisted `supports` or `partially_supports`
+quotes. It does not use negative evidence, classifier reasons, or broader
+retrieval chunks for an element assertion. `expectedEvidenceConcepts` remains
+available for fixtures that intentionally require literal wording.
 
 Each manifest case declares `sourceType` as `client_policy`,
 `client_procedure`, or `client_standard`. The evaluator carries that explicit
@@ -104,9 +111,9 @@ text, excerpts, request headers, or secrets.
 
 Artifacts are written under ignored `eval-results/corpus-*/`:
 
-- `summary.md`: aggregate and per-case status summary
+- `summary.md`: aggregate and per-case status and element summary
 - `results.json`: run status, safe IDs, timings, and assertion results
-- `results.csv`: compact rows for local comparison
+- `results.csv`: compact rows including expected, matched, and missing element IDs
 
 `results.json` starts with status `incomplete` and is replaced atomically at safe
 lifecycle boundaries. A hard interruption may leave the last safe partial
