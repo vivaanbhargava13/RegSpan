@@ -6,6 +6,7 @@ import { recordSecurityAuditEvent } from "@/lib/securityAudit";
 
 export type RateLimitCategory =
   | "document_upload"
+  | "document_upload_eval"
   | "document_replace"
   | "document_reprocess"
   | "document_bulk_action"
@@ -96,6 +97,11 @@ export function rateLimitConfiguration(
   return {
     document_upload: {
       limit: positiveInteger(environment.REGSPAN_RATE_LIMIT_DOCUMENT_UPLOADS_PER_HOUR, 12),
+      windowMs: HOUR_MS,
+      publicMessage: "Too many requests. Try again later.",
+    },
+    document_upload_eval: {
+      limit: positiveInteger(environment.REGSPAN_RATE_LIMIT_EVAL_DOCUMENT_UPLOADS_PER_HOUR, 50),
       windowMs: HOUR_MS,
       publicMessage: "Too many requests. Try again later.",
     },

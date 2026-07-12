@@ -10,6 +10,7 @@ import {
   corpusChunkClassificationViolations,
   evaluationWorkspaceName,
   evaluationAnalysisRateLimitCategory,
+  evaluationDocumentUploadRateLimitCategory,
   newEvaluationWorkspaceValues,
   pollForTerminal,
   snapshotSetViolations,
@@ -171,6 +172,16 @@ function evaluationAnalysisRateLimitForContext(context: EvaluationWorkspaceConte
   });
 }
 
+function evaluationDocumentUploadRateLimitForContext(context: EvaluationWorkspaceContext): RateLimitCategory {
+  return evaluationDocumentUploadRateLimitCategory({
+    evaluationAuthorized: context.evaluationAnalysisQuotaAuthorized,
+    workspaceName: context.workspaceName,
+    workspacePrefix: context.workspacePrefix,
+    actorOwnsWorkspace: true,
+    environment: process.env,
+  });
+}
+
 function evaluationRequest(correlationId: string) {
   return new Request("http://127.0.0.1/internal/corpus-evaluation", {
     headers: { "x-request-id": correlationId },
@@ -195,7 +206,7 @@ export async function uploadCorpusDocument({
   await verifyEvaluationWorkspace(supabase, context);
   const request = evaluationRequest(correlationId);
   for (const category of [
-    "document_upload",
+    evaluationDocumentUploadRateLimitForContext(context),
     "workspace_document_upload",
     "workspace_processing_request",
   ] as const) {

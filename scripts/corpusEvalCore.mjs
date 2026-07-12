@@ -175,7 +175,7 @@ export function assertCorpusEvaluationExternalAiOptIn(allowExternalAi) {
   }
 }
 
-export function evaluationAnalysisRateLimitCategory({
+function assertEvaluationRateLimitAuthorization({
   evaluationAuthorized,
   workspaceName,
   workspacePrefix,
@@ -193,7 +193,16 @@ export function evaluationAnalysisRateLimitCategory({
   if (environment?.NODE_ENV === "production" && environment.REGSPAN_EVAL_ENABLED !== "true") {
     throw new CorpusEvaluationSafetyError("Corpus evaluation is disabled in production.");
   }
+}
+
+export function evaluationAnalysisRateLimitCategory(input) {
+  assertEvaluationRateLimitAuthorization(input);
   return "findings_generate_eval";
+}
+
+export function evaluationDocumentUploadRateLimitCategory(input) {
+  assertEvaluationRateLimitAuthorization(input);
+  return "document_upload_eval";
 }
 
 function safeProcessingValue(value) {

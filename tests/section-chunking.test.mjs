@@ -17,6 +17,17 @@ function build(pages) {
   return buildDeterministicChunks({ pages, ...identifiers });
 }
 
+test("explicit client standard classification persists as organization evidence", () => {
+  const result = buildDeterministicChunks({
+    pages: [{ pageNumber: 1, text: "1. Standard\n\nCustomer information controls are required." }],
+    ...identifiers,
+    sourceType: "client_standard",
+    evidenceRole: "organization_evidence",
+  });
+  assert.equal(result.chunks[0].metadata.source_type, "client_standard");
+  assert.equal(result.chunks[0].metadata.evidence_role, "organization_evidence");
+});
+
 test("numbered headings create meaningful section paths and hierarchy", () => {
   const result = build([{ pageNumber: 1, text: [
     "1. Incident Response",

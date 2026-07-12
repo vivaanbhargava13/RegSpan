@@ -28,6 +28,7 @@ test("document source model exposes required source types and evidence roles", a
   for (const sourceType of [
     "client_policy",
     "client_procedure",
+    "client_standard",
     "vendor_contract",
     "regulatory_guidance",
     "control_framework",
@@ -167,6 +168,14 @@ test("explicit document text metadata classifies client and vendor documents", a
   assert.equal(inferDocumentSourceType(clientProcedure), "client_procedure");
   assert.equal(inferEvidenceRole(clientProcedure), "organization_evidence");
 
+  const clientStandard = {
+    filename: "Elm_Ridge_Standard.pdf",
+    contentPreview:
+      "Source type: client standard. Evidence role Organization evidence. Required controls are documented.",
+  };
+  assert.equal(inferDocumentSourceType(clientStandard), "client_standard");
+  assert.equal(inferEvidenceRole(clientStandard), "organization_evidence");
+
   const vendorAddendum = {
     filename: "AtlasPay_Third_Party_Security_Incident_Addendum.pdf",
     contentPreview:
@@ -184,8 +193,23 @@ test("client policy, procedure, and vendor contract sources map to organization 
   assert.match(source, /vendorContractSignals/);
   assert.match(source, /sourceType === "client_policy"/);
   assert.match(source, /sourceType === "client_procedure"/);
+  assert.match(source, /sourceType === "client_standard"/);
   assert.match(source, /sourceType === "vendor_contract"/);
   assert.match(source, /return "organization_evidence"/);
+});
+
+test("unknown normal documents remain supporting context", async () => {
+  const {
+    inferDocumentSourceType,
+    inferEvidenceRole,
+  } = await loadTsModule("lib/documentSource.ts");
+  const document = {
+    filename: "uploaded-document.pdf",
+    documentType: "Information Security",
+    notes: "",
+  };
+  assert.equal(inferDocumentSourceType(document), "unknown");
+  assert.equal(inferEvidenceRole(document), "supporting_context");
 });
 
 test("guidance and framework source types map to requirement reference role", async () => {

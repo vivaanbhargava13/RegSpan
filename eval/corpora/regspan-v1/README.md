@@ -5,6 +5,11 @@ evaluation corpus. Place locally generated or approved PDFs in `sources/` for
 hand-authored fixtures or `generated/` for generated fixtures. Generated PDFs
 are ignored by Git; no PDF is included in this repository.
 
+Each case also declares an explicit client `sourceType`. This is evaluator
+fixture metadata, passed through the normal upload path so extracted chunks are
+classified as organization evidence without changing how ordinary uploads are
+handled.
+
 Run isolated cases after setting a local evaluation actor and explicit workspace
 prefix:
 

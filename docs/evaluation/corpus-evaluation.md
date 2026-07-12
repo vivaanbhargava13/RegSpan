@@ -61,6 +61,12 @@ runner's production safeguards pass and only for verified owner-created
 `regspan-eval-` workspaces. It remains rate limited and uses the same durable
 backend as browser traffic.
 
+Corpus uploads similarly use the separate durable `document_upload_eval`
+action, defaulting to 50 uploads per hour and configurable with
+`REGSPAN_RATE_LIMIT_EVAL_DOCUMENT_UPLOADS_PER_HOUR`. It prevents repeated
+evaluation runs from consuming the browser `document_upload` bucket. The
+workspace document-count and byte quotas still apply to every evaluator upload.
+
 The runner requires `--allow-external-ai`. Before it creates a workspace, it
 also verifies that the server-side external AI policy is enabled. When both
 checks pass, only the new run-specific evaluation workspaces are created with

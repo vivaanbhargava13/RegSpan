@@ -258,6 +258,82 @@ test("evaluator Analysis quota is separate from browser Analysis quota and fits 
   });
 });
 
+test("evaluator upload quota is separate, bounded, and leaves workspace quotas active", async () => {
+  const {
+    RATE_LIMITS,
+    RateLimitError,
+    checkRateLimit,
+    rateLimitCounterKeys,
+    resetRateLimitsForTests,
+  } = await importServerUtility("lib/rateLimit.ts");
+  resetRateLimitsForTests();
+  assert.equal(RATE_LIMITS.document_upload_eval.limit, 50);
+  const request = new Request("https://app.example.test/api/documents", {
+    headers: { "x-forwarded-for": "203.0.113.13" },
+  });
+  assert.notDeepEqual(
+    rateLimitCounterKeys({ request, category: "document_upload", userId: "eval-user" }),
+    rateLimitCounterKeys({ request, category: "document_upload_eval", userId: "eval-user" }),
+  );
+  for (let index = 0; index < 12; index += 1) {
+    await checkRateLimit({
+      request,
+      category: "document_upload_eval",
+      userId: "eval-user",
+      workspaceId: "eval-workspace",
+      now: 1_700_000_000_000,
+    });
+  }
+  await checkRateLimit({
+    request,
+    category: "document_upload",
+    userId: "eval-user",
+    workspaceId: "eval-workspace",
+    now: 1_700_000_000_000,
+  });
+  for (let index = 12; index < RATE_LIMITS.document_upload_eval.limit; index += 1) {
+    await checkRateLimit({
+      request,
+      category: "document_upload_eval",
+      userId: "eval-user",
+      workspaceId: "eval-workspace",
+      now: 1_700_000_000_000,
+    });
+  }
+  await assert.rejects(
+    () => checkRateLimit({
+      request,
+      category: "document_upload_eval",
+      userId: "eval-user",
+      workspaceId: "eval-workspace",
+      now: 1_700_000_000_000,
+    }),
+    (error) => error instanceof RateLimitError && error.category === "document_upload_eval",
+  );
+  const workspaceQuotaInput = {
+    request,
+    category: "workspace_document_upload",
+    workspaceId: "eval-workspace",
+    now: 1_700_000_000_000,
+    environment: { REGSPAN_QUOTA_DOCUMENT_UPLOADS_PER_DAY: "1" },
+  };
+  await checkRateLimit(workspaceQuotaInput);
+  await assert.rejects(() => checkRateLimit(workspaceQuotaInput), RateLimitError);
+  const byteQuotaInput = {
+    request,
+    category: "workspace_upload_bytes",
+    workspaceId: "eval-workspace-bytes",
+    cost: 100,
+    now: 1_700_000_000_000,
+    environment: { REGSPAN_QUOTA_UPLOAD_BYTES_PER_DAY: "100" },
+  };
+  await checkRateLimit(byteQuotaInput);
+  await assert.rejects(
+    () => checkRateLimit({ ...byteQuotaInput, cost: 1 }),
+    RateLimitError,
+  );
+});
+
 test("durable rate limits use an atomic RPC and production refuses memory fallback", async () => {
   const {
     checkRateLimit,

@@ -12,6 +12,7 @@ import {
   assertCorpusEvaluationSafety,
   assertCorpusEvaluationExternalAiOptIn,
   evaluationAnalysisRateLimitCategory,
+  evaluationDocumentUploadRateLimitCategory,
   assertFreshEvaluationWorkspace,
   CorpusManifestError,
   createOneShotEvaluationState,
@@ -271,8 +272,13 @@ test("evaluator-only Analysis quota requires an authorized evaluation workspace"
     environment: { NODE_ENV: "development" },
   };
   assert.equal(evaluationAnalysisRateLimitCategory(input), "findings_generate_eval");
+  assert.equal(evaluationDocumentUploadRateLimitCategory(input), "document_upload_eval");
   assert.throws(
     () => evaluationAnalysisRateLimitCategory({ ...input, workspaceName: "normal-workspace" }),
+    CorpusEvaluationSafetyError,
+  );
+  assert.throws(
+    () => evaluationDocumentUploadRateLimitCategory({ ...input, workspaceName: "normal-workspace" }),
     CorpusEvaluationSafetyError,
   );
   assert.throws(
@@ -583,6 +589,7 @@ test("corpus runner is one-shot and contains no resume, adoption, or cleanup pat
   );
   assert.doesNotMatch(runner, /--resume|--cleanup|cleanupEvaluation|recoverEvaluation|process\.once\("SIG/);
   assert.match(evaluator, /evaluationAnalysisRateLimitForContext/);
+  assert.match(evaluator, /evaluationDocumentUploadRateLimitForContext/);
   assert.match(evaluator, /assertExactAnalysisSnapshot/);
   assert.match(evaluator, /createFreshEvaluationWorkspace/);
   assert.match(evaluator, /Source type: \$\{sourceType\.replace/);

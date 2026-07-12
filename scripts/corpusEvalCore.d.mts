@@ -7,6 +7,11 @@ export function validateCorpusManifest(manifest: unknown): {
   version: 1;
   cases: Array<Record<string, unknown>>;
 };
+export function corpusChunkClassificationViolations(input: {
+  chunks: Array<{ metadata?: Record<string, unknown> | null }>;
+  sourceType: "client_policy" | "client_procedure" | "client_standard";
+  requireOrganizationEvidence: boolean;
+}): string[];
 export function pollForTerminal<T>(input: Record<string, unknown>): Promise<T>;
 export function retryRateLimitedOperation<T>(input: {
   operation: () => Promise<T>;
@@ -31,6 +36,13 @@ export function evaluationAnalysisRateLimitCategory(input: {
   actorOwnsWorkspace: boolean;
   environment?: Record<string, string | undefined>;
 }): "findings_generate_eval";
+export function evaluationDocumentUploadRateLimitCategory(input: {
+  evaluationAuthorized: boolean;
+  workspaceName: string;
+  workspacePrefix: string;
+  actorOwnsWorkspace: boolean;
+  environment?: Record<string, string | undefined>;
+}): "document_upload_eval";
 export function processingResultForReport(input: {
   status: string;
   step?: string | null;
