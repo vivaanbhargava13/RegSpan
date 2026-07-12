@@ -359,9 +359,15 @@ export async function retryRateLimitedOperation({
   }
 }
 
-function evidenceTextForFinding(finding, evidenceRows) {
+const POSITIVE_EVIDENCE_RELATIONSHIPS = new Set([
+  "supports",
+  "partially_supports",
+]);
+
+function positiveEvidenceTextForFinding(finding, evidenceRows) {
   return evidenceRows
     .filter((row) => row.finding_id === finding.id)
+    .filter((row) => POSITIVE_EVIDENCE_RELATIONSHIPS.has(String(row.relationship ?? "").trim()))
     .map((row) => String(row.quote ?? row.evidence_quote ?? row.source_quote ?? ""))
     .join("\n")
     .toLowerCase();
@@ -388,21 +394,25 @@ export function scoreCaseFindings({ caseDefinition, findings, evidenceRows }) {
 
   for (const [requirementId, concepts] of Object.entries(caseDefinition.expectedEvidenceConcepts)) {
     const finding = findingsByRequirement.get(requirementId);
-    const text = finding ? evidenceTextForFinding(finding, evidenceRows) : "";
+    const text = finding ? positiveEvidenceTextForFinding(finding, evidenceRows) : "";
     const missingConcepts = concepts.filter((concept) => !text.includes(concept.toLowerCase()));
     conceptResults.push({ requirementId, concepts, missingConcepts, matched: missingConcepts.length === 0 });
   }
 
   for (const [requirementId, phrases] of Object.entries(caseDefinition.forbiddenMatches)) {
     const finding = findingsByRequirement.get(requirementId);
-    const text = finding ? evidenceTextForFinding(finding, evidenceRows) : "";
+    const text = finding ? positiveEvidenceTextForFinding(finding, evidenceRows) : "";
     const matchedPhrases = phrases.filter((phrase) => text.includes(phrase.toLowerCase()));
     forbiddenResults.push({ requirementId, phrases, matchedPhrases, matched: matchedPhrases.length === 0 });
   }
 
   const unexpectedCovered = findings
     .filter((finding) => ["covered", "partial"].includes(normalizedStatus(finding.status)))
-    .filter((finding) => caseDefinition.expectedStatuses[finding.requirement_id]?.includes("missing"))
+    .filter((finding) => {
+      const expected = caseDefinition.expectedStatuses[finding.requirement_id] ?? [];
+      const alternates = caseDefinition.acceptableAlternateStatuses[finding.requirement_id] ?? [];
+      return expected.length > 0 && ![...expected, ...alternates].includes(normalizedStatus(finding.status));
+    })
     .map((finding) => finding.requirement_id);
 
   return {

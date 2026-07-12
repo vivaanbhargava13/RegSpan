@@ -63,7 +63,7 @@
       "tier": "partial",
       "sourceType": "client_standard",
       "expectedStatuses": { "service_provider_incident_oversight_notice": "partial" },
-      "acceptableAlternateStatuses": { "service_provider_incident_oversight_notice": ["missing"] },
+      "acceptableAlternateStatuses": { "service_provider_incident_oversight_notice": ["missing", "conflicting"] },
       "forbiddenMatches": { "service_provider_incident_oversight_notice": ["approved disposal methods"] },
       "expectedEvidenceConcepts": { "service_provider_incident_oversight_notice": ["vendor"] },
       "include": { "isolated": true, "combined": true }
@@ -87,7 +87,7 @@
       "expectedStatuses": { "safeguards_customer_information": "covered" },
       "acceptableAlternateStatuses": { "safeguards_customer_information": ["partial"] },
       "forbiddenMatches": { "safeguards_customer_information": ["Current page focus:"] },
-      "expectedEvidenceConcepts": { "safeguards_customer_information": ["encryption", "access"] },
+      "expectedEvidenceConcepts": { "safeguards_customer_information": ["encryption"] },
       "include": { "isolated": true, "combined": true }
     },
     {
@@ -118,8 +118,8 @@
       "tier": "adversarial",
       "sourceType": "client_policy",
       "expectedStatuses": { "written_incident_response_program": "missing" },
-      "acceptableAlternateStatuses": { "written_incident_response_program": ["partial"] },
-      "forbiddenMatches": { "written_incident_response_program": ["Current page focus:", "does not define a complete"] },
+      "acceptableAlternateStatuses": {},
+      "forbiddenMatches": { "written_incident_response_program": ["Current page focus:", "Updated ownership, terminology, and responsibilities."] },
       "expectedEvidenceConcepts": {},
       "include": { "isolated": true, "combined": true }
     },

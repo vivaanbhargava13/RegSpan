@@ -382,11 +382,84 @@ test("case scoring recognizes alternate statuses, concepts, and forbidden eviden
   const score = scoreCaseFindings({
     caseDefinition: definition,
     findings: [finding],
-    evidenceRows: [{ finding_id: "finding-1", quote: "Encryption is required. Current page focus: safeguards." }],
+    evidenceRows: [{
+      finding_id: "finding-1",
+      relationship: "supports",
+      quote: "Encryption is required. Current page focus: safeguards.",
+    }],
   });
   assert.equal(score.statusResults[0].matched, true);
   assert.equal(score.conceptResults[0].matched, true);
   assert.equal(score.forbiddenResults[0].matched, false);
+});
+
+test("case scoring uses only positive evidence for concepts and forbidden phrases", () => {
+  const definition = validateCorpusManifest({
+    version: 1,
+    id: "corpus-test",
+    cases: Array.from({ length: 10 }, (_, index) => manifestCase(`case-${index}`)),
+  }).cases[0];
+  const finding = { id: "finding-1", requirement_id: "safeguards_customer_information", status: "partial" };
+
+  const negativeOnly = scoreCaseFindings({
+    caseDefinition: definition,
+    findings: [finding],
+    evidenceRows: [{
+      finding_id: "finding-1",
+      relationship: "negative_evidence",
+      quote: "Encryption is not required. Current page focus: safeguards.",
+    }],
+  });
+  assert.equal(negativeOnly.conceptResults[0].matched, false);
+  assert.equal(negativeOnly.forbiddenResults[0].matched, true);
+
+  const positive = scoreCaseFindings({
+    caseDefinition: definition,
+    findings: [finding],
+    evidenceRows: [{
+      finding_id: "finding-1",
+      relationship: "supports",
+      quote: "Encryption is required. Current page focus: safeguards.",
+    }],
+  });
+  assert.equal(positive.conceptResults[0].matched, true);
+  assert.equal(positive.forbiddenResults[0].matched, false);
+});
+
+test("case scoring excludes expected and alternate positive statuses from unexpectedCovered", () => {
+  const definition = {
+    expectedStatuses: { written_incident_response_program: ["missing"] },
+    acceptableAlternateStatuses: { written_incident_response_program: ["partial"] },
+    expectedEvidenceConcepts: {},
+    forbiddenMatches: {},
+  };
+
+  for (const status of ["partial", "missing"]) {
+    const score = scoreCaseFindings({
+      caseDefinition: definition,
+      findings: [{ id: `finding-${status}`, requirement_id: "written_incident_response_program", status }],
+      evidenceRows: [],
+    });
+    assert.deepEqual(score.unexpectedCovered, []);
+  }
+});
+
+test("audited manifest cases encode their corrected status and concept expectations", async () => {
+  const manifest = validateCorpusManifest(JSON.parse(await readFile("eval/corpora/regspan-v1/manifest.json", "utf8")));
+  const byId = new Map(manifest.cases.map((entry) => [entry.id, entry]));
+
+  const adversarial = byId.get("adversarial-scaffolding");
+  assert.deepEqual(adversarial.acceptableAlternateStatuses.written_incident_response_program, undefined);
+  assert.deepEqual(adversarial.forbiddenMatches.written_incident_response_program, [
+    "Current page focus:",
+    "Updated ownership, terminology, and responsibilities.",
+  ]);
+
+  const vendorNotice = byId.get("partial-vendor-notice");
+  assert.deepEqual(vendorNotice.acceptableAlternateStatuses.service_provider_incident_oversight_notice, ["missing", "conflicting"]);
+
+  const safeguards = byId.get("strong-safeguards");
+  assert.deepEqual(safeguards.expectedEvidenceConcepts.safeguards_customer_information, ["encryption"]);
 });
 
 test("evaluator evidence compatibility accepts quote and evidence_quote without source_quote", async () => {
@@ -405,7 +478,7 @@ test("evaluator evidence compatibility accepts quote and evidence_quote without 
   const score = scoreCaseFindings({
     caseDefinition: definition,
     findings: [{ id: "finding-1", requirement_id: "safeguards_customer_information", status: "partial" }],
-    evidenceRows: [{ finding_id: "finding-1", evidence_quote: "Encryption is required." }],
+    evidenceRows: [{ finding_id: "finding-1", relationship: "partially_supports", evidence_quote: "Encryption is required." }],
   });
   assert.equal(score.conceptResults[0].matched, true);
 
