@@ -309,7 +309,7 @@ test("true organization-level negative evidence produces conflicting or missing 
   assert.equal(missing.status, "missing");
   assert.match(conflicting.summary, /conflict/);
   assert.match(conflicting.rationale, /appears to contradict/);
-  assert.equal(conflicting.evidence[1].reason.startsWith("The reviewed document appears to say this requirement is not addressed:"), true);
+  assert.match(conflicting.evidence[1].reason, /explicitly limits/i);
 });
 
 test("unrelated negative evidence cannot make a requirement conflicting", () => {
@@ -572,7 +572,7 @@ test("covered and partial evidence explanations use natural language", () => {
   assert.doesNotMatch(partial.rationale, /RegSpan did not find clear evidence for:/);
   assert.doesNotMatch(covered.evidence[0].reason, /^This section supports:/);
   assert.match(covered.evidence[0].reason, /The cited section defines when customer notice is required and defines the timing for customer notice/);
-  assert.match(partial.evidence[0].reason, /discusses customer-notice decisioning, but it does not clearly define the required timing for notice/);
+  assert.match(partial.evidence[0].reason, /discusses customer-notice decisioning\. Additional required elements are not proven by this quote/);
   assert.doesNotMatch(partial.evidence[0].reason, /This section partially addresses this requirement/);
   assert.doesNotMatch(covered.evidence[0].reason, /the cited text explicitly/i);
 });
@@ -603,7 +603,7 @@ test("evidence explanations avoid raw coverage-element grammar artifacts", () =>
       coveredElements: ["safeguards_controls"],
       missingElements: ["customer_information_scope"],
       quote: "The safeguards program requires access controls and encryption.",
-      expected: /does not clearly define that the safeguards apply to customer information/,
+      expected: /Additional required elements are not proven by this quote/,
     },
     {
       requirement: {
@@ -629,7 +629,7 @@ test("evidence explanations avoid raw coverage-element grammar artifacts", () =>
       coveredElements: ["external_notification_decisioning"],
       missingElements: ["legal_compliance_owner"],
       quote: "Legal reviews the regulator notification decision after incident escalation.",
-      expected: /does not clearly define legal or compliance ownership/,
+      expected: /Additional required elements are not proven by this quote/,
     },
     {
       requirement: {
@@ -655,7 +655,7 @@ test("evidence explanations avoid raw coverage-element grammar artifacts", () =>
       coveredElements: ["incident_materials"],
       missingElements: ["integrity_or_chain_of_custody"],
       quote: "The procedure requires teams to preserve logs and relevant investigation evidence.",
-      expected: /does not clearly define evidence integrity or chain-of-custody requirements/,
+      expected: /Additional required elements are not proven by this quote/,
     },
   ];
 
@@ -1740,6 +1740,162 @@ test("classifier recovers a line-wrapped retention sentence without merging unre
   ], [classification]);
   assert.equal(finding.status, "partial");
   assert.equal(finding.evidence[0].quote, retained);
+});
+
+test("optional evidence-integrity limitations do not conflict with retained incident materials", () => {
+  const preservationRequirement = {
+    ...requirement,
+    id: "incident_evidence_log_preservation",
+    title: "Incident evidence and log preservation",
+    coverageElements: [
+      { id: "incident_materials", label: "Preserves incident materials", requiredForCovered: true, signals: ["preserve logs"] },
+      { id: "integrity_or_chain_of_custody", label: "Maintains chain of custody", requiredForCovered: false, signals: ["chain of custody"] },
+    ],
+    requiredElementsForCovered: ["incident_materials"],
+  };
+  const support = chunk({
+    content_preview: "The procedure must preserve logs for incident investigation.",
+    supporting_quote: "The procedure must preserve logs for incident investigation.",
+    covered_elements: ["incident_materials"],
+  });
+  const optionalLimitation = chunk({
+    chunk_id: "78787878-7878-4787-8787-787878787878",
+    content_preview: "The procedure does not establish chain of custody.",
+    supporting_quote: "The procedure does not establish chain of custody.",
+    grade: "irrelevant",
+    evidence_relationship: "negative_evidence",
+    requirement_supported: false,
+    control_absent_or_out_of_scope: true,
+    negative_evidence: true,
+    covered_elements: [],
+    missing_elements: ["integrity_or_chain_of_custody"],
+    grade_reason: "The broader chunk mentions a chain-of-custody limitation.",
+  });
+
+  const finding = aggregateFindingForRequirement(preservationRequirement, [support, optionalLimitation]);
+  assert.equal(finding.status, "partial");
+  assert.deepEqual(finding.evidence.map((evidence) => evidence.relationship), ["supports", "negative_evidence"]);
+  const negative = finding.evidence.find((evidence) => evidence.relationship === "negative_evidence");
+  assert.equal(negative?.quote, optionalLimitation.supporting_quote);
+  assert.match(negative?.reason ?? "", /explicitly limits evidence integrity or chain-of-custody requirements/i);
+});
+
+test("same required element support and negative evidence remain conflicting with quote-grounded reason", () => {
+  const preservationRequirement = {
+    ...requirement,
+    id: "incident_evidence_log_preservation",
+    title: "Incident evidence and log preservation",
+    coverageElements: [
+      { id: "incident_materials", label: "Preserves incident materials", requiredForCovered: true, signals: ["preserve logs"] },
+    ],
+    requiredElementsForCovered: ["incident_materials"],
+  };
+  const support = chunk({
+    content_preview: "The procedure must preserve logs for incident investigation.",
+    supporting_quote: "The procedure must preserve logs for incident investigation.",
+    covered_elements: ["incident_materials"],
+  });
+  const contradiction = chunk({
+    chunk_id: "79797979-7979-4797-8797-797979797979",
+    content_preview: "The firm does not preserve logs for incident investigation.",
+    supporting_quote: "The firm does not preserve logs for incident investigation.",
+    grade: "irrelevant",
+    evidence_relationship: "negative_evidence",
+    requirement_supported: false,
+    control_absent_or_out_of_scope: true,
+    negative_evidence: true,
+    covered_elements: [],
+    missing_elements: ["incident_materials"],
+    grade_reason: "The broader chunk also discusses unrelated forensic procedures.",
+  });
+
+  const finding = aggregateFindingForRequirement(preservationRequirement, [support, contradiction]);
+  assert.equal(finding.status, "conflicting");
+  const negative = finding.evidence.find((evidence) => evidence.relationship === "negative_evidence");
+  assert.equal(negative?.quote, contradiction.supporting_quote);
+  assert.match(negative?.reason ?? "", /explicitly limits how logs, evidence, or investigation records must be preserved/i);
+  assert.doesNotMatch(negative?.reason ?? "", /unrelated forensic/i);
+});
+
+test("final curation prefers operative containment actions over generic review context", () => {
+  const assessmentRequirement = {
+    ...requirement,
+    id: "incident_assessment_containment_control",
+    title: "Incident assessment and containment",
+    coverageElements: [
+      { id: "customer_information_systems", label: "Identifies affected customer information", requiredForCovered: true, signals: ["customer information"] },
+      { id: "containment_control", label: "Requires containment or control", requiredForCovered: true, signals: ["containment"] },
+    ],
+    requiredElementsForCovered: ["customer_information_systems", "containment_control"],
+  };
+  const generic = chunk({
+    chunk_id: "80808080-8080-4808-8808-808080808080",
+    grade: "partial",
+    evidence_relationship: "partially_supports",
+    requirement_supported: false,
+    content_preview: "The depth of review depends on the sensitivity of customer information.",
+    supporting_quote: "The depth of review depends on the sensitivity of customer information.",
+    covered_elements: ["customer_information_systems"],
+    missing_elements: ["containment_control"],
+  });
+  const operative = chunk({
+    chunk_id: "81818181-8181-4818-8818-818181818181",
+    grade: "partial",
+    evidence_relationship: "partially_supports",
+    requirement_supported: false,
+    content_preview: "The technical lead selects containment actions intended to limit ongoing harm.",
+    supporting_quote: "The technical lead selects containment actions intended to limit ongoing harm.",
+    covered_elements: ["containment_control"],
+    missing_elements: ["customer_information_systems"],
+  });
+
+  const finding = aggregateFindingForRequirement(assessmentRequirement, [generic, operative]);
+  assert.equal(finding.status, "partial");
+  assert.equal(finding.evidence[0].quote, operative.supporting_quote);
+  assert.match(finding.evidence[0].reason, /containment or control/i);
+  assert.doesNotMatch(finding.evidence[0].reason, /customer information/i);
+});
+
+test("final curation prefers direct recovery validation over generic restoration context", () => {
+  const recoveryRequirement = {
+    ...requirement,
+    id: "response_recovery_remediation_validation",
+    title: "Response recovery and remediation validation",
+    coverageElements: [
+      { id: "recovery_steps", label: "Defines recovery steps", requiredForCovered: true, signals: ["recovery", "restore", "restoration"] },
+      { id: "validation_testing", label: "Validates recovery", requiredForCovered: true, signals: ["validating network connectivity", "validation"] },
+    ],
+    requiredElementsForCovered: ["recovery_steps", "validation_testing"],
+  };
+  const generic = chunk({
+    chunk_id: "82828282-8282-4828-8828-828282828282",
+    grade: "partial",
+    evidence_relationship: "partially_supports",
+    requirement_supported: false,
+    content_preview: "The organization applies a risk-based approach to identity-service restoration.",
+    supporting_quote: "The organization applies a risk-based approach to identity-service restoration.",
+    covered_elements: ["recovery_steps"],
+    missing_elements: ["validation_testing"],
+  });
+  const operative = chunk({
+    chunk_id: "83838383-8383-4838-8838-838383838383",
+    grade: "partial",
+    evidence_relationship: "partially_supports",
+    requirement_supported: false,
+    content_preview: "Technical teams follow approved runbooks for restoration from backups and validating network connectivity.",
+    supporting_quote: "Technical teams follow approved runbooks for restoration from backups and validating network connectivity.",
+    covered_elements: ["recovery_steps", "validation_testing"],
+    missing_elements: [],
+  });
+
+  const finding = aggregateFindingForRequirement(recoveryRequirement, [generic, operative]);
+  assert.equal(finding.status, "covered");
+  assert.equal(finding.evidence[0].quote, operative.supporting_quote);
+  assert.doesNotMatch(finding.evidence[0].quote ?? "", /risk-based approach/i);
+
+  const restorationOnly = aggregateFindingForRequirement(recoveryRequirement, [generic]);
+  assert.equal(restorationOnly.status, "partial");
+  assert.equal(restorationOnly.evidence[0].quote, generic.supporting_quote);
 });
 
 test("production path omits truncated recovery follow-on sentences", async () => {

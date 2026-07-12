@@ -724,6 +724,25 @@ function negativelyScopedElementIdsForQuote(
     .map((element) => element.id);
 }
 
+function optionalNegativeElementIdsForQuote(
+  requirement: RegSpRequirement,
+  chunk: GradedEvidenceChunk,
+  quote: string,
+) {
+  const substantiveText = substantiveQuoteText(quote);
+  const scopedReference = referencesUnavailablePolicy({
+    ...chunk,
+    supporting_quote: quote,
+  });
+  if (isScaffoldingQuote(substantiveText) || (!hasAbsenceLanguage(substantiveText) && !scopedReference)) return [];
+
+  const required = new Set(requirement.requiredElementsForCovered);
+  return (requirement.coverageElements ?? [])
+    .filter((element) => !required.has(element.id))
+    .filter((element) => negativeElementSignalMatches(requirement, element.id, substantiveText))
+    .map((element) => element.id);
+}
+
 function evidenceElementIdsForQuote(requirement: RegSpRequirement, chunk: GradedEvidenceChunk, quote: string) {
   return chunk.evidence_relationship === "negative_evidence"
     ? negativelyScopedElementIdsForQuote(requirement, chunk, quote)
@@ -746,7 +765,12 @@ function quoteQualityScore(quote: string) {
 }
 
 function finalQuoteCandidateScore(requirement: RegSpRequirement, chunk: GradedEvidenceChunk, quote: string) {
-  const supportedElements = evidenceElementIdsForQuote(requirement, chunk, quote);
+  const supportedElements = chunk.evidence_relationship === "negative_evidence"
+    ? uniqueStrings([
+      ...evidenceElementIdsForQuote(requirement, chunk, quote),
+      ...optionalNegativeElementIdsForQuote(requirement, chunk, quote),
+    ])
+    : evidenceElementIdsForQuote(requirement, chunk, quote);
   return {
     quote,
     supportedElements,
@@ -815,6 +839,13 @@ function finalizedEvidenceElementIds(requirement: RegSpRequirement, chunk: Grade
   return quote ? evidenceElementIdsForQuote(requirement, chunk, quote) : [];
 }
 
+function finalizedOptionalNegativeElementIds(requirement: RegSpRequirement, chunk: GradedEvidenceChunk) {
+  const quote = finalizedSourceQuote(requirement, chunk);
+  return quote && chunk.evidence_relationship === "negative_evidence"
+    ? optionalNegativeElementIdsForQuote(requirement, chunk, quote)
+    : [];
+}
+
 function finalizedEvidenceRelationship(
   requirement: RegSpRequirement,
   chunk: GradedEvidenceChunk,
@@ -862,7 +893,8 @@ function isSourceGroundedPartialSupport(requirement: RegSpRequirement, chunk: Gr
 }
 
 function isSourceGroundedNegativeEvidence(requirement: RegSpRequirement, chunk: GradedEvidenceChunk) {
-  return isExplicitNegativeEvidence(chunk) && hasSubstantiveExactSourceQuote(requirement, chunk);
+  return isExplicitNegativeEvidence(chunk)
+    && hasSubstantiveExactSourceQuote(requirement, chunk);
 }
 
 function normalize(value: string | null | undefined) {
@@ -1143,6 +1175,8 @@ function evidenceWeight(requirement: RegSpRequirement, chunk: GradedEvidenceChun
   if (text.includes("privacy policy") || text.includes("safeguards program")) weight += 12;
   if (text.includes("acceptable use")) weight -= 25;
   if (text.includes("scope") || text.includes("limitation")) weight -= 8;
+  const quote = finalizedSourceQuote(requirement, chunk);
+  if (quote) weight += operativeQuoteWeight(quote);
   return weight;
 }
 
@@ -1525,9 +1559,35 @@ function curationWeight(requirement: RegSpRequirement, chunk: GradedEvidenceChun
   const quote = finalizedSourceQuote(requirement, chunk);
   if (quote) {
     weight += Math.min(quoteWordCount(quote), 80) * 0.5;
+    weight += operativeQuoteWeight(quote);
   }
   if (hasSubstantiveExactSourceQuote(requirement, chunk)) weight += 25;
   if (looksLikeHeadingOnly(quote ?? "")) weight -= 200;
+  return weight;
+}
+
+function operativeQuoteWeight(quote: string) {
+  const text = normalize(quote);
+  const operativeHits = [
+    "must",
+    "shall",
+    "requires",
+    "require",
+    "selects",
+    "takes",
+    "follows",
+    "restores",
+    "restoring",
+    "validates",
+    "validating",
+    "confirms",
+    "records",
+    "assigns",
+  ].filter((signal) => text.includes(signal)).length;
+  let weight = Math.min(operativeHits, 3) * 24;
+  if (/\b(?:the organization|the firm) applies a risk-based approach to\b/.test(text)) weight -= 85;
+  if (/\bthe depth of review depends on\b/.test(text)) weight -= 85;
+  if (/\b(?:manages?|coordinates?) .{0,80}\bthrough documented ownership\b/.test(text)) weight -= 70;
   return weight;
 }
 
@@ -1590,10 +1650,17 @@ function curateEvidenceChunks({
     const relevantLimitations = sortByEvidenceWeight(
       requirement,
       [...organizationNegative, ...documentScopeLimitations],
-    ).filter((chunk) => finalizedEvidenceElementIds(requirement, chunk).length > 0);
+    ).filter((chunk) => {
+      const requiredElements = finalizedEvidenceElementIds(requirement, chunk);
+      const optionalElements = finalizedOptionalNegativeElementIds(requirement, chunk);
+      return requiredElements.length > 0 || optionalElements.length > 0;
+    });
     const selectedLimitationElements = new Set<string>();
     for (const chunk of relevantLimitations) {
-      const limitationElements = finalizedEvidenceElementIds(requirement, chunk);
+      const limitationElements = uniqueStrings([
+        ...finalizedEvidenceElementIds(requirement, chunk),
+        ...finalizedOptionalNegativeElementIds(requirement, chunk),
+      ]);
       if (!limitationElements.some((elementId) => !selectedLimitationElements.has(elementId))) continue;
       addUniqueChunk(selected, chunk);
       for (const elementId of limitationElements) selectedLimitationElements.add(elementId);
@@ -1838,6 +1905,12 @@ function evidenceReasonForStorage(
     .replace(/\bthe cited text\b/gi, "the excerpt")
     .trim();
   const negativeScope = negativeScopeByChunkId.get(chunk.chunk_id);
+  if (relationship === "negative_evidence") {
+    const limited = renderedElementList(requirement, quoteCovered, "missing");
+    return limited
+      ? `The cited section explicitly limits ${limited}.`
+      : "The selected quote describes a limitation but does not negate a required element.";
+  }
   if (negativeScope === "organization_level_negative") {
     return `The reviewed document appears to say this requirement is not addressed: ${reason}`;
   }
@@ -1853,22 +1926,19 @@ function evidenceReasonForStorage(
       return `The cited section ${covered}.`;
     }
     if (covered.length > 0) {
-      const missing = renderedElementList(requirement, quoteMissing, "missing");
-      return `The cited section discusses ${covered}, but it does not clearly define ${missing}.`;
+      return "The cited section discusses " + covered
+        + ", but additional required elements are not proven by this quote.";
     }
     return "The selected quote is related to the requirement but does not prove a required element.";
   }
   if (relationship === "partially_supports") {
     const covered = renderedElementList(requirement, quoteCovered, "partial");
     const quoteMissing = requirement.requiredElementsForCovered.filter((elementId) => !quoteCovered.includes(elementId));
-    const missing = renderedElementList(requirement, quoteMissing, "missing");
     return [
       covered.length > 0
-        ? `The cited section discusses ${covered}${missing.length > 0 ? "," : "."}`
-        : missing.length > 0
-          ? "The cited section mentions this topic,"
-          : "The cited section is related to this requirement.",
-      missing.length > 0 ? `but it does not clearly define ${missing}.` : null,
+        ? `The cited section discusses ${covered}.`
+        : "The cited section is related to this requirement.",
+      quoteMissing.length > 0 ? "Additional required elements are not proven by this quote." : null,
     ].filter(Boolean).join(" ");
   }
   if (chunk.evidence_relationship === "background_context") {
@@ -1890,7 +1960,14 @@ function evidenceForStorage(
         ? finalizedSourceQuote(requirement, chunk)
         : null;
       const relationship = finalizedEvidenceRelationship(requirement, chunk);
-      const quoteCovered = quote ? evidenceElementIdsForQuote(requirement, chunk, quote) : [];
+      const quoteCovered = quote
+        ? relationship === "negative_evidence"
+          ? uniqueStrings([
+            ...evidenceElementIdsForQuote(requirement, chunk, quote),
+            ...optionalNegativeElementIdsForQuote(requirement, chunk, quote),
+          ])
+          : evidenceElementIdsForQuote(requirement, chunk, quote)
+        : [];
       return {
         chunk_id: chunk.chunk_id,
         document_id: chunk.document_id,
@@ -1949,6 +2026,9 @@ export function aggregateFindingForRequirement(
     (elementId) => !fullyCoveredRequired.includes(elementId),
   );
   const contradictedElements = contradictedRequiredElementsFromLedger(ledger);
+  const hasOptionalNegativeLimitation = [...strongestOrganizationNegative, ...strongestDocumentScopeLimitations].some(
+    (chunk) => finalizedOptionalNegativeElementIds(requirement, chunk).length > 0,
+  );
   const vagueRequired = uniqueStrings(supportingEvidence.flatMap((chunk) => chunk.vague_elements ?? []))
     .filter((elementId) => requirement.requiredElementsForCovered.includes(elementId));
   const hasFullRequiredCoverage = fullyCoveredRequired.length === requirement.requiredElementsForCovered.length;
@@ -1961,6 +2041,8 @@ export function aggregateFindingForRequirement(
   let status: FindingStatus;
   if (hasFullRequiredCoverage && contradictedElements.length > 0) {
     status = "conflicting";
+  } else if (hasFullRequiredCoverage && hasOptionalNegativeLimitation) {
+    status = "partial";
   } else if (hasFullRequiredCoverage) {
     status = "covered";
   } else if (hasMeaningfulElementSupport) {

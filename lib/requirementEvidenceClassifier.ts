@@ -254,9 +254,7 @@ function negativeScopeSignals(requirement: RegSpRequirement) {
 function detectSentenceScopedNegativeEvidence(
   input: RequirementEvidenceClassifierInput,
 ): SentenceScopedNegativeEvidence {
-  const requiredElementIds = new Set(input.requirement.requiredElementsForCovered ?? []);
   const elementSignals = (input.requirement.coverageElements ?? [])
-    .filter((element) => element.requiredForCovered || requiredElementIds.has(element.id))
     .map((element) => ({
       id: element.id,
       signals: uniqueStrings(element.signals),
