@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
   createWorkspaceExternalAiProcessingPolicy,
+  assertExternalAiProcessingServerAvailable,
   isExternalAiClassifierEnabled,
   isExternalAiProcessingEnabled,
 } from "../lib/aiProcessingPolicy.ts";
@@ -11,6 +12,13 @@ test("external AI processing policy is disabled unless explicitly enabled", () =
   assert.equal(isExternalAiProcessingEnabled({}), false);
   assert.equal(isExternalAiProcessingEnabled({ ENABLE_EXTERNAL_AI_PROCESSING: "false" }), false);
   assert.equal(isExternalAiProcessingEnabled({ ENABLE_EXTERNAL_AI_PROCESSING: "TRUE" }), true);
+});
+
+test("server-side external AI availability fails closed", () => {
+  assert.throws(() => assertExternalAiProcessingServerAvailable({}), /not enabled/);
+  assert.doesNotThrow(() => assertExternalAiProcessingServerAvailable({
+    ENABLE_EXTERNAL_AI_PROCESSING: "true",
+  }));
 });
 
 test("external AI classifier requires both processing and classifier flags", () => {

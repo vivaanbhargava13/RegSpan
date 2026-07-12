@@ -15,25 +15,25 @@ It does not expose an HTTP evaluation endpoint.
    `eval/corpora/regspan-v1/manifest.json` under `sources/` or `generated/`.
    No PDFs are committed by this repository.
 5. Ensure the normal local ingestion configuration is working: Supabase server
-   credentials, n8n webhook, worker bearer secret, and any configured embedding
-   provider.
+   credentials, n8n webhook, worker bearer secret, and an enabled external AI
+   embedding provider.
 
 Run one isolated, run-specific workspace per case:
 
 ```sh
-npm run eval:corpus -- --mode isolated
+npm run eval:corpus -- --mode isolated --allow-external-ai
 ```
 
 Run one combined workspace for all combined-enabled cases:
 
 ```sh
-npm run eval:corpus -- --mode combined
+npm run eval:corpus -- --mode combined --allow-external-ai
 ```
 
 Useful controls:
 
 ```sh
-npm run eval:corpus -- --mode combined --timeout-ms 420000 --min-score 0.9
+npm run eval:corpus -- --mode combined --allow-external-ai --timeout-ms 420000 --min-score 0.9
 ```
 
 Every invocation receives a UUID run ID. The run ID is part of each workspace
@@ -45,6 +45,12 @@ A rerun always creates a new run ID and new workspace names.
 `--timeout-ms` is a polling deadline for processing jobs and already-running
 Analysis runs. Findings generation currently executes synchronously in the
 application service and is not cancelled by this flag.
+
+The runner requires `--allow-external-ai`. Before it creates a workspace, it
+also verifies that the server-side external AI policy is enabled. When both
+checks pass, only the new run-specific evaluation workspaces are created with
+external AI processing consent. Existing and browser-managed workspaces are
+never modified.
 
 ## Safety and assertions
 
@@ -63,6 +69,10 @@ combined snapshots must exactly match the selected corpus document set.
 Expected status, concept, and forbidden-phrase assertions are scored;
 forbidden matches fail the run and `--min-score` controls the expected-status
 threshold.
+
+When a processing job fails, the reports label it `failed` and include its
+safe stored processing step and error message. Reports never include document
+text, excerpts, request headers, or secrets.
 
 Artifacts are written under ignored `eval-results/corpus-*/`:
 

@@ -13,8 +13,27 @@ export function assertCorpusEvaluationSafety(input: Record<string, unknown>): {
   actorUserId: string;
   workspacePrefix: string;
 };
+export function assertCorpusEvaluationExternalAiOptIn(allowExternalAi: boolean): void;
+export function processingResultForReport(input: {
+  status: string;
+  step?: string | null;
+  errorMessage?: string | null;
+}): {
+  processingStatus: "failed" | "processed";
+  processingStep?: string;
+  processingError?: string;
+};
 export function evaluationWorkspaceName(input: Record<string, string>): string;
 export function assertFreshEvaluationWorkspace(existingCount: number): void;
+export function newEvaluationWorkspaceValues(input: {
+  workspaceName: string;
+  actorUserId: string;
+  externalAiProcessingEnabled: boolean;
+}): {
+  name: string;
+  owner_user_id: string;
+  external_ai_processing_enabled: true;
+};
 export function createOneShotEvaluationState(input: Record<string, unknown>): Record<string, unknown>;
 export function recordEvaluationFailure<T>(state: T, caseId: string | null, message: string): T;
 export function snapshotSetViolations(actualDocumentIds: string[], expectedDocumentIds: string[]): string[];

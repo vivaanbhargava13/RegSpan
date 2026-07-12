@@ -123,6 +123,27 @@ export function assertCorpusEvaluationSafety({
   return { actorUserId: actorUserId.trim(), workspacePrefix };
 }
 
+export function assertCorpusEvaluationExternalAiOptIn(allowExternalAi) {
+  if (allowExternalAi !== true) {
+    throw new CorpusEvaluationSafetyError(
+      "Corpus evaluation requires --allow-external-ai to process embeddings.",
+    );
+  }
+}
+
+function safeProcessingValue(value) {
+  const normalized = typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+  return normalized ? normalized.slice(0, 500) : undefined;
+}
+
+export function processingResultForReport({ status, step, errorMessage }) {
+  return {
+    processingStatus: String(status) === "Processed" ? "processed" : "failed",
+    processingStep: safeProcessingValue(step),
+    processingError: safeProcessingValue(errorMessage),
+  };
+}
+
 export function evaluationWorkspaceName({ workspacePrefix, corpusId, mode, runId, workspaceKey }) {
   return `${workspacePrefix}${corpusId}-${mode}-${runId}-${workspaceKey}`;
 }
@@ -134,6 +155,22 @@ export function assertFreshEvaluationWorkspace(existingCount) {
   if (existingCount > 0) {
     throw new CorpusEvaluationSafetyError("Evaluation workspace already exists; start a new invocation.");
   }
+}
+
+export function newEvaluationWorkspaceValues({
+  workspaceName,
+  actorUserId,
+  externalAiProcessingEnabled,
+}) {
+  if (externalAiProcessingEnabled !== true) {
+    throw new CorpusEvaluationSafetyError("Evaluation external AI consent is required.");
+  }
+  return {
+    name: workspaceName,
+    owner_user_id: actorUserId,
+    // This payload is used only for a newly inserted evaluator workspace.
+    external_ai_processing_enabled: true,
+  };
 }
 
 export function createOneShotEvaluationState({

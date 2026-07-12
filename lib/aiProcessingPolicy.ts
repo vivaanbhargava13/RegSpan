@@ -24,6 +24,18 @@ export function isExternalAiProcessingEnabled(
   return isEnabled(environment.ENABLE_EXTERNAL_AI_PROCESSING);
 }
 
+/**
+ * Guard server-only callers that need external AI before creating work. The
+ * workspace-consent check remains separate because it requires a workspace.
+ */
+export function assertExternalAiProcessingServerAvailable(
+  environment: AiProcessingEnvironment = process.env,
+) {
+  if (!isExternalAiProcessingEnabled(environment)) {
+    throw new Error("External AI processing is not enabled on this server.");
+  }
+}
+
 export function isExternalAiClassifierEnabled(
   environment: AiProcessingEnvironment = process.env,
 ) {

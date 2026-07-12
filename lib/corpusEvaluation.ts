@@ -8,6 +8,7 @@ import {
   CorpusEvaluationTimeoutError,
   assertFreshEvaluationWorkspace,
   evaluationWorkspaceName,
+  newEvaluationWorkspaceValues,
   pollForTerminal,
   snapshotSetViolations,
 } from "@/scripts/corpusEvalCore.mjs";
@@ -23,6 +24,7 @@ export type EvaluationRunContext = {
   corpusId: string;
   mode: "isolated" | "combined";
   workspacePrefix: string;
+  externalAiProcessingEnabled: true;
 };
 
 export type EvaluationWorkspaceContext = EvaluationRunContext & {
@@ -34,6 +36,7 @@ export type EvaluationWorkspaceContext = EvaluationRunContext & {
 type ProcessingJobRow = {
   id: string;
   status: string;
+  step: string | null;
   error_message: string | null;
   completed_at: string | null;
 };
@@ -94,7 +97,11 @@ export async function createFreshEvaluationWorkspace({
 
   const { data: workspace, error: createError } = await supabase
     .from("workspaces")
-    .insert({ name: workspaceName, owner_user_id: context.actorUserId })
+    .insert(newEvaluationWorkspaceValues({
+      workspaceName,
+      actorUserId: context.actorUserId,
+      externalAiProcessingEnabled: context.externalAiProcessingEnabled,
+    }))
     .select("id, name, owner_user_id")
     .single();
   if (createError || !workspace) throw new CorpusEvaluationError("Evaluation workspace could not be created.");
@@ -215,7 +222,7 @@ export async function waitForProcessingJob({
     load: async () => {
       const { data, error } = await supabase
         .from("processing_jobs")
-        .select("id, status, error_message, completed_at")
+        .select("id, status, step, error_message, completed_at")
         .eq("id", jobId)
         .eq("workspace_id", context.workspaceId)
         .eq("document_id", documentId)
@@ -224,7 +231,6 @@ export async function waitForProcessingJob({
       return data;
     },
   });
-  if (job.status !== "Processed") throw new CorpusEvaluationError("Document processing failed or did not complete.");
   return job;
 }
 

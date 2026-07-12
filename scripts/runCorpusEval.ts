@@ -2,6 +2,7 @@
 
 import { readFile, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
+import { assertExternalAiProcessingServerAvailable } from "@/lib/aiProcessingPolicy";
 import { getServerSupabaseAdminClient } from "@/lib/supabase/server";
 import {
   CorpusEvaluationError,
@@ -16,11 +17,13 @@ import {
 import {
   CorpusEvaluationTimeoutError,
   CorpusManifestError,
+  assertCorpusEvaluationExternalAiOptIn,
   assertCorpusEvaluationSafety,
   createOneShotEvaluationState,
   evidenceIntegrityViolations,
   scoreCaseFindings,
   recordEvaluationFailure,
+  processingResultForReport,
   snapshotSetViolations,
   validateCorpusManifest,
 } from "@/scripts/corpusEvalCore.mjs";
@@ -38,6 +41,7 @@ type RunnerArgs = {
   minScore: number;
   actorUserId: string | null;
   workspacePrefix: string | null;
+  allowExternalAi: boolean;
   help: boolean;
 };
 
@@ -69,6 +73,8 @@ type CaseState = {
   documentId?: string;
   processingJobId?: string;
   processingStatus?: string;
+  processingStep?: string;
+  processingError?: string;
   analysisRunId?: string;
   analysisStatus?: string;
   processingDurationMs?: number;
@@ -107,6 +113,7 @@ Options:
   --min-score <0..1>           Minimum expected-status score. Defaults to ${DEFAULT_MIN_SCORE}.
   --actor-user-id <uuid>       Evaluation workspace owner; overrides REGSPAN_EVAL_ACTOR_USER_ID.
   --workspace-prefix <prefix>  Explicit prefix beginning regspan-eval-; overrides REGSPAN_EVAL_WORKSPACE_PREFIX.
+  --allow-external-ai          Allow external AI for newly created evaluation workspaces.
   --help                       Show this help.
 
 Every invocation creates new workspaces. Interrupted or failed resources are
@@ -122,6 +129,7 @@ function parseArgs(argv: string[]): RunnerArgs {
     minScore: DEFAULT_MIN_SCORE,
     actorUserId: null,
     workspacePrefix: null,
+    allowExternalAi: false,
     help: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -134,6 +142,7 @@ function parseArgs(argv: string[]): RunnerArgs {
     else if (arg === "--min-score") { args.minScore = Number(next); index += 1; }
     else if (arg === "--actor-user-id") { args.actorUserId = next ?? null; index += 1; }
     else if (arg === "--workspace-prefix") { args.workspacePrefix = next ?? null; index += 1; }
+    else if (arg === "--allow-external-ai") args.allowExternalAi = true;
     else throw new Error(`Unknown option: ${arg}`);
   }
   if (args.mode !== "isolated" && args.mode !== "combined") throw new Error("--mode must be isolated or combined.");
@@ -189,7 +198,13 @@ function runContext(state: RunState): EvaluationRunContext {
     corpusId: state.corpusId,
     mode: state.mode,
     workspacePrefix: state.workspacePrefix,
+    externalAiProcessingEnabled: true,
   };
+}
+
+function assertExternalAiEvaluationSafety(args: RunnerArgs) {
+  assertCorpusEvaluationExternalAiOptIn(args.allowExternalAi);
+  assertExternalAiProcessingServerAvailable(process.env);
 }
 
 async function persistState(outputDir: string, state: RunState) {
@@ -214,21 +229,21 @@ function summarize(state: RunState) {
 function markdown(state: RunState) {
   const summary = summarize(state);
   const rows = Object.values(state.cases).map((entry) =>
-    `| ${entry.caseId} | ${entry.tier} | ${entry.processingStatus ?? "not started"} | ${entry.analysisStatus ?? "not started"} | ${entry.score ? `${entry.score.matchedStatuses}/${entry.score.expectedStatuses}` : "-"} | ${entry.error ?? ""} |`,
+    `| ${entry.caseId} | ${entry.tier} | ${entry.processingStatus ?? "not started"} | ${entry.processingStep ?? ""} | ${entry.processingError ?? ""} | ${entry.analysisStatus ?? "not started"} | ${entry.score ? `${entry.score.matchedStatuses}/${entry.score.expectedStatuses}` : "-"} | ${entry.error ?? ""} |`,
   );
   return `# RegSpan Corpus Evaluation\n\nStatus: ${state.status}\n\nRun ID: ${state.runId}\n\n`
     + `Expected status score: ${(summary.score * 100).toFixed(1)}% (${summary.matched}/${summary.expected})\n\n`
     + `Evidence concepts: ${summary.conceptsMatched}/${summary.conceptsExpected}; unexpected covered/partial: ${summary.unexpectedCovered}\n\n`
-    + `| Case | Tier | Processing | Analysis | Status score | Error |\n| --- | --- | --- | --- | --- | --- |\n${rows.join("\n")}\n`;
+    + `| Case | Tier | Processing | Step | Processing error | Analysis | Status score | Error |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n${rows.join("\n")}\n`;
 }
 
 function csv(state: RunState) {
   const quote = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
-  const rows = ["case_id,tier,workspace_id,document_id,processing_job_id,analysis_run_id,processing_status,analysis_status,status_matches,status_expected,error"];
+  const rows = ["case_id,tier,workspace_id,document_id,processing_job_id,analysis_run_id,processing_status,processing_step,processing_error,analysis_status,status_matches,status_expected,error"];
   for (const entry of Object.values(state.cases)) {
     rows.push([
       entry.caseId, entry.tier, state.workspaces[entry.workspaceKey]?.id, entry.documentId,
-      entry.processingJobId, entry.analysisRunId, entry.processingStatus, entry.analysisStatus,
+      entry.processingJobId, entry.analysisRunId, entry.processingStatus, entry.processingStep, entry.processingError, entry.analysisStatus,
       entry.score?.matchedStatuses, entry.score?.expectedStatuses, entry.error,
     ].map(quote).join(","));
   }
@@ -292,9 +307,16 @@ async function processCase({
     jobId: uploaded.processing.jobId,
     pollTimeoutMs,
   });
-  entry.processingStatus = job.status;
+  Object.assign(entry, processingResultForReport({
+    status: job.status,
+    step: job.step,
+    errorMessage: job.error_message,
+  }));
   entry.processingDurationMs += Date.now() - pollingStartedAt;
   await persistState(outputDir, state);
+  if (job.status !== "Processed") {
+    throw new CorpusEvaluationError("Document processing failed.");
+  }
 }
 
 async function analyzeAndScore({
@@ -393,6 +415,7 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) return usage();
   const { actorUserId, workspacePrefix } = assertRunnerSafety(args);
+  assertExternalAiEvaluationSafety(args);
   const corpusDir = resolve(args.corpus);
   const manifest = await loadManifest(corpusDir);
   const selectedCases = manifest.cases.filter((definition) => definition.include[args.mode]);

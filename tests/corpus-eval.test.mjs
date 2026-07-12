@@ -7,12 +7,15 @@ import {
   CorpusEvaluationTimeoutError,
   CorpusEvaluationSafetyError,
   assertCorpusEvaluationSafety,
+  assertCorpusEvaluationExternalAiOptIn,
   assertFreshEvaluationWorkspace,
   CorpusManifestError,
   createOneShotEvaluationState,
+  newEvaluationWorkspaceValues,
   evidenceIntegrityViolations,
   pollForTerminal,
   recordEvaluationFailure,
+  processingResultForReport,
   scoreCaseFindings,
   evaluationWorkspaceName,
   snapshotSetViolations,
@@ -115,6 +118,29 @@ test("production safety fails closed", () => {
   }), { actorUserId: "actor-id", workspacePrefix: "regspan-eval-local-" });
 });
 
+test("external AI opt-in is required before evaluation workspaces are created", () => {
+  assert.throws(() => assertCorpusEvaluationExternalAiOptIn(false), CorpusEvaluationSafetyError);
+  assert.doesNotThrow(() => assertCorpusEvaluationExternalAiOptIn(true));
+});
+
+test("failed processing is reported with only safe job details", () => {
+  assert.deepEqual(processingResultForReport({
+    status: "Failed",
+    step: "Extracting text",
+    errorMessage: "This PDF could not be processed safely.",
+  }), {
+    processingStatus: "failed",
+    processingStep: "Extracting text",
+    processingError: "This PDF could not be processed safely.",
+  });
+  assert.deepEqual(processingResultForReport({ status: "Processed" }), {
+    processingStatus: "processed",
+    processingStep: undefined,
+    processingError: undefined,
+  });
+  assert.equal(processingResultForReport({ status: "Unexpected" }).processingStatus, "failed");
+});
+
 test("invocation run IDs produce unique workspace names", () => {
   const input = { workspacePrefix: "regspan-eval-", corpusId: "regspan-v1", mode: "combined", workspaceKey: "combined" };
   const first = evaluationWorkspaceName({ ...input, runId: RUN_ID });
@@ -126,6 +152,23 @@ test("invocation run IDs produce unique workspace names", () => {
 test("fresh evaluator workspaces refuse any existing name", () => {
   assert.doesNotThrow(() => assertFreshEvaluationWorkspace(0));
   assert.throws(() => assertFreshEvaluationWorkspace(1), CorpusEvaluationSafetyError);
+});
+
+test("only explicitly enabled fresh evaluation workspaces receive external AI consent", () => {
+  const input = {
+    workspaceName: "regspan-eval-regspan-v1-isolated-run-case",
+    actorUserId: ACTOR_ID,
+    externalAiProcessingEnabled: true,
+  };
+  assert.deepEqual(newEvaluationWorkspaceValues(input), {
+    name: "regspan-eval-regspan-v1-isolated-run-case",
+    owner_user_id: ACTOR_ID,
+    external_ai_processing_enabled: true,
+  });
+  assert.throws(
+    () => newEvaluationWorkspaceValues({ ...input, externalAiProcessingEnabled: false }),
+    CorpusEvaluationSafetyError,
+  );
 });
 
 test("isolated and combined snapshots require exact document sets", () => {
@@ -205,13 +248,15 @@ test("evidence integrity catches missing support, snapshot leakage, regulatory e
 });
 
 test("corpus runner is one-shot and contains no resume, adoption, or cleanup path", async () => {
-  const [runner, evaluator, findingsGeneration, uploadService, deletionService, uploadRoute, packageJson, gitignore, docs] = await Promise.all([
+  const [runner, evaluator, evaluatorCore, findingsGeneration, uploadService, deletionService, uploadRoute, browserConsentRoute, packageJson, gitignore, docs] = await Promise.all([
     readFile("scripts/runCorpusEval.ts", "utf8"),
     readFile("lib/corpusEvaluation.ts", "utf8"),
+    readFile("scripts/corpusEvalCore.mjs", "utf8"),
     readFile("lib/findingsGeneration.ts", "utf8"),
     readFile("lib/documentUpload.ts", "utf8"),
     readFile("lib/documentDeletion.ts", "utf8"),
     readFile("app/api/documents/route.ts", "utf8"),
+    readFile("app/api/workspace/external-ai-processing/route.ts", "utf8"),
     readFile("package.json", "utf8"),
     readFile(".gitignore", "utf8"),
     readFile("docs/evaluation/corpus-evaluation.md", "utf8"),
@@ -219,16 +264,26 @@ test("corpus runner is one-shot and contains no resume, adoption, or cleanup pat
   assert.match(runner, /writeJsonAtomically/);
   assert.match(runner, /uploadCorpusDocument/);
   assert.match(runner, /runWorkspaceAnalysis/);
+  assert.match(runner, /--allow-external-ai/);
+  assert.match(runner, /assertExternalAiProcessingServerAvailable/);
+  assert.ok(
+    runner.indexOf("assertExternalAiEvaluationSafety(args)")
+      < runner.indexOf("const state = createState"),
+    "external AI checks must run before evaluation workspaces can be created",
+  );
   assert.doesNotMatch(runner, /--resume|--cleanup|cleanupEvaluation|recoverEvaluation|process\.once\("SIG/);
   assert.match(evaluator, /category: "findings_generate"/);
   assert.match(evaluator, /assertExactAnalysisSnapshot/);
   assert.match(evaluator, /createFreshEvaluationWorkspace/);
+  assert.match(evaluatorCore, /external_ai_processing_enabled: true/);
+  assert.doesNotMatch(evaluator, /\.update\(\{\s*external_ai_processing_enabled/);
   assert.doesNotMatch(evaluator, /deleteDocumentForWorkspace|cleanupEvaluation|recoverEvaluation/);
   assert.doesNotMatch(findingsGeneration, /onAnalysisRunStarted/);
   assert.match(uploadService, /queueDocumentProcessing/);
   assert.doesNotMatch(uploadService, /suppliedDocumentId|suppliedIdempotencyKey/);
   assert.match(deletionService, /delete_document_and_derived/);
   assert.match(uploadRoute, /uploadDocumentForWorkspace/);
+  assert.match(browserConsentRoute, /workspace\.owner_user_id !== actor\.user\.id/);
   assert.match(packageJson, /"eval:corpus"/);
   assert.match(gitignore, /^eval-results\/$/m);
   assert.match(gitignore, /^eval\/corpora\/\*\*\/generated\/\*\.pdf$/m);

@@ -11,7 +11,7 @@ prefix:
 ```sh
 REGSPAN_EVAL_ACTOR_USER_ID=<local-user-uuid> \
 REGSPAN_EVAL_WORKSPACE_PREFIX=regspan-eval- \
-npm run eval:corpus -- --mode isolated
+npm run eval:corpus -- --mode isolated --allow-external-ai
 ```
 
 Use `--mode combined` to process all combined-enabled PDFs in one run-specific
@@ -21,3 +21,8 @@ automatic cleanup mode. Failed or interrupted workspaces remain available for
 manual inspection and later manual cleanup. `--timeout-ms` limits polling only;
 it does not cancel synchronous Analysis generation. Artifacts are written under
 ignored `eval-results/` without raw PDF text or source excerpts.
+
+External AI must be explicitly enabled for each evaluation invocation with
+`--allow-external-ai`, and the server-wide external AI setting must already be
+enabled. The runner grants consent only while creating its own new
+run-specific `regspan-eval-` workspaces; it never changes an existing workspace.
