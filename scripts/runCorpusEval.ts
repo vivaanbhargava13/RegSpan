@@ -82,6 +82,7 @@ type CaseState = {
   score?: CaseScore;
   integrityViolations?: string[];
   error?: string;
+  diagnosticCode?: string;
   completed?: boolean;
 };
 
@@ -97,7 +98,7 @@ type RunState = {
   workspacePrefix: string;
   workspaces: Record<string, { key: string; name: string; id?: string }>;
   cases: Record<string, CaseState>;
-  failures: Array<{ caseId: string | null; message: string }>;
+  failures: Array<{ caseId: string | null; message: string; diagnosticCode?: string }>;
 };
 
 function usage() {
@@ -229,22 +230,22 @@ function summarize(state: RunState) {
 function markdown(state: RunState) {
   const summary = summarize(state);
   const rows = Object.values(state.cases).map((entry) =>
-    `| ${entry.caseId} | ${entry.tier} | ${entry.processingStatus ?? "not started"} | ${entry.processingStep ?? ""} | ${entry.processingError ?? ""} | ${entry.analysisStatus ?? "not started"} | ${entry.score ? `${entry.score.matchedStatuses}/${entry.score.expectedStatuses}` : "-"} | ${entry.error ?? ""} |`,
+    `| ${entry.caseId} | ${entry.tier} | ${entry.processingStatus ?? "not started"} | ${entry.processingStep ?? ""} | ${entry.processingError ?? ""} | ${entry.analysisStatus ?? "not started"} | ${entry.score ? `${entry.score.matchedStatuses}/${entry.score.expectedStatuses}` : "-"} | ${entry.diagnosticCode ?? ""} | ${entry.error ?? ""} |`,
   );
   return `# RegSpan Corpus Evaluation\n\nStatus: ${state.status}\n\nRun ID: ${state.runId}\n\n`
     + `Expected status score: ${(summary.score * 100).toFixed(1)}% (${summary.matched}/${summary.expected})\n\n`
     + `Evidence concepts: ${summary.conceptsMatched}/${summary.conceptsExpected}; unexpected covered/partial: ${summary.unexpectedCovered}\n\n`
-    + `| Case | Tier | Processing | Step | Processing error | Analysis | Status score | Error |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n${rows.join("\n")}\n`;
+    + `| Case | Tier | Processing | Step | Processing error | Analysis | Status score | Diagnostic code | Error |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n${rows.join("\n")}\n`;
 }
 
 function csv(state: RunState) {
   const quote = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
-  const rows = ["case_id,tier,workspace_id,document_id,processing_job_id,analysis_run_id,processing_status,processing_step,processing_error,analysis_status,status_matches,status_expected,error"];
+  const rows = ["case_id,tier,workspace_id,document_id,processing_job_id,analysis_run_id,processing_status,processing_step,processing_error,analysis_status,status_matches,status_expected,diagnostic_code,error"];
   for (const entry of Object.values(state.cases)) {
     rows.push([
       entry.caseId, entry.tier, state.workspaces[entry.workspaceKey]?.id, entry.documentId,
       entry.processingJobId, entry.analysisRunId, entry.processingStatus, entry.processingStep, entry.processingError, entry.analysisStatus,
-      entry.score?.matchedStatuses, entry.score?.expectedStatuses, entry.error,
+      entry.score?.matchedStatuses, entry.score?.expectedStatuses, entry.diagnosticCode, entry.error,
     ].map(quote).join(","));
   }
   return `${rows.join("\n")}\n`;
@@ -452,7 +453,12 @@ async function main() {
     if (state.failures.length === 0) state.status = "completed";
   } catch (error) {
     const message = error instanceof Error ? error.message : "Corpus evaluation failed.";
-    recordEvaluationFailure(state, activeCaseId, message);
+    recordEvaluationFailure(
+      state,
+      activeCaseId,
+      message,
+      error instanceof CorpusEvaluationError ? error.diagnosticCode : "corpus_evaluation_failed",
+    );
   }
   state.completedAt = new Date().toISOString();
   await writeReports(outputDir, state);

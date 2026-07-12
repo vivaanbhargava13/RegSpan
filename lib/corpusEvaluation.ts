@@ -16,7 +16,14 @@ import {
 const PROCESSING_TERMINAL_STATUSES = new Set(["Processed", "Failed"]);
 const ANALYSIS_TERMINAL_STATUSES = new Set(["completed", "failed"]);
 
-export class CorpusEvaluationError extends Error {}
+export class CorpusEvaluationError extends Error {
+  constructor(
+    message: string,
+    public readonly diagnosticCode = "corpus_evaluation_error",
+  ) {
+    super(message);
+  }
+}
 
 export type EvaluationRunContext = {
   runId: string;
@@ -359,10 +366,15 @@ export async function loadEvaluationRunData({
   const { data: evidence, error: evidenceError } = findingIds.length === 0
     ? { data: [], error: null }
     : await supabase.from("finding_evidence")
-      .select("id, finding_id, workspace_id, document_id, chunk_id, relationship, quote, evidence_quote, source_quote")
+      .select("id, finding_id, workspace_id, document_id, chunk_id, relationship, quote, evidence_quote")
       .eq("workspace_id", context.workspaceId)
       .in("finding_id", findingIds);
-  if (evidenceError) throw new CorpusEvaluationError("Finding evidence could not be loaded.");
+  if (evidenceError) {
+    throw new CorpusEvaluationError(
+      "Finding evidence could not be loaded.",
+      "finding_evidence_query_failed",
+    );
+  }
   const chunkIds = (evidence ?? []).map((row) => row.chunk_id).filter(Boolean);
   const { data: chunks, error: chunksError } = chunkIds.length === 0
     ? { data: [], error: null }

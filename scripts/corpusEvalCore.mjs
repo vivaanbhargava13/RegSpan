@@ -206,10 +206,13 @@ export function createOneShotEvaluationState({
   };
 }
 
-export function recordEvaluationFailure(state, caseId, message) {
+export function recordEvaluationFailure(state, caseId, message, diagnosticCode) {
   state.status = "incomplete";
-  state.failures.push({ caseId, message });
-  if (caseId && state.cases[caseId]) state.cases[caseId].error = message;
+  state.failures.push({ caseId, message, ...(diagnosticCode ? { diagnosticCode } : {}) });
+  if (caseId && state.cases[caseId]) {
+    state.cases[caseId].error = message;
+    if (diagnosticCode) state.cases[caseId].diagnosticCode = diagnosticCode;
+  }
   return state;
 }
 

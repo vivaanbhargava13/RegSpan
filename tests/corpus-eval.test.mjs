@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import { execFile as execFileCallback } from "node:child_process";
 import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import test from "node:test";
 import {
   CorpusEvaluationTimeoutError,
@@ -28,6 +30,7 @@ import {
 const ACTOR_ID = "10000000-0000-4000-8000-000000000001";
 const RUN_ID = "20000000-0000-4000-8000-000000000002";
 const DOCUMENT_ID = "40000000-0000-4000-8000-000000000004";
+const execFile = promisify(execFileCallback);
 
 function manifestCase(id = "case-one") {
   return {
@@ -216,6 +219,90 @@ test("case scoring recognizes alternate statuses, concepts, and forbidden eviden
   assert.equal(score.statusResults[0].matched, true);
   assert.equal(score.conceptResults[0].matched, true);
   assert.equal(score.forbiddenResults[0].matched, false);
+});
+
+test("evaluator evidence compatibility accepts quote and evidence_quote without source_quote", async () => {
+  const evaluator = await readFile("lib/corpusEvaluation.ts", "utf8");
+  assert.match(
+    evaluator,
+    /select\("id, finding_id, workspace_id, document_id, chunk_id, relationship, quote, evidence_quote"\)/,
+  );
+  assert.doesNotMatch(evaluator, /relationship, quote, evidence_quote, source_quote/);
+
+  const definition = validateCorpusManifest({
+    version: 1,
+    id: "corpus-test",
+    cases: Array.from({ length: 10 }, (_, index) => manifestCase(`case-${index}`)),
+  }).cases[0];
+  const score = scoreCaseFindings({
+    caseDefinition: definition,
+    findings: [{ id: "finding-1", requirement_id: "safeguards_customer_information", status: "partial" }],
+    evidenceRows: [{ finding_id: "finding-1", evidence_quote: "Encryption is required." }],
+  });
+  assert.equal(score.conceptResults[0].matched, true);
+
+  const program = `
+    import { loadEvaluationRunData } from "./lib/corpusEvaluation.ts";
+    const selected = {};
+    const rows = {
+      workspaces: [{ id: "workspace-a", name: "regspan-eval-corpus-a-isolated-run-a-case-a", owner_user_id: "actor-a" }],
+      workspace_members: [{ workspace_id: "workspace-a" }],
+      analysis_run_documents: [{ document_id: "document-a", filename: "fixture.pdf", document_status: "Processed" }],
+      findings: [{ id: "finding-a", requirement_id: "safeguards_customer_information", status: "partial" }],
+      finding_evidence: [{ id: "evidence-a", finding_id: "finding-a", workspace_id: "workspace-a", document_id: "document-a", chunk_id: "chunk-a", relationship: "supports", quote: null, evidence_quote: "Encryption is required." }],
+      document_chunks: [{ id: "chunk-a", document_id: "document-a", metadata: { source_type: "client_policy" } }],
+    };
+    function query(table) {
+      const chain = {
+        select(value) { selected[table] = value; return chain; },
+        eq() { return chain; },
+        in() { return chain; },
+        maybeSingle() { return Promise.resolve({ data: rows[table][0] ?? null, error: null }); },
+        then(resolve, reject) { return Promise.resolve({ data: rows[table] ?? [], error: null }).then(resolve, reject); },
+      };
+      return chain;
+    }
+    const result = await loadEvaluationRunData({
+      supabase: { from: query },
+      context: { runId: "run-a", actorUserId: "actor-a", corpusId: "corpus-a", mode: "isolated", workspacePrefix: "regspan-eval-", workspaceKey: "case-a", workspaceName: "regspan-eval-corpus-a-isolated-run-a-case-a", workspaceId: "workspace-a", externalAiProcessingEnabled: true },
+      analysisRunId: "analysis-a",
+      expectedDocumentIds: ["document-a"],
+    });
+    console.log(JSON.stringify({ selected: selected.finding_evidence, evidence: result.evidence }));
+  `;
+  const { stdout } = await execFile(process.execPath, [
+    "--conditions=react-server",
+    "--import", "./scripts/registerServerTsLoader.mjs",
+    "--input-type=module",
+    "--eval", program,
+  ], { cwd: process.cwd() });
+  const loaded = JSON.parse(stdout);
+  assert.equal(
+    loaded.selected,
+    "id, finding_id, workspace_id, document_id, chunk_id, relationship, quote, evidence_quote",
+  );
+  assert.equal(loaded.evidence[0].evidence_quote, "Encryption is required.");
+  assert.equal(loaded.evidence[0].source_type, "client_policy");
+});
+
+test("evaluator diagnostics retain only a fixed evidence-query category", () => {
+  const state = createOneShotEvaluationState({
+    runId: RUN_ID,
+    corpusId: "regspan-v1",
+    mode: "isolated",
+    actorUserId: ACTOR_ID,
+    workspacePrefix: "regspan-eval-",
+    selectedCases: [{ id: "case-one", tier: "partial", filename: "case-one.pdf" }],
+    startedAt: "2026-07-12T00:00:00.000Z",
+  });
+  recordEvaluationFailure(
+    state,
+    "case-one",
+    "Finding evidence could not be loaded.",
+    "finding_evidence_query_failed",
+  );
+  assert.equal(state.cases["case-one"].diagnosticCode, "finding_evidence_query_failed");
+  assert.equal(state.failures[0].diagnosticCode, "finding_evidence_query_failed");
 });
 
 test("evidence integrity catches missing support, snapshot leakage, regulatory evidence, and cross-case rows", () => {

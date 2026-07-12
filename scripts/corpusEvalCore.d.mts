@@ -35,5 +35,5 @@ export function newEvaluationWorkspaceValues(input: {
   external_ai_processing_enabled: true;
 };
 export function createOneShotEvaluationState(input: Record<string, unknown>): Record<string, unknown>;
-export function recordEvaluationFailure<T>(state: T, caseId: string | null, message: string): T;
+export function recordEvaluationFailure<T>(state: T, caseId: string | null, message: string, diagnosticCode?: string): T;
 export function snapshotSetViolations(actualDocumentIds: string[], expectedDocumentIds: string[]): string[];
