@@ -74,6 +74,8 @@ test("assessment coverage requires direct assessment, affected-system, and conta
   const definition = requirement("unauthorized_access_detection_escalation");
   const complete = "The response team assesses the nature and scope of unauthorized access, identifies affected customer information systems and information types, and isolates affected systems to contain and control the incident.";
   const incomplete = "The response team reviews the security incident and records its operational impact.";
+  const westbridge = "Technology staff investigate alerts and may take systems offline when needed. Significant events are escalated to management. Technology documents the alert source, systems reviewed, actions taken, and management escalation in the support ticket.";
+  const stonehaven = "The response coordinator performs an initial review of the event, identifies the systems believed to be involved, and consults business owners about operational impact. The team may isolate systems, reset credentials, or increase monitoring.";
   const generic = "The incident lead opens a case, assigns severity, and coordinates assessment, containment, and closure.";
 
   assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(definition, complete, {
@@ -81,6 +83,20 @@ test("assessment coverage requires direct assessment, affected-system, and conta
     requirement_supported: true,
   })]).status, "covered");
   assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(definition, incomplete)]).status, "partial");
+  assert.equal(requirementSpecificElementMatch(definition.id, "containment_control", westbridge), true);
+  assert.equal(requirementSpecificElementMatch(definition.id, "assesses_scope", westbridge), false);
+  const westbridgeFinding = aggregateFindingForRequirement(definition, [gradedChunk(definition, westbridge)]);
+  assert.equal(westbridgeFinding.status, "partial");
+  assert.match(westbridgeFinding.rationale, /partial support for containment or control steps/i);
+  assert.match(westbridgeFinding.remediation, /assesses the nature and scope/i);
+  assert.doesNotMatch(westbridgeFinding.remediation, /required containment or control steps/i);
+  assert.equal(requirementSpecificElementMatch(definition.id, "assesses_scope", stonehaven), true);
+  assert.equal(requirementSpecificElementMatch(definition.id, "customer_information_systems", stonehaven), false);
+  assert.equal(requirementSpecificElementMatch(definition.id, "containment_control", stonehaven), true);
+  const stonehavenFinding = aggregateFindingForRequirement(definition, [gradedChunk(definition, stonehaven)]);
+  assert.equal(stonehavenFinding.status, "partial");
+  assert.match(stonehavenFinding.rationale, /partial support for incident assessment and containment or control steps/i);
+  assert.match(stonehavenFinding.remediation, /affected customer information systems or information types/i);
   assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(definition, generic)]).status, "missing");
 });
 
@@ -116,17 +132,31 @@ test("safeguards coverage requires administrative, technical, and physical safeg
 
 test("incident evidence coverage requires a preservation process for covered", () => {
   const definition = requirement("evidence_log_preservation");
-  const complete = "The incident response procedure requires preserving relevant access logs and investigation evidence for review, with a documented retention process and chain of custody.";
+  const complete = [
+    "The incident manager maintains a contemporaneous incident file containing alerts, system and identity logs, relevant exports, screenshots, and investigation notes.",
+    "Relevant logs and volatile information are preserved promptly.",
+    "Exports are stored in access-controlled case folders with source, collection time, custodian, and integrity information when material to the investigation.",
+    "Routine log retention is not shortened while an incident, investigation, examination, or legal hold is open.",
+  ].join(" ");
   const partial = "Teams retain emails and notes relating to significant incidents and provide them to Compliance upon request.";
-
-  assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(definition, complete, {
+  const ticketPartial = "Incident tickets document the event, assigned owner, status, and resolution. Attachments are retained with the ticket until the ticket is archived under the support-system schedule.";
+  const finding = aggregateFindingForRequirement(definition, [gradedChunk(definition, complete, {
     evidence_relationship: "supports",
     requirement_supported: true,
-  })]).status, "covered");
+  })]);
+
+  assert.equal(requirementSpecificElementMatch(definition.id, "incident_materials", complete), true);
+  assert.equal(requirementSpecificElementMatch(definition.id, "preservation_process", complete), true);
+  assert.equal(finding.status, "covered");
+  assert.match(finding.evidence[0].quote, /incident manager maintains a contemporaneous incident file/i);
+  assert.match(finding.evidence[0].quote, /access-controlled case folders/i);
+  assert.doesNotMatch(finding.rationale, /defined process for preserving relevant logs or evidence/i);
+  assert.doesNotMatch(finding.remediation, /preserving relevant logs or evidence/i);
   assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(definition, partial)]).status, "partial");
+  assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(definition, ticketPartial)]).status, "partial");
   assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(
     definition,
-    "The incident team documents its response activities.",
+    "Technology closes support tickets after reported problems are resolved. Employees should keep relevant emails until the issue is complete.",
   )]).status, "missing");
 });
 
@@ -134,6 +164,7 @@ test("recovery inventories cannot establish an operative recovery procedure", ()
   const definition = requirement("remediation_recovery_validation");
   const complete = "System owners restore affected services, assign remediation owners and due dates, validate restored access and logging, and obtain closure approval after completion evidence is reviewed.";
   const partial = "System owners restore affected services after an incident.";
+  const repairAndResume = "Technology repairs affected systems and resumes operations when management determines that service is stable. Management authorizes the return to normal operations after receiving a status update from Technology.";
   const inventory = "Appendix A - Incident File Minimum Contents: investigation timeline, containment actions, recovery steps, corrective actions, validation results, and closure approval.";
 
   assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(definition, complete, {
@@ -141,6 +172,15 @@ test("recovery inventories cannot establish an operative recovery procedure", ()
     requirement_supported: true,
   })]).status, "covered");
   assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(definition, partial)]).status, "partial");
+  const repairFinding = aggregateFindingForRequirement(definition, [gradedChunk(definition, repairAndResume)]);
+  assert.equal(requirementSpecificElementMatch(definition.id, "recovery_steps", repairAndResume), true);
+  assert.equal(requirementSpecificElementMatch(definition.id, "remediation_tracking", repairAndResume), false);
+  assert.equal(requirementSpecificElementMatch(definition.id, "validation_testing", repairAndResume), false);
+  assert.equal(repairFinding.status, "partial");
+  assert.match(repairFinding.rationale, /partial support for recovery steps/i);
+  assert.match(repairFinding.rationale, /remediation or corrective-action tracking/i);
+  assert.match(repairFinding.remediation, /remediation or corrective-action tracking/i);
+  assert.doesNotMatch(repairFinding.remediation, /required recovery steps/i);
   assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(definition, inventory)]).status, "missing");
 });
 
@@ -407,12 +447,15 @@ test("the Attorney General and Commission customer-notice delay process remains 
   })]).status, "covered");
 });
 
-test("assessment and recovery operative rules reject generic activity language", () => {
+test("assessment and recovery rules preserve direct incomplete actions while rejecting generic activity", () => {
   const assessment = requirement("unauthorized_access_detection_escalation");
   const recovery = requirement("remediation_recovery_validation");
-  const assessmentText = "Technology staff investigate alerts and may take systems offline when needed.";
-  const recoveryText = "Technology repairs affected systems and resumes operations when management determines that service is stable.";
+  const genericAssessment = "The incident lead coordinates assessment and containment and manages the investigation.";
+  const genericRecovery = "Technology owns recovery activities and management receives status updates.";
 
-  assert.equal(requirementSpecificElementMatch(assessment.id, "containment_control", assessmentText), false);
-  assert.equal(requirementSpecificElementMatch(recovery.id, "recovery_steps", recoveryText), false);
+  assert.equal(requirementSpecificElementMatch(assessment.id, "assesses_scope", genericAssessment), false);
+  assert.equal(requirementSpecificElementMatch(assessment.id, "containment_control", genericAssessment), false);
+  assert.equal(requirementSpecificElementMatch(recovery.id, "recovery_steps", genericRecovery), false);
+  assert.equal(aggregateFindingForRequirement(assessment, [gradedChunk(assessment, genericAssessment)]).status, "missing");
+  assert.equal(aggregateFindingForRequirement(recovery, [gradedChunk(recovery, genericRecovery)]).status, "missing");
 });

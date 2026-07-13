@@ -1540,6 +1540,12 @@ function partialMissingSentence(requirement: RegSpRequirement, missingRequired: 
   }
 }
 
+function partialSupportSentence(requirement: RegSpRequirement, partiallySupportedRequired: string[]) {
+  const elements = renderedElementList(requirement, partiallySupportedRequired, "partial");
+  if (!elements) return "Some required details are only partially supported.";
+  return `The quoted language provides partial support for ${elements}, but does not make those controls complete or mandatory.`;
+}
+
 function needsReviewDetailForRequirement(requirement: RegSpRequirement, missingRequired: string[]) {
   const missing = renderedElementList(requirement, missingRequired, "missing");
   if (missing) return missing;
@@ -1568,13 +1574,24 @@ function needsReviewDetailForRequirement(requirement: RegSpRequirement, missingR
   }
 }
 
-function partialRemediationForRequirement(requirement: RegSpRequirement, missingRequired: string[]) {
+function partialRemediationForRequirement(
+  requirement: RegSpRequirement,
+  missingRequired: string[],
+  partiallySupportedRequired: string[],
+) {
   const requirementId = copyRequirementId(requirement);
   if (requirementId === "regulator_law_enforcement_notification") {
     return "The reviewed documents show some legal or compliance coordination, but they do not clearly define who decides whether external notification is required after an incident. Define that decision process and, for customer-notice delays, the Attorney General and Commission procedure, written determination, national-security or public-safety standard, timing, extensions, and resumption steps.";
   }
 
   const missing = renderedElementList(requirement, missingRequired, "missing");
+  const partial = renderedElementList(requirement, partiallySupportedRequired, "partial");
+  if (partial && missing) {
+    return `The reviewed documents provide partial support for ${partial}, but they do not clearly define ${missing}. Make the partially supported controls explicit and complete, and add the missing details to the relevant policy or procedure.`;
+  }
+  if (partial) {
+    return `The reviewed documents provide partial support for ${partial}. Make those controls explicit and complete in the relevant policy or procedure.`;
+  }
   if (missing) {
     return `The reviewed documents mention this area, but they do not clearly define ${missing}. Add or update the relevant policy or procedure so those missing details are explicit.`;
   }
@@ -1744,6 +1761,12 @@ function findingDecisionFromLedger({
   const incompleteRequired = requirement.requiredElementsForCovered.filter(
     (elementId) => !fullyCoveredRequired.includes(elementId),
   );
+  const missingRequired = ledger
+    .filter((entry) => entry.relationship === "missing" || entry.relationship === "negative_evidence")
+    .map((entry) => entry.required_element_id);
+  const partiallySupportedRequired = ledger
+    .filter((entry) => entry.relationship === "partially_supports")
+    .map((entry) => entry.required_element_id);
   const contradictedElements = contradictedRequiredElementsFromLedger(ledger);
   const hasOptionalNegativeLimitation = [...organizationNegative, ...documentScopeLimitations].some(
     (chunk) => finalizedOptionalNegativeElementIds(requirement, chunk).length > 0,
@@ -1778,6 +1801,8 @@ function findingDecisionFromLedger({
     status,
     coveredRequired,
     incompleteRequired,
+    missingRequired,
+    partiallySupportedRequired,
     vagueRequired,
   };
 }
@@ -1973,6 +1998,7 @@ export function remediationForFinding(
   requirement: RegSpRequirement,
   status: FindingStatus,
   missingRequired: string[] = [],
+  partiallySupportedRequired: string[] = [],
 ) {
   if (status === "covered") {
     return "Keep this procedure current and confirm related procedures point to it during the next review.";
@@ -1983,7 +2009,7 @@ export function remediationForFinding(
     return `${base} Resolve the contradiction between the documents and identify which policy or procedure is authoritative.`;
   }
   if (status === "partial") {
-    return partialRemediationForRequirement(requirement, missingRequired);
+    return partialRemediationForRequirement(requirement, missingRequired, partiallySupportedRequired);
   }
   if (status === "needs_review") {
     return `Add or point to the procedure that defines ${needsReviewDetailForRequirement(requirement, missingRequired)}. A reviewer should confirm whether another policy already contains this detail.`;
@@ -2012,6 +2038,7 @@ function whatWeFoundForFinding({
   ignoredReferenceCount,
   coveredRequired,
   missingRequired,
+  partiallySupportedRequired,
   vagueRequired,
 }: {
   requirement: RegSpRequirement;
@@ -2024,6 +2051,7 @@ function whatWeFoundForFinding({
   ignoredReferenceCount: number;
   coveredRequired: string[];
   missingRequired: string[];
+  partiallySupportedRequired: string[];
   vagueRequired: string[];
 }) {
   const strongestSupport = direct[0] ?? partial[0];
@@ -2037,6 +2065,7 @@ function whatWeFoundForFinding({
   const negativeDocument = reviewedDocumentLabel(strongestOrganizationNegative);
   const coveredSummary = coveredFindingSentence(requirement, coveredRequired);
   const missingSummary = partialMissingSentence(requirement, missingRequired);
+  const partialSummary = partialSupportSentence(requirement, partiallySupportedRequired);
   const vagueSummary = partialMissingSentence(requirement, vagueRequired);
   const parts: string[] = [];
 
@@ -2059,6 +2088,9 @@ function whatWeFoundForFinding({
     }
     if (coveredRequired.length > 0) {
       parts.push(coveredSummary);
+    }
+    if (partiallySupportedRequired.length > 0) {
+      parts.push(partialSummary);
     }
     if (missingRequired.length > 0) {
       parts.push(missingSummary);
@@ -2313,7 +2345,8 @@ export function aggregateFindingForRequirement(
     remediation: remediationForFinding(
       requirement,
       finalDecision.status,
-      finalDecision.status === "covered" ? [] : finalDecision.incompleteRequired,
+      finalDecision.status === "covered" ? [] : finalDecision.missingRequired,
+      finalDecision.status === "covered" ? [] : finalDecision.partiallySupportedRequired,
     ),
     rationale: whatWeFoundForFinding({
       requirement,
@@ -2325,7 +2358,8 @@ export function aggregateFindingForRequirement(
       documentScopeLimitations: curatedDocumentScopeLimitations,
       ignoredReferenceCount,
       coveredRequired: finalDecision.coveredRequired,
-      missingRequired: finalDecision.status === "covered" ? [] : finalDecision.incompleteRequired,
+      missingRequired: finalDecision.status === "covered" ? [] : finalDecision.missingRequired,
+      partiallySupportedRequired: finalDecision.status === "covered" ? [] : finalDecision.partiallySupportedRequired,
       vagueRequired: finalDecision.vagueRequired,
     }),
     evidence: evidenceForStorage(requirement, curatedEvidence, negativeScopeByChunkId),

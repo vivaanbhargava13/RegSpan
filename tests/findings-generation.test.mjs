@@ -1853,6 +1853,81 @@ test("classifier recovers a line-wrapped retention sentence without merging unre
   assert.equal(finding.evidence[0].quote, retained);
 });
 
+test("production path retains a bounded accountable incident-evidence process span", async () => {
+  const preservationRequirement = {
+    ...requirement,
+    id: "incident_evidence_log_preservation",
+    title: "Incident evidence and log preservation",
+    coverageElements: [
+      {
+        id: "incident_materials",
+        label: "Preserves incident logs or evidence",
+        requiredForCovered: true,
+        signals: ["preserve logs", "volatile information", "investigation notes"],
+      },
+      {
+        id: "preservation_process",
+        label: "Defines a preservation process",
+        requiredForCovered: true,
+        signals: ["incident file", "access-controlled case folders", "legal hold"],
+      },
+    ],
+    requiredElementsForCovered: ["incident_materials", "preservation_process"],
+    directSignals: ["incident file", "preserve logs", "access-controlled case folders", "legal hold"],
+    actionSignals: ["maintains", "preserved", "stored", "retention"],
+    topicSignals: ["logs", "evidence", "investigation"],
+    partialSignals: ["records", "retention"],
+  };
+  const content = [
+    "The incident manager maintains a contemporaneous incident file containing alerts, system and identity logs, relevant exports, screenshots, and investigation notes.",
+    "Relevant logs and volatile information are preserved promptly.",
+    "Exports are stored in access-controlled case folders with source, collection time, custodian, and integrity information when material to the investigation.",
+    "Routine log retention is not shortened while an incident, investigation, examination, or legal hold is open.",
+  ].join(" ");
+  const { postProcessOpenAiClassification } = await loadTsModule("lib/requirementEvidenceClassifier.ts");
+  const classification = postProcessOpenAiClassification({
+    relationship: "supports",
+    confidence: "high",
+    requirement_supported: true,
+    control_absent_or_out_of_scope: false,
+    covered_elements: ["incident_materials", "preservation_process"],
+    missing_elements: [],
+    vague_elements: [],
+    reason: "The policy defines an incident evidence process.",
+    supporting_quote: "Relevant logs and volatile information are preserved promptly.",
+  }, {
+    requirement: preservationRequirement,
+    evaluationGuidance: "Test guidance.",
+    chunkContent: content,
+    chunkMetadata: {
+      filename: "Incident Procedure.pdf",
+      sectionPath: "Incident documentation",
+      pageStart: 4,
+      pageEnd: 4,
+      chunkIndex: 3,
+      sourceType: "client_procedure",
+      evidenceRole: "organization_evidence",
+      evidenceReason: "substantive procedure evidence",
+    },
+  });
+
+  assert.equal(classification.relationship, "supports");
+  assert.deepEqual(classification.covered_elements, ["incident_materials", "preservation_process"]);
+  assert.match(classification.supporting_quote ?? "", /incident manager maintains a contemporaneous incident file/i);
+  assert.match(classification.supporting_quote ?? "", /access-controlled case folders/i);
+
+  const finding = await productionPathFinding(preservationRequirement, [
+    chunk({ content_preview: content }),
+  ], [classification]);
+  assert.equal(finding.status, "covered");
+  assert.match(finding.evidence[0].quote ?? "", /access-controlled case folders/i);
+  assert.deepEqual(
+    canonicalElementIdsForFinalPositiveQuote(preservationRequirement, finding.evidence[0].quote),
+    ["incident_materials", "preservation_process"],
+  );
+  assert.doesNotMatch(finding.rationale, /do not clearly define how logs, evidence, or investigation records must be preserved/i);
+});
+
 test("optional evidence-integrity limitations do not conflict with retained incident materials", () => {
   const preservationRequirement = {
     ...requirement,
