@@ -66,6 +66,21 @@ test("an incomplete mandatory customer breach-notification obligation remains pa
   );
 });
 
+test("a notice presumption with a customer-information trigger and timing remains covered", () => {
+  const definition = requirement("customer_notification_unauthorized_access");
+  const text = [
+    "Compliance determines whether notice is required whenever sensitive customer information was accessed or used without authorization.",
+    "Notice is presumed unless a reasonable investigation supports a documented determination that the information is not likely to be used in a manner that would result in substantial harm or inconvenience.",
+    "The firm provides notice as soon as practicable and no later than 30 days after becoming aware of unauthorized access to or use of customer information.",
+  ].join(" ");
+
+  assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(definition, text, {
+    grade: "direct",
+    evidence_relationship: "supports",
+    requirement_supported: true,
+  })]).status, "covered");
+});
+
 test("an internal service-provider coordinator role does not establish provider duties", () => {
   const definition = requirement("vendor_incident_handling");
   const text = "The service-provider owner coordinates vendor evidence, notices, remediation, and follow-up.";
@@ -90,6 +105,20 @@ test("operative provider safeguards and 72-hour notice remain covered", () => {
   assert.equal(finding.status, "covered");
   assert.match(finding.evidence[0].reason, /due diligence and monitoring/i);
   assert.match(finding.evidence[0].reason, /notify the firm/i);
+});
+
+test("firm-enforced provider oversight remains operative without treating internal ownership as provider evidence", () => {
+  const definition = requirement("vendor_incident_handling");
+  const text = [
+    "The firm maintains written procedures for due diligence and ongoing monitoring of service providers handling customer information.",
+    "Oversight is designed to ensure that service providers protect against unauthorized access to customer information and notify the firm no later than 72 hours after a breach.",
+  ].join(" ");
+
+  assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(definition, text, {
+    grade: "direct",
+    evidence_relationship: "supports",
+    requirement_supported: true,
+  })]).status, "covered");
 });
 
 test("generic operational retention does not establish written compliance records", () => {
@@ -117,6 +146,21 @@ test("records documenting safeguards and disposal implementation remain covered"
   assert.doesNotMatch(finding.evidence[0].reason, /additional required elements/i);
 });
 
+test("a scoped records program recognizes preserved multi-year accessible records", () => {
+  const definition = requirement("written_compliance_records");
+  const text = [
+    "Compliance maintains records demonstrating implementation of the safeguards and disposal program.",
+    "The records include notification investigations, determinations, and copies of customer notices.",
+    "These records are preserved for five years in an easily accessible place.",
+  ].join(" ");
+
+  assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(definition, text, {
+    grade: "direct",
+    evidence_relationship: "supports",
+    requirement_supported: true,
+  })]).status, "covered");
+});
+
 test("contact authority alone does not cover external-notification coordination", () => {
   const definition = requirement("regulator_law_enforcement_notification");
   const text = "Only senior management may contact regulators or law-enforcement authorities. Employees should refer external inquiries to Legal.";
@@ -137,6 +181,20 @@ test("incident-specific external-notification decisioning and legal coordination
   assert.equal(finding.status, "covered");
   assert.match(finding.evidence[0].reason, /incident-specific external notification decisioning/i);
   assert.match(finding.evidence[0].reason, /legal or compliance/i);
+});
+
+test("the Attorney General and Commission customer-notice delay process remains covered", () => {
+  const definition = requirement("regulator_law_enforcement_notification");
+  const text = [
+    "Legal determines whether communications with regulators or law-enforcement authorities are required and preserves related decisions.",
+    "Customer notice may be delayed only when the United States Attorney General determines that notice poses a substantial risk to national security or public safety and notifies the Securities and Exchange Commission in writing.",
+  ].join(" ");
+
+  assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(definition, text, {
+    grade: "direct",
+    evidence_relationship: "supports",
+    requirement_supported: true,
+  })]).status, "covered");
 });
 
 test("targeted operative-element rules do not apply to assessment or recovery", () => {
