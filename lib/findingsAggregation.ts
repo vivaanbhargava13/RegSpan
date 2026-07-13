@@ -721,22 +721,46 @@ function negativeElementSignalMatches(requirement: RegSpRequirement, elementId: 
   return signals.some((signal) => normalizedText.includes(signal));
 }
 
+function sentenceScopedNegativeElementIds(
+  requirement: RegSpRequirement,
+  chunk: GradedEvidenceChunk,
+  quote: string,
+  includeElement: (elementId: string) => boolean,
+) {
+  const sentences = sourceSentenceSpans(quote)
+    .map((span) => span.text)
+    .filter((sentence) => !isScaffoldingQuote(substantiveQuoteText(sentence)));
+
+  return (requirement.coverageElements ?? [])
+    .filter((element) => includeElement(element.id))
+    .filter((element) => sentences.some((sentence) => {
+      const substantiveSentence = substantiveQuoteText(sentence);
+      const scopedReference = referencesUnavailablePolicy({
+        ...chunk,
+        supporting_quote: sentence,
+        negative_evidence_reason: null,
+        grade_reason: "",
+        content_preview: "",
+        section_path: null,
+        filename: null,
+      });
+      return (hasAbsenceLanguage(substantiveSentence) || scopedReference)
+        && negativeElementSignalMatches(requirement, element.id, substantiveSentence);
+    }))
+    .map((element) => element.id);
+}
+
 function negativelyScopedElementIdsForQuote(
   requirement: RegSpRequirement,
   chunk: GradedEvidenceChunk,
   quote: string,
 ) {
-  const substantiveText = substantiveQuoteText(quote);
-  const scopedReference = referencesUnavailablePolicy({
-    ...chunk,
-    supporting_quote: quote,
-  });
-  if (isScaffoldingQuote(substantiveText) || (!hasAbsenceLanguage(substantiveText) && !scopedReference)) return [];
-
-  return (requirement.coverageElements ?? [])
-    .filter((element) => requirement.requiredElementsForCovered.includes(element.id))
-    .filter((element) => negativeElementSignalMatches(requirement, element.id, substantiveText))
-    .map((element) => element.id);
+  return sentenceScopedNegativeElementIds(
+    requirement,
+    chunk,
+    quote,
+    (elementId) => requirement.requiredElementsForCovered.includes(elementId),
+  );
 }
 
 function optionalNegativeElementIdsForQuote(
@@ -744,24 +768,34 @@ function optionalNegativeElementIdsForQuote(
   chunk: GradedEvidenceChunk,
   quote: string,
 ) {
-  const substantiveText = substantiveQuoteText(quote);
-  const scopedReference = referencesUnavailablePolicy({
-    ...chunk,
-    supporting_quote: quote,
-  });
-  if (isScaffoldingQuote(substantiveText) || (!hasAbsenceLanguage(substantiveText) && !scopedReference)) return [];
-
   const required = new Set(requirement.requiredElementsForCovered);
-  return (requirement.coverageElements ?? [])
-    .filter((element) => !required.has(element.id))
-    .filter((element) => negativeElementSignalMatches(requirement, element.id, substantiveText))
-    .map((element) => element.id);
+  return sentenceScopedNegativeElementIds(
+    requirement,
+    chunk,
+    quote,
+    (elementId) => !required.has(elementId),
+  );
 }
 
 function evidenceElementIdsForQuote(requirement: RegSpRequirement, chunk: GradedEvidenceChunk, quote: string) {
   return chunk.evidence_relationship === "negative_evidence"
     ? negativelyScopedElementIdsForQuote(requirement, chunk, quote)
     : supportedElementIdsForQuote(requirement, quote);
+}
+
+function ungroundedNegativeSentenceCount(
+  requirement: RegSpRequirement,
+  chunk: GradedEvidenceChunk,
+  quote: string,
+) {
+  return sourceSentenceSpans(quote)
+    .map((span) => span.text)
+    .filter((sentence) => !isScaffoldingQuote(substantiveQuoteText(sentence)))
+    .filter((sentence) => uniqueStrings([
+      ...negativelyScopedElementIdsForQuote(requirement, chunk, sentence),
+      ...optionalNegativeElementIdsForQuote(requirement, chunk, sentence),
+    ]).length === 0)
+    .length;
 }
 
 function quoteQualityScore(quote: string) {
@@ -786,10 +820,13 @@ function finalQuoteCandidateScore(requirement: RegSpRequirement, chunk: GradedEv
       ...optionalNegativeElementIdsForQuote(requirement, chunk, quote),
     ])
     : evidenceElementIdsForQuote(requirement, chunk, quote);
+  const neutralNegativeSentencePenalty = chunk.evidence_relationship === "negative_evidence"
+    ? ungroundedNegativeSentenceCount(requirement, chunk, quote) * 120
+    : 0;
   return {
     quote,
     supportedElements,
-    score: supportedElements.length * 100 + quoteQualityScore(quote),
+    score: supportedElements.length * 100 + quoteQualityScore(quote) - neutralNegativeSentencePenalty,
   };
 }
 
@@ -828,10 +865,10 @@ function finalizedSourceQuote(requirement: RegSpRequirement, chunk: GradedEviden
       candidate.supportedElements.length > 0
       && chunk.content_preview.includes(candidate.quote)
       && hasSubstantiveQuoteShape(candidate.quote)
+      && (chunk.evidence_relationship !== "negative_evidence"
+        || ungroundedNegativeSentenceCount(requirement, chunk, candidate.quote) === 0)
     )
     .sort((left, right) => {
-      const supportDelta = right.supportedElements.length - left.supportedElements.length;
-      if (supportDelta !== 0) return supportDelta;
       const scoreDelta = right.score - left.score;
       if (scoreDelta !== 0) return scoreDelta;
       return left.quote.length - right.quote.length;

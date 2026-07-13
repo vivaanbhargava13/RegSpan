@@ -1750,7 +1750,7 @@ test("optional evidence-integrity limitations do not conflict with retained inci
     title: "Incident evidence and log preservation",
     coverageElements: [
       { id: "incident_materials", label: "Preserves incident materials", requiredForCovered: true, signals: ["preserve logs"] },
-      { id: "integrity_or_chain_of_custody", label: "Maintains chain of custody", requiredForCovered: false, signals: ["chain of custody"] },
+      { id: "integrity_or_chain_of_custody", label: "Maintains chain of custody", requiredForCovered: false, signals: ["chain of custody", "custody"] },
     ],
     requiredElementsForCovered: ["incident_materials"],
   };
@@ -1778,6 +1778,46 @@ test("optional evidence-integrity limitations do not conflict with retained inci
   assert.deepEqual(finding.evidence.map((evidence) => evidence.relationship), ["supports", "negative_evidence"]);
   const negative = finding.evidence.find((evidence) => evidence.relationship === "negative_evidence");
   assert.equal(negative?.quote, optionalLimitation.supporting_quote);
+  assert.match(negative?.reason ?? "", /explicitly limits evidence integrity or chain-of-custody requirements/i);
+});
+
+test("sentence-scoped negative evidence excludes neutral incident-record leads", () => {
+  const preservationRequirement = {
+    ...requirement,
+    id: "incident_evidence_log_preservation",
+    title: "Incident evidence and log preservation",
+    coverageElements: [
+      { id: "incident_materials", label: "Preserves incident materials", requiredForCovered: true, signals: ["incident records"] },
+      { id: "integrity_or_chain_of_custody", label: "Maintains chain of custody", requiredForCovered: false, signals: ["chain of custody", "custody"] },
+    ],
+    requiredElementsForCovered: ["incident_materials"],
+  };
+  const support = chunk({
+    content_preview: "Security-console exports used during the response are retained for at least 90 days.",
+    supporting_quote: "Security-console exports used during the response are retained for at least 90 days.",
+    covered_elements: ["incident_materials"],
+  });
+  const neutralLead = "This procedure describes basic incident records maintained by Technology Operations.";
+  const integrityLimitation = "The procedure does not establish forensic collection standards, chain-of-custody requirements, immutable evidence storage, or cryptographic integrity checks.";
+  const limitation = chunk({
+    chunk_id: "78787878-7878-4787-8787-787878787879",
+    content_preview: `${neutralLead} ${integrityLimitation}`,
+    supporting_quote: `${neutralLead} ${integrityLimitation}`,
+    grade: "irrelevant",
+    evidence_relationship: "negative_evidence",
+    requirement_supported: false,
+    control_absent_or_out_of_scope: true,
+    negative_evidence: true,
+    covered_elements: [],
+    missing_elements: ["integrity_or_chain_of_custody"],
+    grade_reason: "The procedure limits chain-of-custody controls.",
+  });
+
+  const finding = aggregateFindingForRequirement(preservationRequirement, [support, limitation]);
+  assert.equal(finding.status, "partial");
+  const negative = finding.evidence.find((evidence) => evidence.relationship === "negative_evidence");
+  assert.equal(negative?.quote, integrityLimitation);
+  assert.doesNotMatch(negative?.quote ?? "", /basic incident records/i);
   assert.match(negative?.reason ?? "", /explicitly limits evidence integrity or chain-of-custody requirements/i);
 });
 
