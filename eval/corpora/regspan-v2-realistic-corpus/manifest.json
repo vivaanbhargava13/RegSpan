@@ -590,7 +590,7 @@
         {
           "requirementId": "incident_assessment_containment_control",
           "expected": [
-            "missing"
+            "partial"
           ]
         },
         {
@@ -644,7 +644,7 @@
         {
           "requirementId": "response_recovery_remediation_validation",
           "expected": [
-            "missing"
+            "partial"
           ]
         }
       ]

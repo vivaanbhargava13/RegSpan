@@ -104,6 +104,37 @@ test("V2 realistic-company manifest normalizes to the canonical evaluator schema
   assert.equal(harborview.include.combined, false);
 });
 
+test("V2 Westbridge partial expectations remain synchronized with the answer key and summary", async () => {
+  const root = "eval/corpora/regspan-v2-realistic-corpus";
+  const manifest = validateCorpusManifest(JSON.parse(await readFile(join(root, "manifest.json"), "utf8")));
+  const westbridge = manifest.cases.find((entry) => entry.id === "westbridge-securities");
+  assert.ok(westbridge);
+  assert.deepEqual(westbridge.expectedStatuses.incident_assessment_containment_control, ["partial"]);
+  assert.deepEqual(westbridge.expectedStatuses.response_recovery_remediation_validation, ["partial"]);
+
+  const answerKey = await readFile(join(root, "answer_key.csv"), "utf8");
+  for (const requirementId of [
+    "incident_assessment_containment_control",
+    "response_recovery_remediation_validation",
+  ]) {
+    const row = answerKey.split(/\r?\n/).find((line) => line.startsWith("westbridge-securities,") && line.includes(`,${requirementId},`));
+    assert.ok(row, `missing Westbridge answer-key row for ${requirementId}`);
+    assert.match(row, new RegExp(`,${requirementId},(?:"[^"]*"|[^,]*),partial,`));
+  }
+
+  const summary = await readFile(join(root, "company_summary.csv"), "utf8");
+  const summaryRow = summary.split(/\r?\n/).find((line) => line.startsWith("westbridge-securities,"));
+  assert.equal(summaryRow, "westbridge-securities,Westbridge Securities Corporation,Broker-Dealer,westbridge_information_technology_security_policy.pdf,weak,0,5,6");
+
+  const selectedTotals = ["harborview-asset-advisors", "meridian-transfer-trust", "westbridge-securities"]
+    .map((caseId) => manifest.cases.find((entry) => entry.id === caseId))
+    .flatMap((entry) => Object.values(entry.expectedStatuses).flat());
+  assert.deepEqual(selectedTotals.reduce((totals, status) => ({
+    ...totals,
+    [status]: totals[status] + 1,
+  }), { covered: 0, partial: 0, missing: 0 }), { covered: 22, partial: 5, missing: 6 });
+});
+
 test("V2 case selection remains isolated, ordered, and corpus-scoped", async () => {
   const raw = JSON.parse(await readFile("eval/corpora/regspan-v2-realistic-corpus/manifest.json", "utf8"));
   const { cases } = validateCorpusManifest(raw);
