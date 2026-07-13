@@ -170,13 +170,19 @@ async function loadTypeScriptModule(sourcePath, outDir) {
   const outputText = transpiled.outputText
     .replaceAll('from "./negativeEvidence"', 'from "./lib__negativeEvidence.mjs"')
     .replaceAll('from "./requirementEvidenceClassifier"', 'from "./lib__requirementEvidenceClassifier.mjs"')
-    .replaceAll('from "./documentSource"', 'from "./lib__documentSource.mjs"');
+    .replaceAll('from "./documentSource"', 'from "./lib__documentSource.mjs"')
+    .replaceAll('from "./operativeEvidenceRules.mjs"', 'from "./lib__operativeEvidenceRules.mjs"');
   await writeFile(outputPath, outputText, "utf8");
   return import(pathToFileURL(outputPath).href);
 }
 
 async function loadRequirementMatchingModules() {
   const outDir = await mkdtemp(join(tmpdir(), "regspan-requirement-eval-"));
+  await writeFile(
+    join(outDir, "lib__operativeEvidenceRules.mjs"),
+    await readFile("lib/operativeEvidenceRules.mjs", "utf8"),
+    "utf8",
+  );
   await loadTypeScriptModule("lib/negativeEvidence.ts", outDir);
   const [requirements, source] = await Promise.all([
     loadTypeScriptModule("lib/regSpRequirements.ts", outDir),

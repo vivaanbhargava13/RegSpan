@@ -81,6 +81,17 @@ test("supporting guidance controls are not mislabeled as direct SEC obligations"
   assert.match(regulatorNotice.sourceBasis, /not create a broad standalone/i);
 });
 
+test("external-notification coordination requires incident decisioning and legal/compliance coordination", () => {
+  const requirement = getRegSpRequirement("regulator_law_enforcement_notification");
+  assert.ok(requirement);
+  assert.deepEqual(requirement.requiredElementsForCovered, [
+    "external_notification_decisioning",
+    "legal_compliance_coordination",
+  ]);
+  assert.match(requirement.coverageElements[0].signals.join(" "), /determines|decision|evaluates|assesses/i);
+  assert.match(requirement.coverageElements[1].signals.join(" "), /legal|compliance/i);
+});
+
 test("future-scope Reg S-P areas are documented outside the MVP requirement set", () => {
   const futureIds = REG_SP_REQUIREMENT_FUTURE_SCOPE.map((item) => item.id);
 

@@ -4,6 +4,11 @@ import {
   type WorkspaceExternalAiProcessingPolicy,
 } from "./aiProcessingPolicy";
 import { detectNegativeEvidence } from "./negativeEvidence";
+import {
+  requirementSpecificElementMatch,
+  requiresOperativeElementSupport,
+  usesCanonicalOperativeElementModel,
+} from "./operativeEvidenceRules.mjs";
 import type { RegSpRequirement } from "./regSpRequirements";
 import type { RetrievedChunk } from "./retrieval";
 
@@ -123,12 +128,7 @@ function assessCoverageElements(requirement: RegSpRequirement, text: string) {
   const coverageElements = requirement.coverageElements ?? [];
   const requiredElements = requirement.requiredElementsForCovered ?? [];
   const covered = coverageElements
-    .filter((element) =>
-      element.signals.some((signal) => {
-        const normalizedSignal = normalize(signal);
-        return normalizedSignal && text.includes(normalizedSignal);
-      }),
-    )
+    .filter((element) => coverageElementMatches(requirement, element.id, element.signals, text))
     .map((element) => element.id);
   const missingRequired = requiredElements.filter(
     (elementId) => !covered.includes(elementId),
@@ -472,6 +472,23 @@ function classifierLegacyRequirementId(requirementId: string) {
   return legacyIds[requirementId] ?? requirementId;
 }
 
+function coverageElementMatches(
+  requirement: RegSpRequirement,
+  elementId: string,
+  signals: string[],
+  text: string,
+) {
+  const elementIds = (requirement.coverageElements ?? []).map((element) => element.id);
+  const requirementSpecific = usesCanonicalOperativeElementModel(requirement.id, elementIds)
+    ? requirementSpecificElementMatch(requirement.id, elementId, text)
+    : null;
+  if (requirementSpecific !== null) return requirementSpecific;
+  return signals.some((signal) => {
+    const normalizedSignal = normalize(signal);
+    return normalizedSignal && text.includes(normalizedSignal);
+  });
+}
+
 function extraElementSignals(requirementId: string, elementId: string) {
   const signals: Record<string, Record<string, string[]>> = {
     evidence_log_preservation: {
@@ -634,10 +651,7 @@ function quoteSupportedElementIds(
   return (input.requirement.coverageElements ?? [])
     .filter((element) => {
       const signals = elementSignals(input.requirement.id, element.id, element.signals);
-      const matches = signals.some((signal) => {
-        const normalizedSignal = normalize(signal);
-        return normalizedSignal && text.includes(normalizedSignal);
-      });
+      const matches = coverageElementMatches(input.requirement, element.id, signals, text);
       if (classifierLegacyRequirementId(input.requirement.id) === "evidence_log_preservation" && element.id === "incident_materials") {
         const retentionAction = /\b(?:preserv\w*|retain\w*|maintain\w*)\b/.test(text);
         const incidentMaterial = /\b(?:logs?|exports?|screenshots?|forensic (?:data|evidence)|investigation (?:materials?|records?|notes)|incident (?:materials?|records?)|security[- ]console exports?|volatile information)\b/.test(text);
@@ -821,19 +835,19 @@ export function buildRequirementEvaluationGuidance(requirement: RegSpRequirement
     unauthorized_access_detection_escalation:
       "Supports when the chunk describes assessing the nature and scope of unauthorized access or use of customer information, identifying affected customer information systems or information types, escalating the incident, or taking containment and control steps.",
     customer_notification_unauthorized_access:
-      "Supports when the chunk describes notifying affected customers, individuals, people, consumers, or clients after unauthorized access/use of sensitive customer information, especially with timing such as as soon as practicable or no later than 30 days and a substantial harm or inconvenience trigger.",
+      "Supports only when an operative customer-notice obligation is tied to unauthorized access, unauthorized use, or a breach involving customer information. Management discretion over communications is context only, not a notification trigger or timing requirement.",
     customer_notification_content:
       "Supports when the chunk defines customer notice contents such as incident description, type of sensitive customer information, incident date or date range, contact information, account review, fraud alerts, credit reports, identity theft resources, or FTC/usa.gov guidance.",
     regulator_law_enforcement_notification:
-      "This is supporting-control evidence, not a standalone Reg S-P customer-notice obligation. Supports when the chunk describes legal/compliance coordination for regulator, law enforcement, supervisory, contractual, Attorney General delay, public-safety, or national-security notification decisions.",
+      "This is supporting-control evidence, not a standalone Reg S-P customer-notice obligation. Supports only incident-specific external-notification decisioning plus legal/compliance coordination or ownership. Contact authority alone is not notification decisioning.",
     vendor_incident_handling:
-      "Supports when the chunk imposes service-provider, vendor, supplier, or third-party customer-information protection, due diligence, monitoring, breach notice to the firm, 72-hour reporting, cooperation, coordination, contract, investigation, remediation, or recovery obligations.",
+      "Supports only operative obligations imposed on or governing service providers, vendors, suppliers, or third parties, such as due diligence, monitoring, customer-information safeguards, breach notice to the firm, or 72-hour reporting. An internal owner or coordinator role alone is context only.",
     customer_information_safeguards:
       "Supports when the chunk describes administrative, technical, or physical safeguards protecting customer records and information, including authentication, encryption, monitoring, least privilege, access controls, vendor controls, or physical protections.",
     disposal_consumer_customer_information:
       "Supports when the chunk describes proper disposal, secure destruction, media sanitization, shredding, wiping, deletion, or disposal-vendor controls for consumer information or customer information.",
     written_compliance_records:
-      "Supports when the chunk requires written records documenting safeguards or disposal compliance, incident-response determinations, customer-notice determinations, Attorney General delay documentation, copies of notices, policy versions, retention periods, or accessible storage.",
+      "Supports only operative recordkeeping tied to safeguards, disposal, incident response, notification determinations, or a Regulation S-P compliance program. Generic departmental or operational retention is context only.",
     evidence_log_preservation:
       "This is supporting-control evidence. Supports when the chunk describes collecting, preserving, retaining, or maintaining logs, evidence, incident records, forensic data, chain of custody, or investigation files.",
     remediation_recovery_validation:
@@ -951,6 +965,30 @@ function classifyRequirementEvidenceHeuristicallyInternal(
         negativeEvidence.matchedPhrase ?? "",
         negativeEvidence.matchedSignal ?? "",
       ]),
+      classifier_provider: provider,
+    };
+  }
+
+  if (
+    requiresOperativeElementSupport(
+      requirement.id,
+      (requirement.coverageElements ?? []).map((element) => element.id),
+    )
+    && coverage.covered.length === 0
+  ) {
+    return {
+      relationship: direct.count > 0 || partial.count > 0 || background.count > 0
+        ? "background_context"
+        : "irrelevant",
+      confidence: "medium",
+      requirement_supported: false,
+      control_absent_or_out_of_scope: false,
+      covered_elements: [],
+      missing_elements: requirement.requiredElementsForCovered,
+      vague_elements: [],
+      reason:
+        "The cited text is related context, but does not establish an operative requirement-specific obligation.",
+      supporting_quote: null,
       classifier_provider: provider,
     };
   }

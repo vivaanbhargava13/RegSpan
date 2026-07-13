@@ -750,22 +750,32 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
     riskSeverity: "medium",
     evidenceCriteria: {
       lookFor: "Procedures for legal/compliance review of regulator, law-enforcement, contractual, supervisory, or Attorney General delay issues.",
-      strongEvidence: "Policies define legal/compliance ownership, escalation criteria, external reporting decisioning, and coordination with customer-notice timing.",
-      partialEvidence: "External reporting is mentioned, but triggers, owner, timing, or relationship to customer notice is unclear.",
+      strongEvidence: "Policies define incident-specific external reporting decisioning plus legal/compliance coordination with customer-notice timing.",
+      partialEvidence: "An incident-specific external reporting decision is mentioned, but legal/compliance coordination, triggers, timing, or relationship to customer notice is unclear.",
       missingOrNegativeEvidence: "The documents say regulator or law-enforcement reporting is not defined, or contain no external notification decision process.",
     },
     coverageElements: [
       {
         id: "external_notification_decisioning",
-        label: "Defines external notification decisioning",
+        label: "Defines incident-specific external notification decisioning",
         requiredForCovered: true,
-        signals: ["regulator", "regulatory notification", "law enforcement", "authorities", "attorney general", "external notification"],
+        signals: [
+          "determines whether regulatory notification is required",
+          "regulator notification decision",
+          "evaluates required external reporting after an incident",
+          "assesses whether law enforcement notification is required",
+        ],
       },
       {
-        id: "legal_compliance_owner",
-        label: "Assigns legal or compliance ownership",
-        requiredForCovered: false,
-        signals: ["legal", "compliance", "privacy counsel", "general counsel", "owner"],
+        id: "legal_compliance_coordination",
+        label: "Coordinates external notifications through legal or compliance",
+        requiredForCovered: true,
+        signals: [
+          "legal coordinates regulatory notification",
+          "compliance coordinates external notification",
+          "legal reviews the regulator notification decision",
+          "general counsel coordinates required reporting",
+        ],
       },
     ],
     retrievalQuery:

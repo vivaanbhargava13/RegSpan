@@ -1,5 +1,9 @@
 import type { GradedEvidenceChunk } from "./requirementMatching";
 import type { RegSpRequirement, RegSpRequirementId } from "./regSpRequirements";
+import {
+  requirementSpecificElementMatch,
+  usesCanonicalOperativeElementModel,
+} from "./operativeEvidenceRules.mjs";
 
 export type FindingStatus = "covered" | "partial" | "missing" | "conflicting" | "needs_review";
 export type FindingSeverity = "critical" | "high" | "medium" | "low" | "info";
@@ -614,32 +618,6 @@ function serviceProviderNoticeObligationMatches(text: string) {
   ) || /\b(?:firm|institution|organization|company)\b[\s\S]{0,120}\b(?:service[- ]providers?|vendors?|suppliers?|third[- ]part(?:y|ies))\b[\s\S]{0,80}\b(?:notify|report)\b/i.test(text);
 }
 
-function serviceProviderElementMatches(elementId: string, text: string) {
-  if (!hasServiceProviderActor(text)) return false;
-
-  switch (elementId) {
-    case "service_provider_scope":
-      return serviceProviderObligationMatches(
-        text,
-        /\b(?:due diligence|monitor(?:ing|s|ed)?|oversight|handling customer information|customer information systems?)\b/i,
-      );
-    case "provider_safeguards":
-      return serviceProviderObligationMatches(
-        text,
-        /\b(?:protect(?:ion|s|ed|ing)? (?:against )?unauthorized access(?: to| or use of)?|protect(?:ion|s|ed|ing)? customer information|safeguards? (?:for|to protect) customer information|appropriate measures to protect)\b/i,
-      );
-    case "notice_to_firm":
-      return serviceProviderNoticeObligationMatches(text);
-    case "cooperation_remediation":
-      return serviceProviderObligationMatches(
-        text,
-        /\b(?:cooperat(?:e|es|ed|ion)|coordinat(?:e|es|ed|ion)|investigat(?:e|es|ed|ion)|forensic|status updates?|remediat(?:e|es|ed|ion)|corrective actions?|recover(?:y|ies|ed|ing)|containment support)\b/i,
-      );
-    default:
-      return false;
-  }
-}
-
 function serviceProviderNegativeElementMatches(elementId: string, text: string) {
   if (!hasServiceProviderActor(text)) return false;
 
@@ -659,20 +637,15 @@ function serviceProviderNegativeElementMatches(elementId: string, text: string) 
 }
 
 function elementSignalMatches(requirement: RegSpRequirement, elementId: string, text: string) {
-  const signals = elementSignals(requirement, elementId);
-  if (copyRequirementId(requirement) === "vendor_incident_handling") {
-    return serviceProviderElementMatches(elementId, text);
-  }
+  const elementIds = (requirement.coverageElements ?? []).map((element) => element.id);
+  const requirementSpecific = usesCanonicalOperativeElementModel(requirement.id, elementIds)
+    ? requirementSpecificElementMatch(requirement.id, elementId, text)
+    : null;
+  if (requirementSpecific !== null) return requirementSpecific;
 
+  const signals = elementSignals(requirement, elementId);
   if (copyRequirementId(requirement) === "evidence_log_preservation" && elementId === "incident_materials") {
     return evidencePreservationElementMatches(text);
-  }
-
-  if (copyRequirementId(requirement) === "written_compliance_records" && elementId === "compliance_record_scope") {
-    const organizationOwner = /\b(?:firm|company|organization|institution|compliance|policy owner)\b/.test(text);
-    const recordsObligation = /\b(?:maintain\w*|keep\w*|make and maintain|records? (?:demonstrating|documenting) implementation)\b/.test(text);
-    const complianceProgramScope = /\b(?:safeguards?|disposal|regulation s-?p|compliance program|privacy program)\b/.test(text);
-    return organizationOwner && recordsObligation && complianceProgramScope;
   }
 
   if (copyRequirementId(requirement) === "disposal_consumer_customer_information" && !hasDisposalAlignedLanguage(text)) {
@@ -1368,8 +1341,8 @@ const foundElementCopy: Partial<Record<RegSpRequirementId, Record<string, string
     validation_testing: "validates recovery or remediation",
   },
   regulator_law_enforcement_notification: {
-    external_notification_decisioning: "defines external notification decisioning",
-    legal_compliance_owner: "assigns legal or compliance ownership",
+    external_notification_decisioning: "defines incident-specific external notification decisioning",
+    legal_compliance_coordination: "coordinates external notifications through legal or compliance",
   },
 };
 
@@ -1425,8 +1398,8 @@ const missingElementCopy: Partial<Record<RegSpRequirementId, Record<string, stri
     validation_testing: "how recovery or remediation must be validated",
   },
   regulator_law_enforcement_notification: {
-    external_notification_decisioning: "who decides when external notification is required",
-    legal_compliance_owner: "legal or compliance ownership for external notification decisions",
+    external_notification_decisioning: "who decides whether external notification is required after an incident",
+    legal_compliance_coordination: "legal or compliance coordination for external notification decisions",
   },
 };
 
@@ -1484,8 +1457,8 @@ const partialElementCopy: Partial<Record<RegSpRequirementId, Record<string, stri
     validation_testing: "recovery or remediation validation",
   },
   regulator_law_enforcement_notification: {
-    external_notification_decisioning: "external notification decisioning",
-    legal_compliance_owner: "legal or compliance ownership",
+    external_notification_decisioning: "incident-specific external notification decisioning",
+    legal_compliance_coordination: "legal or compliance coordination",
   },
 };
 

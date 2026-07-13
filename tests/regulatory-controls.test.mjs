@@ -185,6 +185,52 @@ test("DB-backed service-provider controls require oversight, safeguards, and not
   assert.deepEqual(providerRequirement.optionalElements, ["cooperation_remediation"]);
 });
 
+test("DB-backed external-notification controls require incident decisioning and legal/compliance coordination", async () => {
+  const coordinationRequirement = regulatoryControlToRegSpRequirement(regulatoryControl({
+    controlKey: "regulator_law_enforcement_notification_coordination",
+    name: "Regulator and law enforcement notification coordination",
+    regulatoryRole: "supporting_control",
+    elements: [
+      {
+        id: "element-external-decision",
+        elementKey: "external_notification_decisioning",
+        label: "Defines incident-specific external notification decisioning",
+        description: "External notification decision after an incident.",
+        required: true,
+        evidenceQuestion: null,
+        missingIfAbsent: true,
+        displayOrder: 1,
+        metadata: { signals: ["regulator notification decision"] },
+      },
+      {
+        id: "element-legal-coordination",
+        elementKey: "legal_compliance_coordination",
+        label: "Coordinates external notifications through legal or compliance",
+        description: "Legal or compliance coordinates the decision.",
+        required: true,
+        evidenceQuestion: null,
+        missingIfAbsent: true,
+        displayOrder: 2,
+        metadata: { signals: ["legal reviews the regulator notification decision"] },
+      },
+    ],
+  }));
+
+  assert.deepEqual(coordinationRequirement.requiredElementsForCovered, [
+    "external_notification_decisioning",
+    "legal_compliance_coordination",
+  ]);
+
+  const migration = await readFile(
+    "supabase/migrations/024_tighten_operative_evidence_elements.sql",
+    "utf8",
+  );
+  assert.match(migration, /024_tighten_operative_evidence_elements/);
+  assert.match(migration, /regulator_law_enforcement_notification_coordination/);
+  assert.match(migration, /external_notification_decisioning/);
+  assert.match(migration, /legal_compliance_coordination/);
+});
+
 test("hardcoded fallback framework still exposes the 11 curated controls", () => {
   assert.equal(REG_SP_REQUIREMENTS.length, 11);
   assert.equal(REG_SP_REQUIREMENTS.find((requirement) => requirement.id === "written_incident_response_program")?.riskSeverity, "high");

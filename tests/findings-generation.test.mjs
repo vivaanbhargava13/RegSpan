@@ -29,26 +29,31 @@ async function loadTsModule(sourcePath) {
   }).outputText;
   const policyOutput = transpile(await readFile("lib/aiProcessingPolicy.ts", "utf8"), "lib/aiProcessingPolicy.ts");
   const negativeOutput = transpile(await readFile("lib/negativeEvidence.ts", "utf8"), "lib/negativeEvidence.ts");
+  const operativeEvidenceRules = await readFile("lib/operativeEvidenceRules.mjs", "utf8");
   const classifierOutput = transpile(
     await readFile("lib/requirementEvidenceClassifier.ts", "utf8"),
     "lib/requirementEvidenceClassifier.ts",
   )
     .replaceAll('from "./aiProcessingPolicy"', 'from "./lib__aiProcessingPolicy.mjs"')
-    .replaceAll('from "./negativeEvidence"', 'from "./lib__negativeEvidence.mjs"');
+    .replaceAll('from "./negativeEvidence"', 'from "./lib__negativeEvidence.mjs"')
+    .replaceAll('from "./operativeEvidenceRules.mjs"', 'from "./lib__operativeEvidenceRules.mjs"');
   if (sourcePath === "lib/requirementEvidenceClassifier.ts") {
     await Promise.all([
       writeFile(join(outDir, "lib__aiProcessingPolicy.mjs"), policyOutput, "utf8"),
       writeFile(join(outDir, "lib__negativeEvidence.mjs"), negativeOutput, "utf8"),
+      writeFile(join(outDir, "lib__operativeEvidenceRules.mjs"), operativeEvidenceRules, "utf8"),
       writeFile(outPath, classifierOutput, "utf8"),
     ]);
     return import(pathToFileURL(outPath).href);
   }
   const outputText = transpile(source, sourcePath)
-    .replaceAll('from "./requirementEvidenceClassifier"', 'from "./lib__requirementEvidenceClassifier.mjs"');
+    .replaceAll('from "./requirementEvidenceClassifier"', 'from "./lib__requirementEvidenceClassifier.mjs"')
+    .replaceAll('from "./operativeEvidenceRules.mjs"', 'from "./lib__operativeEvidenceRules.mjs"');
 
   await Promise.all([
     writeFile(join(outDir, "lib__aiProcessingPolicy.mjs"), policyOutput, "utf8"),
     writeFile(join(outDir, "lib__negativeEvidence.mjs"), negativeOutput, "utf8"),
+    writeFile(join(outDir, "lib__operativeEvidenceRules.mjs"), operativeEvidenceRules, "utf8"),
     writeFile(join(outDir, "lib__requirementEvidenceClassifier.mjs"), classifierOutput, "utf8"),
     writeFile(outPath, outputText, "utf8"),
   ]);
@@ -619,17 +624,17 @@ test("evidence explanations avoid raw coverage-element grammar artifacts", () =>
             signals: ["regulator"],
           },
           {
-            id: "legal_compliance_owner",
-            label: "Assigns legal or compliance ownership",
+            id: "legal_compliance_coordination",
+            label: "Coordinates external notifications through legal or compliance",
             requiredForCovered: true,
-            signals: ["legal owner"],
+            signals: ["legal coordinates regulatory notification"],
           },
         ],
-        requiredElementsForCovered: ["external_notification_decisioning", "legal_compliance_owner"],
+        requiredElementsForCovered: ["external_notification_decisioning", "legal_compliance_coordination"],
       },
       coveredElements: ["external_notification_decisioning"],
-      missingElements: ["legal_compliance_owner"],
-      quote: "Legal reviews the regulator notification decision after incident escalation.",
+      missingElements: ["legal_compliance_coordination"],
+      quote: "The incident lead determines whether regulator notification is required after an incident.",
       expected: /Additional required elements are not proven by this quote/,
     },
     {
@@ -938,23 +943,23 @@ test("regulator and law-enforcement partial evidence yields partial instead of m
         signals: ["regulator notification decision"],
       },
       {
-        id: "legal_compliance_owner",
-        label: "Assigns legal or compliance ownership",
+        id: "legal_compliance_coordination",
+        label: "Coordinates external notifications through legal or compliance",
         requiredForCovered: true,
-        signals: ["legal owner"],
+        signals: ["legal coordinates regulatory notification"],
       },
     ],
-    requiredElementsForCovered: ["external_notification_decisioning", "legal_compliance_owner"],
+    requiredElementsForCovered: ["external_notification_decisioning", "legal_compliance_coordination"],
   };
   const support = chunk({
     grade: "partial",
     evidence_relationship: "partially_supports",
     requirement_supported: false,
     section_path: "Law enforcement and regulator coordination",
-    content_preview: "Legal reviews the regulator notification decision after incident escalation.",
-    supporting_quote: "Legal reviews the regulator notification decision after incident escalation.",
+    content_preview: "The incident lead determines whether regulator notification is required after an incident.",
+    supporting_quote: "The incident lead determines whether regulator notification is required after an incident.",
     covered_elements: ["external_notification_decisioning"],
-    missing_elements: ["legal_compliance_owner"],
+    missing_elements: ["legal_compliance_coordination"],
     grade_reason: "The cited text identifies external notification decisioning but not ownership.",
   });
 
@@ -2506,11 +2511,8 @@ test("production path recognizes operative compliance-program records but reject
     }),
   ]);
 
-  assert.equal(genericFinding.status, "partial");
-  assert.deepEqual(
-    canonicalElementIdsForFinalPositiveQuote(recordsRequirement, genericFinding.evidence[0].quote),
-    ["retention_accessibility"],
-  );
+  assert.equal(genericFinding.status, "missing");
+  assert.deepEqual(genericFinding.evidence, []);
 });
 
 test("production path retains a bounded contiguous same-chunk records span for complete coverage", async () => {
@@ -2598,10 +2600,11 @@ test("same-chunk curation does not merge non-contiguous compliance-record passag
   ]);
 
   assert.equal(finding.status, "partial");
-  assert.doesNotMatch(finding.evidence[0].quote, /records demonstrating implementation/i);
+  assert.match(finding.evidence[0].quote, /records demonstrating implementation/i);
+  assert.doesNotMatch(finding.evidence[0].quote, /copies of customer notices/i);
   assert.deepEqual(
     canonicalElementIdsForFinalPositiveQuote(recordsRequirement, finding.evidence[0].quote),
-    ["notice_determination_records", "retention_accessibility"],
+    ["compliance_record_scope"],
   );
 });
 

@@ -21,7 +21,13 @@ async function loadTsModule(sourcePath) {
   const outputText = transpiled.outputText
     .replaceAll('from "./aiProcessingPolicy"', 'from "./lib__aiProcessingPolicy.mjs"')
     .replaceAll('from "./negativeEvidence"', 'from "./lib__negativeEvidence.mjs"')
-    .replaceAll('from "./requirementEvidenceClassifier"', 'from "./lib__requirementEvidenceClassifier.mjs"');
+    .replaceAll('from "./requirementEvidenceClassifier"', 'from "./lib__requirementEvidenceClassifier.mjs"')
+    .replaceAll('from "./operativeEvidenceRules.mjs"', 'from "./lib__operativeEvidenceRules.mjs"');
+  await writeFile(
+    join(outDir, "lib__operativeEvidenceRules.mjs"),
+    await readFile("lib/operativeEvidenceRules.mjs", "utf8"),
+    "utf8",
+  );
   if (sourcePath !== "lib/aiProcessingPolicy.ts") {
     const policySource = await readFile("lib/aiProcessingPolicy.ts", "utf8");
     const policyTranspiled = ts.transpileModule(policySource, {
@@ -58,7 +64,8 @@ async function loadTsModule(sourcePath) {
     });
     const classifierOutput = classifierTranspiled.outputText
       .replaceAll('from "./aiProcessingPolicy"', 'from "./lib__aiProcessingPolicy.mjs"')
-      .replaceAll('from "./negativeEvidence"', 'from "./lib__negativeEvidence.mjs"');
+      .replaceAll('from "./negativeEvidence"', 'from "./lib__negativeEvidence.mjs"')
+      .replaceAll('from "./operativeEvidenceRules.mjs"', 'from "./lib__operativeEvidenceRules.mjs"');
     await writeFile(join(outDir, "lib__requirementEvidenceClassifier.mjs"), classifierOutput, "utf8");
   }
   await writeFile(outPath, outputText, "utf8");
@@ -541,22 +548,22 @@ test("generated classifier reasons cannot replace exact source quotes but raw qu
   const requirement = REG_SP_REQUIREMENTS.find(
     (item) => item.id === "customer_notification_unauthorized_access",
   );
-  const chunk = organizationChunk("Legal may notify affected customers after unauthorized access.");
+  const chunk = organizationChunk("Legal must notify affected customers after unauthorized access to customer information.");
 
   const result = postProcessOpenAiClassification({
     relationship: "partially_supports",
     confidence: "medium",
     requirement_supported: false,
     control_absent_or_out_of_scope: false,
-    covered_elements: ["notice_trigger"],
-    missing_elements: ["notice_timing"],
+    covered_elements: ["unauthorized_access_or_use"],
+    missing_elements: ["notice_trigger_standard", "notice_timing"],
     vague_elements: [],
-    reason: "Legal may notify affected customers after unauthorized access and the timing element is missing.",
+    reason: "Legal must notify affected customers after unauthorized access, but the timing element is missing.",
     supporting_quote: null,
   }, classifierInputForChunk(requirement, chunk));
 
   assert.equal(result.relationship, "partially_supports");
-  assert.equal(result.supporting_quote, "Legal may notify affected customers after unauthorized access.");
+  assert.equal(result.supporting_quote, "Legal must notify affected customers after unauthorized access to customer information.");
   assert.notEqual(result.supporting_quote, result.reason);
   assert.deepEqual(result.covered_elements, ["unauthorized_access_or_use"]);
 });
