@@ -18,11 +18,14 @@ import {
   CorpusManifestError,
   createOneShotEvaluationState,
   corpusChunkClassificationViolations,
+  formatEvaluationStatusAccuracy,
   newEvaluationWorkspaceValues,
   evidenceIntegrityViolations,
   pollForTerminal,
   retryRateLimitedOperation,
   recordEvaluationFailure,
+  runIsolatedCaseSequence,
+  summarizeEvaluationState,
   normalizeCorpusManifest,
   processingResultForReport,
   scoreCaseFindings,
@@ -520,6 +523,140 @@ test("partial reports remain incomplete and are written atomically", async () =>
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test("isolated evaluation continues after a failed case with independent workspaces and documents", async () => {
+  const definitions = [
+    manifestCase("case-one"),
+    manifestCase("case-two"),
+    manifestCase("case-three"),
+  ];
+  const state = createOneShotEvaluationState({
+    runId: RUN_ID,
+    corpusId: "regspan-v1",
+    mode: "isolated",
+    actorUserId: ACTOR_ID,
+    workspacePrefix: "regspan-eval-",
+    selectedCases: definitions,
+    startedAt: "2026-07-12T00:00:00.000Z",
+  });
+  const attempted = [];
+  await runIsolatedCaseSequence({
+    cases: definitions,
+    runCase: async (definition) => {
+      attempted.push(definition.id);
+      const entry = state.cases[definition.id];
+      entry.documentId = `document-${definition.id}`;
+      if (definition.id === "case-two") throw new Error("source_classification_invalid");
+      entry.completed = true;
+      entry.score = {
+        expectedStatuses: 1,
+        matchedStatuses: 1,
+        statusResults: [{
+          requirementId: "safeguards_customer_information",
+          expected: ["partial"],
+          actual: "partial",
+        }],
+        conceptResults: [],
+        elementResults: [],
+        forbiddenResults: [],
+        unexpectedCovered: [],
+      };
+    },
+    onCaseFailure: async (definition, error) => {
+      recordEvaluationFailure(
+        state,
+        definition.id,
+        error instanceof Error ? error.message : "evaluation_failed",
+        "corpus_source_classification_invalid",
+      );
+    },
+  });
+
+  assert.deepEqual(attempted, ["case-one", "case-two", "case-three"]);
+  assert.equal(state.cases["case-two"].diagnosticCode, "corpus_source_classification_invalid");
+  assert.equal(state.cases["case-three"].completed, true);
+  assert.equal(new Set(Object.values(state.workspaces).map((workspace) => workspace.name)).size, 3);
+  assert.deepEqual(
+    Object.values(state.cases).map((entry) => entry.documentId).filter(Boolean),
+    ["document-case-one", "document-case-two", "document-case-three"],
+  );
+});
+
+test("incomplete reports separate evaluated accuracy from full-corpus progress", () => {
+  const selectedCases = Array.from({ length: 12 }, (_, index) => ({
+    ...manifestCase(`case-${index + 1}`),
+    expectedStatuses: Object.fromEntries(Array.from({ length: 11 }, (_, requirementIndex) => [
+      `requirement-${requirementIndex + 1}`,
+      ["covered"],
+    ])),
+  }));
+  const state = createOneShotEvaluationState({
+    runId: RUN_ID,
+    corpusId: "regspan-v2",
+    mode: "isolated",
+    actorUserId: ACTOR_ID,
+    workspacePrefix: "regspan-eval-",
+    selectedCases,
+    startedAt: "2026-07-12T00:00:00.000Z",
+  });
+  for (const caseId of ["case-1", "case-2"]) {
+    const entry = state.cases[caseId];
+    entry.completed = true;
+    entry.score = {
+      expectedStatuses: 11,
+      matchedStatuses: 11,
+      statusResults: Array.from({ length: 11 }, (_, index) => ({
+        requirementId: `requirement-${index + 1}`,
+        expected: ["covered"],
+        actual: "covered",
+      })),
+      conceptResults: [],
+      elementResults: [],
+      forbiddenResults: [],
+      unexpectedCovered: [],
+    };
+  }
+  recordEvaluationFailure(state, "case-3", "classification_failed", "corpus_source_classification_invalid");
+
+  const summary = summarizeEvaluationState(state);
+  assert.deepEqual({
+    completedCases: summary.completedCases,
+    failedCases: summary.failedCases,
+    notStartedCases: summary.notStartedCases,
+    evaluatedStatusMatched: summary.evaluatedStatusMatched,
+    evaluatedStatusExpected: summary.evaluatedStatusExpected,
+    totalExpectedStatuses: summary.totalExpectedStatuses,
+  }, {
+    completedCases: 2,
+    failedCases: 1,
+    notStartedCases: 9,
+    evaluatedStatusMatched: 22,
+    evaluatedStatusExpected: 22,
+    totalExpectedStatuses: 132,
+  });
+  assert.equal(formatEvaluationStatusAccuracy(summary), "Evaluated status accuracy: 100.0% (22/22)");
+  assert.equal(summary.allSelectedCasesCompleted, false);
+
+  const completed = summarizeEvaluationState({
+    ...state,
+    cases: {
+      "case-one": {
+        expectedStatuses: { safeguards_customer_information: ["partial"] },
+        completed: true,
+        score: {
+          expectedStatuses: 1,
+          matchedStatuses: 1,
+          statusResults: [{ requirementId: "safeguards_customer_information", expected: ["partial"], actual: "partial" }],
+          conceptResults: [],
+          elementResults: [],
+          forbiddenResults: [],
+          unexpectedCovered: [],
+        },
+      },
+    },
+  });
+  assert.equal(formatEvaluationStatusAccuracy(completed), "Expected status score: 100.0% (1/1)");
 });
 
 test("case scoring recognizes alternate statuses, concepts, and forbidden evidence", () => {

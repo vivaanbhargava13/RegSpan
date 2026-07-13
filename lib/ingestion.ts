@@ -1,7 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  inferDocumentSourceType,
-  inferEvidenceRole,
+  resolveDocumentSource,
 } from "./documentSource";
 import {
   buildChunkEmbeddingInput,
@@ -32,15 +31,7 @@ export async function getIngestionDocument(
 }
 
 export function createMockChunks(document: IngestionDocument) {
-  const sourceType = inferDocumentSourceType({
-    filename: document.filename,
-    documentType: document.document_type,
-    notes: document.notes,
-    sectionPath: null,
-    contentPreview: null,
-    evidenceReason: "substantive_requirement_or_procedure",
-  });
-  const evidenceRole = inferEvidenceRole({
+  const { sourceType, evidenceRole } = resolveDocumentSource({
     filename: document.filename,
     documentType: document.document_type,
     notes: document.notes,

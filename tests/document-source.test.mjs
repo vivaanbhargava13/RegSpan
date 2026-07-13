@@ -146,6 +146,55 @@ test("client policy metadata is not overridden by incidental public-reference te
   assert.equal(evidenceRoleForSourceType(sourceType), "organization_evidence");
 });
 
+test("Regulation S-P policy topics remain client evidence unless the document identifies an official publication", async () => {
+  const {
+    resolveDocumentSource,
+    evidenceRoleForSourceType,
+  } = await loadTsModule("lib/documentSource.ts");
+  const worker = await readFile("app/api/internal/ingest/process-job/route.ts", "utf8");
+
+  const northline = resolveDocumentSource({
+    filename: "northline_regulation_sp_policy.pdf",
+    documentType: "Privacy and Security",
+    notes: "Fictional Broker-Dealer policy. Source type: client_policy. Upload as organization evidence.",
+  });
+  const program = resolveDocumentSource({
+    filename: "Regulation S-P Compliance Program.pdf",
+    documentType: "Policy",
+  });
+  const policyReferencingRule = resolveDocumentSource({
+    filename: "Customer Information Policy.pdf",
+    documentType: "Policy",
+    notes: "The firm complies with 17 CFR requirements and applicable SEC rules.",
+  });
+
+  for (const result of [northline, program, policyReferencingRule]) {
+    assert.equal(result.sourceType, "client_policy");
+    assert.equal(result.evidenceRole, "organization_evidence");
+    assert.equal(evidenceRoleForSourceType(result.sourceType), "organization_evidence");
+  }
+  assert.match(worker, /resolveDocumentSource/);
+  assert.match(worker, /sourceType: documentSourceType/);
+  assert.match(worker, /evidenceRole,/);
+});
+
+test("official SEC publication identity remains regulatory despite user-supplied client metadata", async () => {
+  const {
+    resolveDocumentSource,
+    evidenceRoleForSourceType,
+  } = await loadTsModule("lib/documentSource.ts");
+
+  const result = resolveDocumentSource({
+    filename: "SEC Release No. 34-100155 Regulation S-P Final Rule.pdf",
+    documentType: "Source type: client policy",
+    notes: "Source type: client policy. Internal compliance review copy.",
+  });
+
+  assert.equal(result.sourceType, "regulatory_guidance");
+  assert.equal(result.evidenceRole, "requirement_reference");
+  assert.equal(evidenceRoleForSourceType(result.sourceType), "requirement_reference");
+});
+
 test("server-persisted client provenance remains authoritative during retrieval hydration", async () => {
   const { resolvePersistedDocumentChunkProvenance } = await loadTsModule("lib/documentSource.ts");
 

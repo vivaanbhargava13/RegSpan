@@ -30,12 +30,15 @@ import {
   assertCorpusEvaluationSafety,
   createOneShotEvaluationState,
   evidenceIntegrityViolations,
+  formatEvaluationStatusAccuracy,
   scoreCaseFindings,
   recordEvaluationFailure,
+  runIsolatedCaseSequence,
   processingResultForReport,
   retryRateLimitedOperation,
   selectCorpusCases,
   snapshotSetViolations,
+  summarizeEvaluationState,
   validateCorpusManifest,
 } from "@/scripts/corpusEvalCore.mjs";
 import { writeJsonAtomically } from "@/scripts/corpusEvalState.mjs";
@@ -105,12 +108,20 @@ type RunSummary = {
   expected: number;
   matched: number;
   score: number;
+  evaluatedStatusExpected: number;
+  evaluatedStatusMatched: number;
+  totalExpectedStatuses: number;
+  completedCases: number;
+  failedCases: number;
+  notStartedCases: number;
+  allSelectedCasesCompleted: boolean;
   conceptsExpected: number;
   conceptsMatched: number;
   elementsExpected: number;
   elementsMatched: number;
   unexpectedCovered: number;
   expectedStatusTotals: Record<string, number>;
+  evaluatedExpectedStatusTotals: Record<string, number>;
   actualStatusTotals: Record<string, number>;
 };
 
@@ -130,6 +141,7 @@ type CaseState = {
   analysisDurationMs?: number;
   rateLimitWaitCount?: number;
   rateLimitWaitMs?: number;
+  expectedStatuses: Record<string, string[]>;
   score?: CaseScore;
   integrityViolations?: string[];
   error?: string;
@@ -434,36 +446,25 @@ async function persistState(outputDir: string, state: RunState) {
 }
 
 function summarize(state: RunState) {
-  const scored = Object.values(state.cases).filter((entry) => entry.score);
-  const expected = scored.reduce((total, entry) => total + (entry.score?.expectedStatuses ?? 0), 0);
-  const matched = scored.reduce((total, entry) => total + (entry.score?.matchedStatuses ?? 0), 0);
-  const concepts = scored.flatMap((entry) => entry.score?.conceptResults ?? []);
-  const elements = scored.flatMap((entry) => entry.score?.elementResults ?? []);
-  const expectedStatusTotals: Record<string, number> = {};
-  const actualStatusTotals: Record<string, number> = {};
-  for (const result of scored.flatMap((entry) => entry.score?.statusResults ?? [])) {
-    for (const expectedStatus of result.expected) {
-      expectedStatusTotals[expectedStatus] = (expectedStatusTotals[expectedStatus] ?? 0) + 1;
-    }
-    if (result.actual) actualStatusTotals[result.actual] = (actualStatusTotals[result.actual] ?? 0) + 1;
-  }
-  return {
-    expected,
-    matched,
-    score: expected === 0 ? 1 : matched / expected,
-    conceptsExpected: concepts.length,
-    conceptsMatched: concepts.filter((entry) => entry.matched).length,
-    elementsExpected: elements.length,
-    elementsMatched: elements.filter((entry) => entry.matched).length,
-    unexpectedCovered: scored.flatMap((entry) => entry.score?.unexpectedCovered ?? []).length,
-    expectedStatusTotals,
-    actualStatusTotals,
-  };
+  return summarizeEvaluationState(state) as unknown as RunSummary;
 }
 
 function formatStatusTotals(totals: Record<string, number>) {
   const entries = Object.entries(totals).sort(([left], [right]) => left.localeCompare(right));
   return entries.length === 0 ? "none" : entries.map(([status, count]) => `${status}: ${count}`).join(", ");
+}
+
+function expectedStatusResults(entry: CaseState) {
+  if (entry.score?.statusResults) return entry.score.statusResults;
+  return Object.entries(entry.expectedStatuses).flatMap(([requirementId, statuses]) =>
+    statuses.map((status) => ({
+      requirementId,
+      expected: [status],
+      alternates: [],
+      actual: null,
+      matched: false,
+    }))
+  );
 }
 
 function markdown(state: RunState) {
@@ -474,15 +475,21 @@ function markdown(state: RunState) {
     const matchedElements = elementResults.flatMap((result) => result.matchedElements).join(", ");
     const missingElements = elementResults.flatMap((result) => result.missingElements).join(", ");
     const elementPass = elementResults.length === 0 ? "-" : elementResults.every((result) => result.matched) ? "pass" : "fail";
-    const expectedStatuses = (entry.score?.statusResults ?? []).map((result) => `${result.requirementId}: ${result.expected.join(" or ")}`).join("; ");
+    const statusResults = expectedStatusResults(entry);
+    const expectedStatuses = statusResults.map((result) => `${result.requirementId}: ${result.expected.join(" or ")}`).join("; ");
     const actualStatuses = (entry.score?.statusResults ?? []).map((result) => `${result.requirementId}: ${result.actual ?? "absent"}`).join("; ");
     return `| ${entry.caseId} | ${entry.tier} | ${entry.processingStatus ?? "not started"} | ${entry.processingStep ?? ""} | ${entry.processingError ?? ""} | ${entry.analysisStatus ?? "not started"} | ${entry.rateLimitWaitCount ?? 0} | ${entry.rateLimitWaitMs ?? 0} | ${entry.score ? `${entry.score.matchedStatuses}/${entry.score.expectedStatuses}` : "-"} | ${expectedStatuses} | ${actualStatuses} | ${expectedElements} | ${matchedElements} | ${missingElements} | ${elementPass} | ${entry.diagnosticCode ?? ""} | ${entry.error ?? ""} |`;
   });
+  const accuracyLine = formatEvaluationStatusAccuracy(summary);
+  const progressLabel = state.filtered ? "Selected-corpus progress" : "Full-corpus progress";
   return `# RegSpan Corpus Evaluation\n\nStatus: ${state.status}\n\nRun ID: ${state.runId}\n\nCorpus ID: ${state.corpusId}\n\nCorpus version: ${state.corpusVersion}\n\nCorpus path: ${state.corpusPath}\n\n`
     + `Selected cases: ${state.selectedCaseIds.join(", ")}\n\n`
     + `Selected case count: ${state.selectedCaseCount}; filtered run: ${state.filtered ? "yes" : "no"}\n\n`
-    + `Expected status score: ${(summary.score * 100).toFixed(1)}% (${summary.matched}/${summary.expected})\n\n`
-    + `Expected status totals: ${formatStatusTotals(summary.expectedStatusTotals)}\n\n`
+    + `Completed/analyzed cases: ${summary.completedCases}; failed cases: ${summary.failedCases}; not-started cases: ${summary.notStartedCases}\n\n`
+    + `${accuracyLine}\n\n`
+    + `${progressLabel}: ${summary.evaluatedStatusExpected}/${summary.totalExpectedStatuses} expected statuses evaluated\n\n`
+    + `Expected status totals for selected cases: ${formatStatusTotals(summary.expectedStatusTotals)}\n\n`
+    + `${summary.allSelectedCasesCompleted ? "" : `Evaluated expected status totals: ${formatStatusTotals(summary.evaluatedExpectedStatusTotals)}\n\n`}`
     + `Actual status totals: ${formatStatusTotals(summary.actualStatusTotals)}\n\n`
     + `Evidence concepts: ${summary.conceptsMatched}/${summary.conceptsExpected}; evidence elements: ${summary.elementsMatched}/${summary.elementsExpected}; unexpected covered/partial: ${summary.unexpectedCovered}\n\n`
     + `| Case | Tier | Processing | Step | Processing error | Analysis | Rate-limit waits | Rate-limit wait ms | Status score | Expected statuses | Actual statuses | Expected elements | Matched elements | Missing elements | Element result | Diagnostic code | Error |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n${rows.join("\n")}\n`;
@@ -490,15 +497,18 @@ function markdown(state: RunState) {
 
 function csv(state: RunState) {
   const quote = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
-  const rows = ["corpus_id,corpus_version,corpus_path,case_id,tier,selected_case_ids,selected_case_count,filtered_run,workspace_id,document_id,processing_job_id,analysis_run_id,processing_status,processing_step,processing_error,analysis_status,rate_limit_wait_count,rate_limit_wait_ms,status_matches,status_expected,expected_requirement_statuses,actual_requirement_statuses,expected_evidence_elements,matched_evidence_elements,missing_evidence_elements,evidence_elements_passed,diagnostic_code,error"];
+  const summary = summarize(state);
+  const rows = ["corpus_id,corpus_version,corpus_path,case_id,tier,selected_case_ids,selected_case_count,filtered_run,completed_case_count,failed_case_count,not_started_case_count,evaluated_status_matches,evaluated_status_expected,total_selected_status_expected,selected_corpus_progress,workspace_id,document_id,processing_job_id,analysis_run_id,processing_status,processing_step,processing_error,analysis_status,rate_limit_wait_count,rate_limit_wait_ms,status_matches,status_expected,expected_requirement_statuses,actual_requirement_statuses,expected_evidence_elements,matched_evidence_elements,missing_evidence_elements,evidence_elements_passed,diagnostic_code,error"];
   for (const entry of Object.values(state.cases)) {
     const elementResults = entry.score?.elementResults ?? [];
+    const statusResults = expectedStatusResults(entry);
     rows.push([
       state.corpusId, state.corpusVersion, state.corpusPath, entry.caseId, entry.tier, state.selectedCaseIds.join("|"), state.selectedCaseCount, state.filtered,
+      summary.completedCases, summary.failedCases, summary.notStartedCases, summary.evaluatedStatusMatched, summary.evaluatedStatusExpected, summary.totalExpectedStatuses, `${summary.evaluatedStatusExpected}/${summary.totalExpectedStatuses}`,
       state.workspaces[entry.workspaceKey]?.id, entry.documentId,
       entry.processingJobId, entry.analysisRunId, entry.processingStatus, entry.processingStep, entry.processingError, entry.analysisStatus, entry.rateLimitWaitCount, entry.rateLimitWaitMs,
       entry.score?.matchedStatuses, entry.score?.expectedStatuses,
-      (entry.score?.statusResults ?? []).map((result) => `${result.requirementId}:${result.expected.join("|")}`).join(";"),
+      statusResults.map((result) => `${result.requirementId}:${result.expected.join("|")}`).join(";"),
       (entry.score?.statusResults ?? []).map((result) => `${result.requirementId}:${result.actual ?? "absent"}`).join(";"),
       elementResults.flatMap((result) => result.elements).join("|"),
       elementResults.flatMap((result) => result.matchedElements).join("|"),
@@ -721,6 +731,12 @@ function createState({
   }) as RunState;
 }
 
+function diagnosticCodeForError(error: unknown) {
+  if (error instanceof CorpusEvaluationError) return error.diagnosticCode;
+  if (error instanceof CorpusEvaluationRateLimitWaitExceededError) return "analysis_rate_limit_wait_exceeded";
+  return "corpus_evaluation_failed";
+}
+
 async function main() {
   await loadLocalEnvironment();
   const args = parseArgs(process.argv.slice(2));
@@ -768,12 +784,20 @@ async function main() {
       }
       await analyzeAndScore({ definitions: selectedCases, state, context, outputDir, pollTimeoutMs: args.pollTimeoutMs, waitOnRateLimit: args.waitOnRateLimit, maxRateLimitWaitMs: args.maxRateLimitWaitMs, requirementsById });
     } else {
-      for (const definition of selectedCases) {
-        activeCaseId = definition.id;
-        const context = await createWorkspace(state, definition.id, outputDir);
-        await processCase({ definition, state, context, bytes: preparedFiles.get(definition.id)!, outputDir, pollTimeoutMs: args.pollTimeoutMs });
-        await analyzeAndScore({ definitions: [definition], state, context, outputDir, pollTimeoutMs: args.pollTimeoutMs, waitOnRateLimit: args.waitOnRateLimit, maxRateLimitWaitMs: args.maxRateLimitWaitMs, requirementsById });
-      }
+      await runIsolatedCaseSequence({
+        cases: selectedCases,
+        runCase: async (definition) => {
+          activeCaseId = definition.id;
+          const context = await createWorkspace(state, definition.id, outputDir);
+          await processCase({ definition, state, context, bytes: preparedFiles.get(definition.id)!, outputDir, pollTimeoutMs: args.pollTimeoutMs });
+          await analyzeAndScore({ definitions: [definition], state, context, outputDir, pollTimeoutMs: args.pollTimeoutMs, waitOnRateLimit: args.waitOnRateLimit, maxRateLimitWaitMs: args.maxRateLimitWaitMs, requirementsById });
+        },
+        onCaseFailure: async (definition, error) => {
+          recordEvaluationFailure(state, definition.id, error instanceof Error ? error.message : "Corpus evaluation failed.", diagnosticCodeForError(error));
+          await writeReports(outputDir, state);
+          console.error(`Case ${definition.id} failed. Continuing isolated evaluation.`);
+        },
+      });
     }
     const summary = summarize(state);
     for (const entry of Object.values(state.cases)) {
@@ -789,11 +813,7 @@ async function main() {
       state,
       activeCaseId,
       message,
-      error instanceof CorpusEvaluationError
-        ? error.diagnosticCode
-        : error instanceof CorpusEvaluationRateLimitWaitExceededError
-          ? "analysis_rate_limit_wait_exceeded"
-          : "corpus_evaluation_failed",
+      diagnosticCodeForError(error),
     );
   }
   state.completedAt = new Date().toISOString();

@@ -56,6 +56,13 @@ function descriptorText(input: DocumentSourceInput) {
   ].filter(Boolean).join(" "));
 }
 
+function documentIdentityText(input: DocumentSourceInput) {
+  return normalize([
+    input.filename,
+    input.documentType,
+  ].filter(Boolean).join(" "));
+}
+
 function explicitMetadataText(input: DocumentSourceInput) {
   return normalize([
     input.documentType,
@@ -122,27 +129,28 @@ const controlFrameworkSignals = [
   /\bfinra\b.*\b(cybersecurity|controls?|report|checklist|framework)\b/,
 ];
 
-const regulatoryGuidanceSignals = [
-  /\bregulation\s+s\s*p\b/,
-  /\breg\s+s\s*p\b/,
-  /\bsec\b.*\b(safeguards|privacy|cybersecurity|rule|regulation|guidance)\b/,
-  /\bftc\b/,
+const regulatoryPublisherSignals = [
+  /\bsecurities and exchange commission\b/,
+  /\bsec\b/,
   /\bfederal trade commission\b/,
+  /\bftc\b/,
   /\bcisa\b/,
   /\bffiec\b/,
   /\bfinra\b/,
-  /\bfederal government\b/,
-  /\bus government\b/,
-  /\bgovernment\s+(cybersecurity\s+)?(incident|vulnerability)\s+response\s+playbooks?\b/,
-  /\b(cybersecurity|incident|vulnerability)\s+response\s+playbooks?\b.*\bfederal\b/,
-  /\bfederal\b.*\b(cybersecurity|incident|vulnerability)\s+response\s+playbooks?\b/,
-  /\bagency guidance\b/,
-  /\bregulatory guidance\b/,
-  /\bsupervisory guidance\b/,
-  /\bexamination manual\b/,
-  /\badvisory\b/,
+];
+
+const regulatoryPublicationSignals = [
+  /\bfinal rule\b/,
+  /\badopting release\b/,
+  /\bcommission release\b/,
+  /\brelease no\b/,
+  /\bofficial (?:rule|guidance)\b/,
+  /\bfederal register\b/,
+  /\bsafeguards rule\b/,
   /\bcompliance guide\b/,
-  /\bplaybook\b.*\b(government|agency|federal|cisa|nist)\b/,
+  /\bexamination manual\b/,
+  /\b(?:federal government|us government)\b.*\b(?:cybersecurity\s+)?(?:incident(?:\s+and\s+vulnerability)?|vulnerability)\s+response\s+playbooks?\b/,
+  /\b(?:cybersecurity|incident(?:\s+and\s+vulnerability)?|vulnerability)\s+response\s+playbooks?\b.*\b(?:federal|government|cisa)\b/,
 ];
 
 const contentControlFrameworkSignals = [
@@ -152,19 +160,6 @@ const contentControlFrameworkSignals = [
   /\bffiec\b/,
   /\bfinra\b.*\b(cybersecurity|controls?|report|checklist|framework)\b/,
   /\bcore cybersecurity controls?\b/,
-];
-
-const contentRegulatoryGuidanceSignals = [
-  /\bregulation\s+s\s*p\b/,
-  /\breg\s+s\s*p\b/,
-  /\bfederal trade commission\b/,
-  /\bftc\b/,
-  /\bcisa\b/,
-  /\bffiec\b/,
-  /\bfinra\b/,
-  /\bgovernment\s+(cybersecurity\s+)?(incident|vulnerability)\s+response\s+playbooks?\b/,
-  /\b(cybersecurity|incident|vulnerability)\s+response\s+playbooks?\b.*\bfederal\b/,
-  /\bfederal\b.*\b(cybersecurity|incident|vulnerability)\s+response\s+playbooks?\b/,
 ];
 
 const sampleTemplateSignals = [
@@ -213,6 +208,13 @@ const clientPolicySignals = [
   /\bsafeguards program\b/,
 ];
 
+function hasRegulatoryPublicationIdentity(value: string) {
+  return hasAny(value, [/\bfederal register\b/]) || (
+    hasAny(value, regulatoryPublisherSignals)
+    && hasAny(value, regulatoryPublicationSignals)
+  );
+}
+
 export function inferDocumentSourceType(input: DocumentSourceInput): DocumentSourceType {
   const text = sourceText(input);
   if (!text) {
@@ -220,20 +222,18 @@ export function inferDocumentSourceType(input: DocumentSourceInput): DocumentSou
   }
 
   const descriptor = descriptorText(input);
+  const identity = documentIdentityText(input);
   const contentHint = contentHintText(input);
   const explicitMetadata = explicitMetadataText(input);
 
   if (hasAny(descriptor, controlFrameworkSignals)) {
     return "control_framework";
   }
-  if (hasAny(descriptor, regulatoryGuidanceSignals)) {
+  if (hasRegulatoryPublicationIdentity(identity)) {
     return "regulatory_guidance";
   }
   if (hasAny(contentHint, contentControlFrameworkSignals)) {
     return "control_framework";
-  }
-  if (hasAny(contentHint, contentRegulatoryGuidanceSignals)) {
-    return "regulatory_guidance";
   }
   for (const [sourceType, patterns] of explicitSourceTypeSignals) {
     if (hasAny(explicitMetadata, patterns)) {
@@ -285,6 +285,14 @@ export function inferEvidenceRole(input: DocumentSourceInput): EvidenceRole {
   }
 
   return evidenceRoleForSourceType(sourceType);
+}
+
+export function resolveDocumentSource(input: DocumentSourceInput) {
+  const sourceType = inferDocumentSourceType(input);
+  return {
+    sourceType,
+    evidenceRole: inferEvidenceRole(input),
+  };
 }
 
 function isDocumentSourceType(value: unknown): value is DocumentSourceType {

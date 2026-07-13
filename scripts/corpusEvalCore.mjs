@@ -430,6 +430,7 @@ export function createOneShotEvaluationState({
       tier: definition.tier,
       filename: definition.filename,
       workspaceKey: mode === "combined" ? "combined" : definition.id,
+      expectedStatuses: definition.expectedStatuses ?? {},
     }])),
     failures: [],
   };
@@ -443,6 +444,86 @@ export function recordEvaluationFailure(state, caseId, message, diagnosticCode) 
     if (diagnosticCode) state.cases[caseId].diagnosticCode = diagnosticCode;
   }
   return state;
+}
+
+export async function runIsolatedCaseSequence({ cases, runCase, onCaseFailure }) {
+  for (const definition of cases) {
+    try {
+      await runCase(definition);
+    } catch (error) {
+      await onCaseFailure(definition, error);
+    }
+  }
+}
+
+function expectedStatusEntries(entry) {
+  return Object.entries(entry.expectedStatuses ?? {}).flatMap(([requirementId, statuses]) =>
+    (Array.isArray(statuses) ? statuses : []).map((status) => ({ requirementId, status }))
+  );
+}
+
+export function summarizeEvaluationState(state) {
+  const entries = Object.values(state.cases ?? {});
+  const scored = entries.filter((entry) => entry.score);
+  const evaluatedExpected = scored.reduce(
+    (total, entry) => total + (entry.score?.expectedStatuses ?? 0),
+    0,
+  );
+  const evaluatedMatched = scored.reduce(
+    (total, entry) => total + (entry.score?.matchedStatuses ?? 0),
+    0,
+  );
+  const concepts = scored.flatMap((entry) => entry.score?.conceptResults ?? []);
+  const elements = scored.flatMap((entry) => entry.score?.elementResults ?? []);
+  const expectedStatusTotals = {};
+  const evaluatedExpectedStatusTotals = {};
+  const actualStatusTotals = {};
+  for (const entry of entries) {
+    for (const { status } of expectedStatusEntries(entry)) {
+      expectedStatusTotals[status] = (expectedStatusTotals[status] ?? 0) + 1;
+    }
+  }
+  for (const result of scored.flatMap((entry) => entry.score?.statusResults ?? [])) {
+    for (const expectedStatus of result.expected) {
+      evaluatedExpectedStatusTotals[expectedStatus] = (evaluatedExpectedStatusTotals[expectedStatus] ?? 0) + 1;
+    }
+    if (result.actual) actualStatusTotals[result.actual] = (actualStatusTotals[result.actual] ?? 0) + 1;
+  }
+  const completedCases = entries.filter((entry) => entry.completed && entry.score).length;
+  const failedCases = entries.filter((entry) => Boolean(entry.error || entry.diagnosticCode)).length;
+  const notStartedCases = Math.max(0, entries.length - completedCases - failedCases);
+  const totalExpectedStatuses = entries.reduce(
+    (total, entry) => total + expectedStatusEntries(entry).length,
+    0,
+  );
+
+  return {
+    expected: evaluatedExpected,
+    matched: evaluatedMatched,
+    score: evaluatedExpected === 0 ? 1 : evaluatedMatched / evaluatedExpected,
+    evaluatedStatusExpected: evaluatedExpected,
+    evaluatedStatusMatched: evaluatedMatched,
+    totalExpectedStatuses,
+    completedCases,
+    failedCases,
+    notStartedCases,
+    allSelectedCasesCompleted: completedCases === entries.length && failedCases === 0,
+    conceptsExpected: concepts.length,
+    conceptsMatched: concepts.filter((entry) => entry.matched).length,
+    elementsExpected: elements.length,
+    elementsMatched: elements.filter((entry) => entry.matched).length,
+    unexpectedCovered: scored.flatMap((entry) => entry.score?.unexpectedCovered ?? []).length,
+    expectedStatusTotals,
+    evaluatedExpectedStatusTotals,
+    actualStatusTotals,
+  };
+}
+
+export function formatEvaluationStatusAccuracy(summary) {
+  if (summary.allSelectedCasesCompleted) {
+    return `Expected status score: ${(summary.score * 100).toFixed(1)}% (${summary.matched}/${summary.expected})`;
+  }
+  return `Evaluated status accuracy: ${(summary.score * 100).toFixed(1)}% (${summary.evaluatedStatusMatched}/${summary.evaluatedStatusExpected})`;
 }
 
 export function snapshotSetViolations(actualDocumentIds, expectedDocumentIds) {

@@ -5,8 +5,7 @@ import {
   loadWorkspaceExternalAiProcessingPolicy,
 } from "@/lib/aiProcessingPolicy";
 import {
-  inferDocumentSourceType,
-  inferEvidenceRole,
+  resolveDocumentSource,
 } from "@/lib/documentSource";
 import {
   getCorrelationId,
@@ -463,15 +462,7 @@ export async function POST(request: Request) {
     );
 
     stage = "build_document_chunks";
-    const documentSourceType = inferDocumentSourceType({
-      filename: document.filename,
-      documentType: document.document_type,
-      notes: document.notes,
-      sectionPath: null,
-      contentPreview: null,
-      evidenceReason: null,
-    });
-    const evidenceRole = inferEvidenceRole({
+    const { sourceType: documentSourceType, evidenceRole } = resolveDocumentSource({
       filename: document.filename,
       documentType: document.document_type,
       notes: document.notes,

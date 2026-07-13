@@ -84,4 +84,18 @@ export function newEvaluationWorkspaceValues(input: {
 };
 export function createOneShotEvaluationState(input: Record<string, unknown>): Record<string, unknown>;
 export function recordEvaluationFailure<T>(state: T, caseId: string | null, message: string, diagnosticCode?: string): T;
+export function runIsolatedCaseSequence<T>(input: {
+  cases: T[];
+  runCase: (definition: T) => Promise<void>;
+  onCaseFailure: (definition: T, error: unknown) => Promise<void>;
+}): Promise<void>;
+export function summarizeEvaluationState(state: Record<string, unknown>): Record<string, unknown>;
+export function formatEvaluationStatusAccuracy(summary: {
+  allSelectedCasesCompleted: boolean;
+  score: number;
+  matched: number;
+  expected: number;
+  evaluatedStatusMatched: number;
+  evaluatedStatusExpected: number;
+}): string;
 export function snapshotSetViolations(actualDocumentIds: string[], expectedDocumentIds: string[]): string[];
