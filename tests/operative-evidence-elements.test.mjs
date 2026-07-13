@@ -161,6 +161,82 @@ test("a scoped records program recognizes preserved multi-year accessible record
   })]).status, "covered");
 });
 
+test("a bounded scoped records span includes a dependent final retention sentence", () => {
+  const definition = requirement("written_compliance_records");
+  const scope = "Compliance maintains records demonstrating implementation of the safeguards and disposal program.";
+  const text = [
+    scope,
+    "The records include notification investigations, determinations, and copies of customer notices.",
+    "These records are preserved for five years in an easily accessible place.",
+  ].join(" ");
+  const finding = aggregateFindingForRequirement(definition, [gradedChunk(definition, text, {
+    supporting_quote: scope,
+  })]);
+
+  assert.equal(finding.status, "covered");
+  assert.match(finding.evidence[0].quote, /notification investigations/i);
+  assert.match(finding.evidence[0].quote, /preserved for five years in an easily accessible place/i);
+  assert.ok(finding.evidence[0].quote.length <= 1_800);
+  assert.ok((finding.evidence[0].quote.match(/[^.!?]+[.!?]+/g) ?? []).length <= 8);
+  assert.match(finding.evidence[0].reason, /written compliance records/i);
+  assert.doesNotMatch(finding.remediation, /Add or update/i);
+});
+
+test("generic operational retention cannot extend an otherwise scoped records span", () => {
+  const definition = requirement("written_compliance_records");
+  const scope = "Compliance maintains records demonstrating implementation of the safeguards and disposal program.";
+  const text = [
+    scope,
+    "Other operational records are retained according to department practice.",
+  ].join(" ");
+  const finding = aggregateFindingForRequirement(definition, [gradedChunk(definition, text, {
+    supporting_quote: scope,
+  })]);
+
+  assert.equal(finding.status, "partial");
+  assert.doesNotMatch(finding.evidence[0].quote, /department practice/i);
+  assert.equal(requirementSpecificElementMatch(definition.id, "retention_accessibility", text), false);
+});
+
+test("a complete recovery quote outranks a higher-confidence partial recovery-start quote", () => {
+  const definition = requirement("remediation_recovery_validation");
+  const recoveryStart = "Recovery begins after the response lead confirms that immediate containment is stable.";
+  const appendix = [
+    "The incident file records recovery steps and service-provider remediation.",
+    "Corrective actions, validation results, and closure approval are retained.",
+  ].join(" ");
+  const finding = aggregateFindingForRequirement(definition, [
+    gradedChunk(definition, recoveryStart, {
+      chunk_id: "11111111-1111-4111-8111-111111111111",
+      evidence_relationship: "partially_supports",
+      classifier_confidence: "high",
+      supporting_quote: recoveryStart,
+    }),
+    gradedChunk(definition, appendix, {
+      chunk_id: "22222222-2222-4222-8222-222222222222",
+      evidence_relationship: "supports",
+      classifier_confidence: "medium",
+      requirement_supported: true,
+      supporting_quote: appendix,
+    }),
+  ]);
+
+  assert.equal(finding.status, "covered");
+  assert.equal(finding.evidence[0].relationship, "supports");
+  assert.equal(finding.evidence[0].quote, appendix);
+  assert.match(finding.evidence[0].reason, /recovery steps/i);
+  assert.match(finding.evidence[0].reason, /remediation/i);
+  assert.match(finding.evidence[0].reason, /validates/i);
+  assert.doesNotMatch(finding.remediation, /Add or update/i);
+});
+
+test("generic recovery-start language remains partial without remediation and validation", () => {
+  const definition = requirement("remediation_recovery_validation");
+  const text = "Recovery begins after the response lead confirms that immediate containment is stable.";
+
+  assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(definition, text)]).status, "partial");
+});
+
 test("contact authority alone does not cover external-notification coordination", () => {
   const definition = requirement("regulator_law_enforcement_notification");
   const text = "Only senior management may contact regulators or law-enforcement authorities. Employees should refer external inquiries to Legal.";

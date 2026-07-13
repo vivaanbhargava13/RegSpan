@@ -362,7 +362,6 @@ function rawSpanForSentences(rawText: string, firstSentence: string, lastSentenc
 // These bounds permit one ordinary policy list while keeping persisted excerpts reviewable.
 const MAX_CONTIGUOUS_QUOTE_SPAN_SENTENCES = 8;
 const MAX_CONTIGUOUS_QUOTE_SPAN_CHARS = 1_800;
-
 function boundedContiguousCoverageSpans(
   input: RequirementEvidenceClassifierInput,
   classification: Omit<RequirementEvidenceClassification, "classifier_provider">,
@@ -378,9 +377,6 @@ function boundedContiguousCoverageSpans(
       startIndex + MAX_CONTIGUOUS_QUOTE_SPAN_SENTENCES,
     );
     for (let endIndex = startIndex + 1; endIndex < finalIndex; endIndex += 1) {
-      const endElements = quoteSupportedElementIds(input, classification, sentences[endIndex]);
-      if (endElements.length === 0) continue;
-
       const span = rawSpanForSentences(
         input.chunkContent,
         sentences[startIndex],
@@ -388,6 +384,8 @@ function boundedContiguousCoverageSpans(
       );
       if (!span || span.length > MAX_CONTIGUOUS_QUOTE_SPAN_CHARS) break;
 
+      // An endpoint can depend on the scoped record or policy language that
+      // precedes it. Judge coverage from the complete exact-source span.
       const spanElements = quoteSupportedElementIds(input, classification, span);
       if (spanElements.length > startElements.length) candidates.push(span);
     }

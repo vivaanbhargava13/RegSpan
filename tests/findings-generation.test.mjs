@@ -2539,7 +2539,6 @@ test("production path retains a bounded contiguous same-chunk records span for c
   const narrowQuote = [
     "• notification investigations, determinations, supporting facts, and the basis for any no-notice decision;",
     "• copies of customer notices and delivery records, including notices sent by service providers;",
-    "These records are preserved for three years in an easily accessible place.",
   ].join("\n");
 
   const finding = await productionPathFinding(recordsRequirement, [
@@ -2561,6 +2560,7 @@ test("production path retains a bounded contiguous same-chunk records span for c
   assert.match(evidence.quote, /copies of customer notices/i);
   assert.match(evidence.quote, /easily accessible place/i);
   assert.ok(evidence.quote.length <= 1_800);
+  assert.ok((evidence.quote.match(/[^.!?]+[.!?]+/g) ?? []).length <= 8);
   assert.deepEqual(
     canonicalElementIdsForFinalPositiveQuote(recordsRequirement, evidence.quote),
     ["compliance_record_scope", "notice_determination_records", "retention_accessibility"],

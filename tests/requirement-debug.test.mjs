@@ -164,6 +164,56 @@ test("requirement debug output includes source type and evidence role", async ()
   assert.match(client, /formatEvidenceRole/);
 });
 
+test("post-processing expands a scoped records quote through its final retention sentence", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { postProcessOpenAiClassification }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementEvidenceClassifier.ts"),
+  ]);
+  const requirement = REG_SP_REQUIREMENTS.find((item) => item.id === "written_compliance_records");
+  assert.ok(requirement);
+  const scope = "Compliance maintains records demonstrating implementation of the safeguards and disposal program.";
+  const content = [
+    scope,
+    "The records include notification investigations, determinations, and copies of customer notices.",
+    "These records are preserved for five years in an easily accessible place.",
+  ].join(" ");
+  const result = postProcessOpenAiClassification({
+    relationship: "partially_supports",
+    confidence: "high",
+    requirement_supported: false,
+    control_absent_or_out_of_scope: false,
+    covered_elements: ["compliance_record_scope", "notice_determination_records"],
+    missing_elements: ["retention_accessibility"],
+    vague_elements: [],
+    reason: "The model found scoped records and notice records.",
+    supporting_quote: scope,
+  }, {
+    requirement,
+    evaluationGuidance: "Test guidance.",
+    chunkContent: content,
+    chunkMetadata: {
+      filename: "Records procedure.pdf",
+      sectionPath: "Program documentation",
+      pageStart: 1,
+      pageEnd: 1,
+      chunkIndex: 0,
+      sourceType: "client_policy",
+      evidenceRole: "organization_evidence",
+      evidenceReason: "substantive policy evidence",
+    },
+  });
+
+  assert.match(result.supporting_quote ?? "", /notification investigations/i);
+  assert.match(result.supporting_quote ?? "", /preserved for five years in an easily accessible place/i);
+  assert.deepEqual(result.covered_elements, [
+    "compliance_record_scope",
+    "notice_determination_records",
+    "retention_accessibility",
+  ]);
+  assert.ok((result.supporting_quote ?? "").length <= 1_800);
+  assert.ok(((result.supporting_quote ?? "").match(/[^.!?]+[.!?]+/g) ?? []).length <= 8);
+});
+
 test("requirement evidence classifier exposes prompt and provider abstraction", async () => {
   const classifier = await readFile("lib/requirementEvidenceClassifier.ts", "utf8");
   const envExample = await readFile(".env.example", "utf8");

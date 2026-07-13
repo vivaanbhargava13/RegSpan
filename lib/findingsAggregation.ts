@@ -62,7 +62,6 @@ type TextSpan = {
 // These bounds permit one ordinary policy list while keeping persisted excerpts reviewable.
 const MAX_CONTIGUOUS_QUOTE_SPAN_SENTENCES = 8;
 const MAX_CONTIGUOUS_QUOTE_SPAN_CHARS = 1_800;
-
 const highImpactRequirements = new Set<RegSpRequirementId>([
   "written_incident_response_program",
   "incident_assessment_containment_control",
@@ -872,10 +871,10 @@ function candidateQuoteSpans(requirement: RegSpRequirement, chunk: GradedEvidenc
       index + MAX_CONTIGUOUS_QUOTE_SPAN_SENTENCES,
     );
     for (let endIndex = index + 1; endIndex < finalIndex; endIndex += 1) {
-      const endElements = supportedElementIdsForQuote(requirement, sentences[endIndex].text);
-      if (endElements.length === 0) continue;
       const span = sourceSpanBetween(rawText, sentences[index], sentences[endIndex]);
       if (!span || span.text.length > MAX_CONTIGUOUS_QUOTE_SPAN_CHARS) break;
+      // The final sentence may rely on scoped language earlier in this exact,
+      // contiguous span. Only the complete span determines added coverage.
       const spanElements = supportedElementIdsForQuote(requirement, span.text);
       if (spanElements.length > startElements.length) addCandidate(span);
     }
@@ -1578,6 +1577,70 @@ function confidenceFromChunk(chunk: GradedEvidenceChunk | null): FindingConfiden
   return "low";
 }
 
+function requiredElementCoverageCount(requirement: RegSpRequirement, chunk: GradedEvidenceChunk) {
+  const supported = new Set(quoteSupportedElementIds(requirement, chunk));
+  return requirement.requiredElementsForCovered.filter((elementId) => supported.has(elementId)).length;
+}
+
+function fullySupportsRequirement(requirement: RegSpRequirement, chunk: GradedEvidenceChunk) {
+  return requiredElementCoverageCount(requirement, chunk) === requirement.requiredElementsForCovered.length;
+}
+
+function directRelevanceRank(chunk: GradedEvidenceChunk) {
+  if (isDirectSupport(chunk)) return 2;
+  if (isPartialSupport(chunk)) return 1;
+  return 0;
+}
+
+function confidenceRank(chunk: GradedEvidenceChunk) {
+  if (chunk.classifier_confidence === "high") return 3;
+  if (chunk.classifier_confidence === "medium") return 2;
+  return 1;
+}
+
+function stableSourceOrder(left: GradedEvidenceChunk, right: GradedEvidenceChunk) {
+  const leftPage = left.page_start ?? Number.MAX_SAFE_INTEGER;
+  const rightPage = right.page_start ?? Number.MAX_SAFE_INTEGER;
+  if (leftPage !== rightPage) return leftPage - rightPage;
+  if (left.chunk_index !== right.chunk_index) return left.chunk_index - right.chunk_index;
+  return left.chunk_id.localeCompare(right.chunk_id);
+}
+
+function compareSupportCandidates(
+  requirement: RegSpRequirement,
+  left: GradedEvidenceChunk,
+  right: GradedEvidenceChunk,
+) {
+  const fullCoverageDelta = Number(fullySupportsRequirement(requirement, right))
+    - Number(fullySupportsRequirement(requirement, left));
+  if (fullCoverageDelta !== 0) return fullCoverageDelta;
+
+  const coverageDelta = requiredElementCoverageCount(requirement, right)
+    - requiredElementCoverageCount(requirement, left);
+  if (coverageDelta !== 0) return coverageDelta;
+
+  const directRelevanceDelta = directRelevanceRank(right) - directRelevanceRank(left);
+  if (directRelevanceDelta !== 0) return directRelevanceDelta;
+
+  const confidenceDelta = confidenceRank(right) - confidenceRank(left);
+  if (confidenceDelta !== 0) return confidenceDelta;
+
+  const weightDelta = evidenceWeight(requirement, right) - evidenceWeight(requirement, left);
+  if (weightDelta !== 0) return weightDelta;
+
+  return stableSourceOrder(left, right);
+}
+
+function bestSupportChunkForElement(
+  requirement: RegSpRequirement,
+  supportChunks: GradedEvidenceChunk[],
+  elementId: string,
+) {
+  return supportChunks
+    .filter((chunk) => quoteSupportedElementIds(requirement, chunk).includes(elementId))
+    .sort((left, right) => compareSupportCandidates(requirement, left, right))[0] ?? null;
+}
+
 function buildElementCoverageLedger(
   requirement: RegSpRequirement,
   supportChunks: GradedEvidenceChunk[],
@@ -1589,7 +1652,7 @@ function buildElementCoverageLedger(
     .filter((chunk) => finalizedEvidenceElementIds(requirement, chunk).length > 0);
 
   return requirement.requiredElementsForCovered.map((elementId) => {
-    const supportChunk = sortedSupport.find((chunk) => quoteSupportedElementIds(requirement, chunk).includes(elementId)) ?? null;
+    const supportChunk = bestSupportChunkForElement(requirement, sortedSupport, elementId);
     const negativeChunk = sortedNegative.find((chunk) =>
       finalizedEvidenceElementIds(requirement, chunk).includes(elementId)
     ) ?? null;
