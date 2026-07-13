@@ -200,6 +200,72 @@ async function productionPathFinding(testRequirement, retrievedChunks, classific
   ]);
 }
 
+test("post-processing and final aggregation downgrade incomplete notice content from covered to partial", async () => {
+  const noticeRequirement = {
+    ...requirement,
+    id: "customer_notification_content",
+    title: "Customer notification content",
+    coverageElements: [
+      { id: "incident_description", label: "Describes the incident", requiredForCovered: true, signals: ["describe"] },
+      { id: "information_involved", label: "Identifies information", requiredForCovered: true, signals: ["information involved"] },
+      { id: "protective_steps", label: "Protective steps", requiredForCovered: true, signals: ["monitor accounts"] },
+      { id: "contact_information", label: "Contact information", requiredForCovered: true, signals: ["toll-free"] },
+      { id: "fraud_credit_identity_resources", label: "Identity resources", requiredForCovered: true, signals: ["fraud alert"] },
+      { id: "written_delivery_requirements", label: "Written delivery", requiredForCovered: true, signals: ["clear and conspicuous"] },
+    ],
+    requiredElementsForCovered: [
+      "incident_description",
+      "information_involved",
+      "protective_steps",
+      "contact_information",
+      "fraud_credit_identity_resources",
+      "written_delivery_requirements",
+    ],
+  };
+  const content = "Customer notices describe the incident, identify the categories of information involved, provide a toll-free response line, and advise customers to monitor accounts for suspicious activity.";
+  const { postProcessOpenAiClassification } = await loadTsModule("lib/requirementEvidenceClassifier.ts");
+  const classification = postProcessOpenAiClassification({
+    relationship: "supports",
+    confidence: "high",
+    requirement_supported: true,
+    control_absent_or_out_of_scope: false,
+    covered_elements: noticeRequirement.requiredElementsForCovered,
+    missing_elements: [],
+    vague_elements: [],
+    reason: "The notice has all required content.",
+    supporting_quote: content,
+  }, {
+    requirement: noticeRequirement,
+    evaluationGuidance: "Test guidance.",
+    chunkContent: content,
+    chunkMetadata: {
+      filename: "Customer Notice Procedure.pdf",
+      sectionPath: "Notice content",
+      pageStart: 1,
+      pageEnd: 1,
+      chunkIndex: 0,
+      sourceType: "client_policy",
+      evidenceRole: "organization_evidence",
+      evidenceReason: "substantive policy evidence",
+    },
+  });
+
+  assert.equal(classification.relationship, "partially_supports");
+  assert.deepEqual(classification.covered_elements, [
+    "incident_description",
+    "information_involved",
+    "protective_steps",
+    "contact_information",
+  ]);
+
+  const finding = await productionPathFinding(noticeRequirement, [
+    chunk({ content_preview: content }),
+  ], [classification]);
+  assert.equal(finding.status, "partial");
+  assert.match(finding.rationale, /identity-theft resources/i);
+  assert.match(finding.remediation, /written notice and delivery/i);
+});
+
 function reportFinding(overrides = {}) {
   return {
     requirement_id: "customer_notification_unauthorized_access",
@@ -2173,7 +2239,7 @@ test("production path covers strong safeguards controls from one substantive quo
     requiredElementsForCovered: ["customer_information_scope", "safeguards_controls"],
   };
   const quote =
-    "Customer information systems require role-based access, multifactor authentication where available, encryption in transit, encryption at rest for approved repositories, privileged access logging, change management, and periodic access review.";
+    "Customer information systems require role-based access, multifactor authentication where available, encryption in transit, encryption at rest for approved repositories, privileged access logging, change management, periodic access review, and physical safeguards for locked facilities and visitor access.";
 
   const finding = await productionPathFinding(safeguardsRequirement, [
     chunk({ content_preview: quote }),

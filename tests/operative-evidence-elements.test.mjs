@@ -47,6 +47,103 @@ function gradedChunk(requirementDefinition, text, overrides = {}) {
   };
 }
 
+test("notice-content coverage requires material resources and written delivery for covered", () => {
+  const definition = requirement("customer_notification_content");
+  const complete = [
+    "The clear and conspicuous written notice is delivered by mail or email.",
+    "It describes the incident, identifies the categories of sensitive customer information involved, provides a toll-free contact number, and advises customers to monitor accounts for suspicious activity.",
+    "The notice explains fraud alerts, nationwide credit reports, free report instructions, and Federal Trade Commission identity-theft resources.",
+  ].join(" ");
+  const incomplete = [
+    "Customer notices describe the incident, identify the categories of information involved, and provide an estimated incident date when available.",
+    "The notice directs customers to a toll-free response line and incident email address and advises customers to monitor accounts for suspicious activity.",
+  ].join(" ");
+
+  assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(definition, complete, {
+    evidence_relationship: "supports",
+    requirement_supported: true,
+  })]).status, "covered");
+  assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(definition, incomplete)]).status, "partial");
+  assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(
+    definition,
+    "Management coordinates customer communications after significant events.",
+  )]).status, "missing");
+});
+
+test("assessment coverage requires direct assessment, affected-system, and containment actions", () => {
+  const definition = requirement("unauthorized_access_detection_escalation");
+  const complete = "The response team assesses the nature and scope of unauthorized access, identifies affected customer information systems and information types, and isolates affected systems to contain and control the incident.";
+  const incomplete = "The response team reviews the security incident and records its operational impact.";
+  const generic = "The incident lead opens a case, assigns severity, and coordinates assessment, containment, and closure.";
+
+  assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(definition, complete, {
+    evidence_relationship: "supports",
+    requirement_supported: true,
+  })]).status, "covered");
+  assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(definition, incomplete)]).status, "partial");
+  assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(definition, generic)]).status, "missing");
+});
+
+test("written incident-response program coverage excludes provider notice and narrower workflows", () => {
+  const definition = requirement("written_incident_response_program");
+  const complete = "The firm maintains a written incident response program for customer information that is designed to detect, respond to, and recover from unauthorized access or use.";
+  const narrow = "The procedures address investigation, escalation, restoration of important services, and communication with management. Customer information events follow the same general workflow used for other cybersecurity incidents.";
+  const providerOnly = "Service providers notify the firm within 72 hours after a breach involving a customer information system. The firm then initiates its incident response program.";
+
+  assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(definition, complete, {
+    evidence_relationship: "supports",
+    requirement_supported: true,
+  })]).status, "covered");
+  assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(definition, narrow)]).status, "partial");
+  assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(definition, providerOnly)]).status, "missing");
+});
+
+test("safeguards coverage requires administrative, technical, and physical safeguards", () => {
+  const definition = requirement("customer_information_safeguards");
+  const complete = "The written safeguards program protects customer information through administrative safeguards including training and access reviews, technical safeguards including encryption and multifactor authentication, and physical safeguards including locked facilities and visitor access controls.";
+  const partial = "Customer data is protected through access restrictions, passwords, encryption, employee confidentiality obligations, access approval, and annual training.";
+
+  assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(definition, complete, {
+    evidence_relationship: "supports",
+    requirement_supported: true,
+  })]).status, "covered");
+  assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(definition, partial)]).status, "partial");
+  assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(
+    definition,
+    "The organization follows generally accepted security practices.",
+  )]).status, "missing");
+});
+
+test("incident evidence coverage requires a preservation process for covered", () => {
+  const definition = requirement("evidence_log_preservation");
+  const complete = "The incident response procedure requires preserving relevant access logs and investigation evidence for review, with a documented retention process and chain of custody.";
+  const partial = "Teams retain emails and notes relating to significant incidents and provide them to Compliance upon request.";
+
+  assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(definition, complete, {
+    evidence_relationship: "supports",
+    requirement_supported: true,
+  })]).status, "covered");
+  assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(definition, partial)]).status, "partial");
+  assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(
+    definition,
+    "The incident team documents its response activities.",
+  )]).status, "missing");
+});
+
+test("recovery inventories cannot establish an operative recovery procedure", () => {
+  const definition = requirement("remediation_recovery_validation");
+  const complete = "System owners restore affected services, assign remediation owners and due dates, validate restored access and logging, and obtain closure approval after completion evidence is reviewed.";
+  const partial = "System owners restore affected services after an incident.";
+  const inventory = "Appendix A - Incident File Minimum Contents: investigation timeline, containment actions, recovery steps, corrective actions, validation results, and closure approval.";
+
+  assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(definition, complete, {
+    evidence_relationship: "supports",
+    requirement_supported: true,
+  })]).status, "covered");
+  assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(definition, partial)]).status, "partial");
+  assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(definition, inventory)]).status, "missing");
+});
+
 test("discretionary customer communications do not establish a customer-notification trigger", () => {
   const definition = requirement("customer_notification_unauthorized_access");
   const text = "Customer communications may be issued when management considers them appropriate. Management determines the timing and audience for any customer communication based on the circumstances of the event.";
@@ -204,10 +301,7 @@ test("generic operational retention cannot extend an otherwise scoped records sp
 test("a complete recovery quote outranks a higher-confidence partial recovery-start quote", () => {
   const definition = requirement("remediation_recovery_validation");
   const recoveryStart = "Recovery begins after the response lead confirms that immediate containment is stable.";
-  const appendix = [
-    "The incident file records recovery steps and service-provider remediation.",
-    "Corrective actions, validation results, and closure approval are retained.",
-  ].join(" ");
+  const completeProcedure = "The incident recovery procedure restores affected services, assigns remediation owners and due dates, validates restored access, and obtains closure approval after completion evidence is reviewed.";
   const finding = aggregateFindingForRequirement(definition, [
     gradedChunk(definition, recoveryStart, {
       chunk_id: "11111111-1111-4111-8111-111111111111",
@@ -215,18 +309,18 @@ test("a complete recovery quote outranks a higher-confidence partial recovery-st
       classifier_confidence: "high",
       supporting_quote: recoveryStart,
     }),
-    gradedChunk(definition, appendix, {
+    gradedChunk(definition, completeProcedure, {
       chunk_id: "22222222-2222-4222-8222-222222222222",
       evidence_relationship: "supports",
       classifier_confidence: "medium",
       requirement_supported: true,
-      supporting_quote: appendix,
+      supporting_quote: completeProcedure,
     }),
   ]);
 
   assert.equal(finding.status, "covered");
   assert.equal(finding.evidence[0].relationship, "supports");
-  assert.equal(finding.evidence[0].quote, appendix);
+  assert.equal(finding.evidence[0].quote, completeProcedure);
   assert.match(finding.evidence[0].reason, /recovery steps/i);
   assert.match(finding.evidence[0].reason, /remediation/i);
   assert.match(finding.evidence[0].reason, /validates/i);
@@ -313,12 +407,12 @@ test("the Attorney General and Commission customer-notice delay process remains 
   })]).status, "covered");
 });
 
-test("targeted operative-element rules do not apply to assessment or recovery", () => {
+test("assessment and recovery operative rules reject generic activity language", () => {
   const assessment = requirement("unauthorized_access_detection_escalation");
   const recovery = requirement("remediation_recovery_validation");
   const assessmentText = "Technology staff investigate alerts and may take systems offline when needed.";
   const recoveryText = "Technology repairs affected systems and resumes operations when management determines that service is stable.";
 
-  assert.equal(requirementSpecificElementMatch(assessment.id, "containment_control", assessmentText), null);
-  assert.equal(requirementSpecificElementMatch(recovery.id, "recovery_steps", recoveryText), null);
+  assert.equal(requirementSpecificElementMatch(assessment.id, "containment_control", assessmentText), false);
+  assert.equal(requirementSpecificElementMatch(recovery.id, "recovery_steps", recoveryText), false);
 });

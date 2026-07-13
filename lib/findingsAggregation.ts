@@ -642,12 +642,13 @@ function elementSignalMatches(requirement: RegSpRequirement, elementId: string, 
     : null;
   if (requirementSpecific !== null) return requirementSpecific;
 
+  const normalizedText = normalize(text);
   const signals = elementSignals(requirement, elementId);
   if (copyRequirementId(requirement) === "evidence_log_preservation" && elementId === "incident_materials") {
-    return evidencePreservationElementMatches(text);
+    return evidencePreservationElementMatches(normalizedText);
   }
 
-  if (copyRequirementId(requirement) === "disposal_consumer_customer_information" && !hasDisposalAlignedLanguage(text)) {
+  if (copyRequirementId(requirement) === "disposal_consumer_customer_information" && !hasDisposalAlignedLanguage(normalizedText)) {
     return false;
   }
 
@@ -655,18 +656,18 @@ function elementSignalMatches(requirement: RegSpRequirement, elementId: string, 
     return signals.some((signal) => {
       const normalizedSignal = normalize(signal);
       if (!normalizedSignal || normalizedSignal === "disposal") return false;
-      return text.includes(normalizedSignal);
+      return normalizedText.includes(normalizedSignal);
     });
   }
 
   return signals.some((signal) => {
     const normalizedSignal = normalize(signal);
-    return normalizedSignal && text.includes(normalizedSignal);
+    return normalizedSignal && normalizedText.includes(normalizedSignal);
   });
 }
 
 function elementSignalMatchesText(requirement: RegSpRequirement, elementId: string, text: string) {
-  return elementSignalMatches(requirement, elementId, normalize(text));
+  return elementSignalMatches(requirement, elementId, text);
 }
 
 function baseSupportedElementIdsForText(
@@ -1310,6 +1311,8 @@ const foundElementCopy: Partial<Record<RegSpRequirementId, Record<string, string
     information_involved: "identifies the sensitive customer information involved",
     protective_steps: "includes protective steps for affected individuals",
     contact_information: "provides contact information for questions",
+    fraud_credit_identity_resources: "provides fraud, credit-report, and identity-theft resources",
+    written_delivery_requirements: "defines clear written notice and delivery requirements",
   },
   vendor_incident_handling: {
     service_provider_scope: "requires due diligence and monitoring for service providers handling customer information",
@@ -1320,6 +1323,9 @@ const foundElementCopy: Partial<Record<RegSpRequirementId, Record<string, string
   customer_information_safeguards: {
     customer_information_scope: "applies safeguards to customer information",
     safeguards_controls: "describes safeguards or access controls",
+    administrative_safeguards: "defines administrative safeguards",
+    technical_safeguards: "defines technical safeguards",
+    physical_safeguards: "defines physical safeguards",
   },
   disposal_consumer_customer_information: {
     disposal_scope: "applies disposal requirements to consumer or customer information",
@@ -1332,6 +1338,7 @@ const foundElementCopy: Partial<Record<RegSpRequirementId, Record<string, string
   },
   evidence_log_preservation: {
     incident_materials: "preserves incident logs, evidence, or investigation records",
+    preservation_process: "defines a process for preserving relevant logs or evidence",
     integrity_or_chain_of_custody: "maintains evidence integrity or chain of custody",
   },
   remediation_recovery_validation: {
@@ -1367,6 +1374,8 @@ const missingElementCopy: Partial<Record<RegSpRequirementId, Record<string, stri
     information_involved: "notice language identifying the sensitive customer information involved",
     protective_steps: "protective steps or resources for affected individuals",
     contact_information: "required contact information for questions",
+    fraud_credit_identity_resources: "fraud, credit-report, and identity-theft resources",
+    written_delivery_requirements: "clear written notice and delivery requirements",
   },
   vendor_incident_handling: {
     service_provider_scope: "due diligence and monitoring for service providers handling customer information",
@@ -1377,6 +1386,9 @@ const missingElementCopy: Partial<Record<RegSpRequirementId, Record<string, stri
   customer_information_safeguards: {
     customer_information_scope: "that the safeguards apply to customer information",
     safeguards_controls: "administrative, technical, or physical safeguards",
+    administrative_safeguards: "administrative safeguards",
+    technical_safeguards: "technical safeguards",
+    physical_safeguards: "physical safeguards",
   },
   disposal_consumer_customer_information: {
     disposal_scope: "consumer or customer information disposal scope",
@@ -1389,6 +1401,7 @@ const missingElementCopy: Partial<Record<RegSpRequirementId, Record<string, stri
   },
   evidence_log_preservation: {
     incident_materials: "how logs, evidence, or investigation records must be preserved",
+    preservation_process: "a defined process for preserving relevant logs or evidence",
     integrity_or_chain_of_custody: "evidence integrity or chain-of-custody requirements",
   },
   remediation_recovery_validation: {
@@ -1426,6 +1439,8 @@ const partialElementCopy: Partial<Record<RegSpRequirementId, Record<string, stri
     information_involved: "identification of affected sensitive customer information",
     protective_steps: "protective steps for affected individuals",
     contact_information: "contact information for questions",
+    fraud_credit_identity_resources: "fraud, credit-report, and identity-theft resources",
+    written_delivery_requirements: "clear written notice and delivery requirements",
   },
   vendor_incident_handling: {
     service_provider_scope: "service-provider due diligence and monitoring",
@@ -1436,6 +1451,9 @@ const partialElementCopy: Partial<Record<RegSpRequirementId, Record<string, stri
   customer_information_safeguards: {
     customer_information_scope: "safeguards for customer information",
     safeguards_controls: "administrative, technical, or physical safeguards",
+    administrative_safeguards: "administrative safeguards",
+    technical_safeguards: "technical safeguards",
+    physical_safeguards: "physical safeguards",
   },
   disposal_consumer_customer_information: {
     disposal_scope: "consumer or customer information disposal scope",
@@ -1448,6 +1466,7 @@ const partialElementCopy: Partial<Record<RegSpRequirementId, Record<string, stri
   },
   evidence_log_preservation: {
     incident_materials: "evidence and log preservation",
+    preservation_process: "a defined log or evidence preservation process",
     integrity_or_chain_of_custody: "evidence integrity or chain of custody",
   },
   remediation_recovery_validation: {

@@ -302,6 +302,54 @@ test("written compliance record parent signals remain aligned with the canonical
   }
 });
 
+test("strict covered-threshold controls and migration stay aligned", async () => {
+  const expectedRequiredElements = {
+    customer_notification_content: [
+      "incident_description",
+      "information_involved",
+      "protective_steps",
+      "contact_information",
+      "fraud_credit_identity_resources",
+      "written_delivery_requirements",
+    ],
+    customer_information_safeguards: [
+      "customer_information_scope",
+      "administrative_safeguards",
+      "technical_safeguards",
+      "physical_safeguards",
+    ],
+    evidence_log_preservation: [
+      "incident_materials",
+      "preservation_process",
+    ],
+  };
+
+  for (const [requirementId, elementIds] of Object.entries(expectedRequiredElements)) {
+    const requirement = REG_SP_REQUIREMENTS.find((candidate) => candidate.id === requirementId);
+    assert.ok(requirement, `missing static requirement ${requirementId}`);
+    assert.deepEqual(requirement.requiredElementsForCovered, elementIds);
+  }
+
+  const migration = await readFile(
+    "supabase/migrations/025_align_strict_covered_thresholds.sql",
+    "utf8",
+  );
+  assert.match(migration, /025_align_strict_covered_thresholds/);
+  for (const controlKey of [
+    "customer_notification_content",
+    "incident_assessment_containment_control",
+    "written_incident_response_program",
+    "safeguards_customer_information",
+    "incident_evidence_log_preservation",
+    "response_recovery_remediation_validation",
+  ]) {
+    assert.match(migration, new RegExp(`'${controlKey}'`));
+  }
+  for (const elementId of Object.values(expectedRequiredElements).flat()) {
+    assert.match(migration, new RegExp(elementId));
+  }
+});
+
 test("regulatory chunks cannot satisfy client compliance findings", () => {
   const requirement = regulatoryControlToRegSpRequirement(regulatoryControl({
     elements: [

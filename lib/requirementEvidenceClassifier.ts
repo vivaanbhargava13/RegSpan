@@ -481,9 +481,10 @@ function coverageElementMatches(
     ? requirementSpecificElementMatch(requirement.id, elementId, text)
     : null;
   if (requirementSpecific !== null) return requirementSpecific;
+  const normalizedText = normalize(text);
   return signals.some((signal) => {
     const normalizedSignal = normalize(signal);
-    return normalizedSignal && text.includes(normalizedSignal);
+    return normalizedSignal && normalizedText.includes(normalizedSignal);
   });
 }
 
@@ -645,14 +646,22 @@ function quoteSupportedElementIds(
   _classification: Omit<RequirementEvidenceClassification, "classifier_provider">,
   quote: string,
 ) {
-  const text = normalize(quote);
+  const text = quote;
   return (input.requirement.coverageElements ?? [])
     .filter((element) => {
       const signals = elementSignals(input.requirement.id, element.id, element.signals);
       const matches = coverageElementMatches(input.requirement, element.id, signals, text);
-      if (classifierLegacyRequirementId(input.requirement.id) === "evidence_log_preservation" && element.id === "incident_materials") {
-        const retentionAction = /\b(?:preserv\w*|retain\w*|maintain\w*)\b/.test(text);
-        const incidentMaterial = /\b(?:logs?|exports?|screenshots?|forensic (?:data|evidence)|investigation (?:materials?|records?|notes)|incident (?:materials?|records?)|security[- ]console exports?|volatile information)\b/.test(text);
+      if (
+        classifierLegacyRequirementId(input.requirement.id) === "evidence_log_preservation"
+        && element.id === "incident_materials"
+        && !usesCanonicalOperativeElementModel(
+          input.requirement.id,
+          (input.requirement.coverageElements ?? []).map((candidate) => candidate.id),
+        )
+      ) {
+        const normalizedText = normalize(text);
+        const retentionAction = /\b(?:preserv\w*|retain\w*|maintain\w*)\b/.test(normalizedText);
+        const incidentMaterial = /\b(?:logs?|exports?|screenshots?|forensic (?:data|evidence)|investigation (?:materials?|records?|notes)|incident (?:materials?|records?)|security[- ]console exports?|volatile information)\b/.test(normalizedText);
         return retentionAction && incidentMaterial;
       }
       return matches;
@@ -829,27 +838,27 @@ export function buildRequirementEvaluationGuidance(requirement: RegSpRequirement
 
   const requirementSpecificGuidance: Record<string, string> = {
     written_incident_response_program:
-      "Supports when the chunk shows a maintained written incident/cyber event response program, plan, policy, standard, or procedure with ownership, approval, review, roles, escalation, notice, evidence, remediation, or recovery responsibilities.",
+      "Covered support requires a maintained written program that applies to customer information and directly covers detection, response, and recovery. A narrower incident workflow may be partial; provider-notice text alone is not program evidence.",
     unauthorized_access_detection_escalation:
-      "Supports when the chunk describes assessing the nature and scope of unauthorized access or use of customer information, identifying affected customer information systems or information types, escalating the incident, or taking containment and control steps.",
+      "Covered support requires direct nature-and-scope assessment, identification of affected customer information systems or information types, and concrete containment/control actions. Coordination language alone is context, not assessment or containment proof.",
     customer_notification_unauthorized_access:
       "Supports only when an operative customer-notice obligation is tied to unauthorized access, unauthorized use, or a breach involving customer information. Management discretion over communications is context only, not a notification trigger or timing requirement.",
     customer_notification_content:
-      "Supports when the chunk defines customer notice contents such as incident description, type of sensitive customer information, incident date or date range, contact information, account review, fraud alerts, credit reports, identity theft resources, or FTC/usa.gov guidance.",
+      "Covered support requires the material notice-content categories, identity-protection resources, and clear written delivery requirements. A notice with incident details, contact information, or account-monitoring advice alone may be partial.",
     regulator_law_enforcement_notification:
       "This is supporting-control evidence, not a standalone Reg S-P customer-notice obligation. Supports only incident-specific external-notification decisioning plus legal/compliance coordination or ownership. Contact authority alone is not notification decisioning.",
     vendor_incident_handling:
       "Supports only operative obligations imposed on or governing service providers, vendors, suppliers, or third parties, such as due diligence, monitoring, customer-information safeguards, breach notice to the firm, or 72-hour reporting. An internal owner or coordinator role alone is context only.",
     customer_information_safeguards:
-      "Supports when the chunk describes administrative, technical, or physical safeguards protecting customer records and information, including authentication, encryption, monitoring, least privilege, access controls, vendor controls, or physical protections.",
+      "Covered support requires administrative, technical, and physical safeguards for customer information. A subset of operative safeguards may be partial; generic security language is context only.",
     disposal_consumer_customer_information:
       "Supports when the chunk describes proper disposal, secure destruction, media sanitization, shredding, wiping, deletion, or disposal-vendor controls for consumer information or customer information.",
     written_compliance_records:
       "Supports only operative recordkeeping tied to safeguards, disposal, incident response, notification determinations, or a Regulation S-P compliance program. Generic departmental or operational retention is context only.",
     evidence_log_preservation:
-      "This is supporting-control evidence. Supports when the chunk describes collecting, preserving, retaining, or maintaining logs, evidence, incident records, forensic data, chain of custody, or investigation files.",
+      "This is supporting-control evidence. Covered support requires a defined process for preserving relevant logs or investigation evidence. Retained incident emails, notes, tickets, screenshots, or attachments may be partial, not full coverage.",
     remediation_recovery_validation:
-      "Supports when the chunk describes recovery from unauthorized access or use, remediation tracking, corrective actions, validation, repeated testing, recovery assurance, restored asset verification, lessons learned, or post-incident review.",
+      "Covered support requires operative recovery actions, remediation tracking, and validation or closure. Appendix, index, or record-category lists are not a recovery procedure, though they may provide partial context.",
   };
 
   return [
@@ -876,7 +885,7 @@ function classifyRequirementEvidenceHeuristicallyInternal(
   const action = countSignalMatches(text, requirement.actionSignals);
   const partial = countSignalMatches(text, requirement.partialSignals);
   const background = countSignalMatches(text, requirement.backgroundSignals);
-  const coverage = assessCoverageElements(requirement, text);
+  const coverage = assessCoverageElements(requirement, chunkContent);
   const hasExplicitAction = action.count > 0;
   const hasVendorIncidentHandlingContext = requirement.id !== "vendor_incident_handling"
     || (
@@ -898,7 +907,14 @@ function classifyRequirementEvidenceHeuristicallyInternal(
         "cooperation",
       ])
     );
-  const hasDirectSupportSignals = hasExplicitAction && hasVendorIncidentHandlingContext && direct.count >= 2;
+  const hasCompleteOperativeCoverage = requiresOperativeElementSupport(
+    requirement.id,
+    (requirement.coverageElements ?? []).map((element) => element.id),
+  ) && coverage.missingRequired.length === 0;
+  const hasDirectSupportSignals = hasVendorIncidentHandlingContext && (
+    (hasExplicitAction && direct.count >= 2)
+    || hasCompleteOperativeCoverage
+  );
   const positiveSupportQuote = positiveSupportSentence(input, [
     ...direct.matched,
     ...action.matched,

@@ -95,7 +95,7 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
     riskSeverity: "high",
     evidenceCriteria: {
       lookFor: "Written incident response policy, plan, program, standard, or procedure covering customer information.",
-      strongEvidence: "A maintained written program or equivalent policy/standard with ownership, approval, review, roles, escalation, notice, response, and recovery responsibilities.",
+      strongEvidence: "A maintained written program or equivalent policy/standard that expressly applies to customer information and defines detection, response, and recovery responsibilities.",
       partialEvidence: "Incident response procedures are mentioned, but ownership, approval, customer-information scope, or recovery responsibilities are unclear.",
       missingOrNegativeEvidence: "The documents say the firm has no incident response program, or only contain generic incident references without a written customer-information response process.",
     },
@@ -104,19 +104,19 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
         id: "written_program",
         label: "Maintains a written incident response program or equivalent policy",
         requiredForCovered: true,
-        signals: ["written incident response", "incident response program", "incident response plan", "incident response policy", "response standard"],
+        signals: ["written incident response", "written incident response program", "written incident response plan", "written incident response policy", "documented incident response program"],
       },
       {
         id: "customer_information_scope",
         label: "Applies to customer information or customer information systems",
         requiredForCovered: true,
-        signals: ["customer information", "customer records", "sensitive customer information", "customer information systems"],
+        signals: ["customer information incident response", "customer information response program", "customer information events", "customer information systems"],
       },
       {
         id: "response_recovery_responsibilities",
         label: "Defines response and recovery responsibilities",
         requiredForCovered: true,
-        signals: ["respond", "response", "recover", "recovery", "roles", "responsibilities", "escalation", "remediation"],
+        signals: ["detect respond and recover", "detection response and recovery", "respond to and recover", "response and recovery responsibilities"],
       },
     ],
     retrievalQuery:
@@ -180,7 +180,7 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
     riskSeverity: "high",
     evidenceCriteria: {
       lookFor: "Assessment of customer-information incidents, affected systems/data, containment, control, escalation, and severity procedures.",
-      strongEvidence: "Procedures require assessing the incident scope, identifying customer information systems and information types, escalating decisions, and taking containment/control actions.",
+      strongEvidence: "Procedures require assessing the nature and scope of unauthorized access or use, identifying affected customer information systems and information types, and taking concrete containment/control actions.",
       partialEvidence: "Detection, escalation, or containment appears in isolation, but assessment of customer information scope or control actions is incomplete.",
       missingOrNegativeEvidence: "The documents say assessment or containment is not defined, or only describe generic monitoring without incident response steps.",
     },
@@ -189,19 +189,19 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
         id: "assesses_scope",
         label: "Assesses the nature and scope of unauthorized access or use",
         requiredForCovered: true,
-        signals: ["assess the nature and scope", "nature and scope", "assess", "triage", "classify"],
+        signals: ["assess the nature and scope", "assessment of unauthorized access", "assess unauthorized access", "incident scope assessment"],
       },
       {
         id: "customer_information_systems",
         label: "Identifies affected customer information systems or information types",
         requiredForCovered: true,
-        signals: ["customer information systems", "types of customer information", "customer information", "sensitive customer information"],
+        signals: ["affected customer information systems", "affected customer information", "information types affected", "affected sensitive customer information"],
       },
       {
         id: "containment_control",
         label: "Requires containment or control steps",
         requiredForCovered: true,
-        signals: ["contain and control", "containment", "control", "eradication", "isolate", "mitigate"],
+        signals: ["contain and control", "containment steps", "isolate affected systems", "block unauthorized access", "reset credentials"],
       },
     ],
     retrievalQuery:
@@ -300,7 +300,7 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
     riskSeverity: "high",
     evidenceCriteria: {
       lookFor: "Notice templates or procedures covering incident description, type of sensitive information, incident date/range when known, contact information, account review, fraud alerts, credit reports, and identity-theft resources.",
-      strongEvidence: "A notice template or procedure lists required notice elements and protective steps for affected individuals.",
+      strongEvidence: "A notice template or procedure defines the material notice-content categories, identity-protection resources, and written delivery requirements for affected individuals.",
       partialEvidence: "The documents mention notifying affected individuals but do not define the notice contents.",
       missingOrNegativeEvidence: "The documents say notice content is not defined or leave notice details entirely to ad hoc legal review.",
     },
@@ -326,8 +326,20 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
       {
         id: "contact_information",
         label: "Provides contact information for questions",
-        requiredForCovered: false,
+        requiredForCovered: true,
         signals: ["contact information", "telephone number", "email address", "contact us"],
+      },
+      {
+        id: "fraud_credit_identity_resources",
+        label: "Provides fraud, credit-report, and identity-theft resources",
+        requiredForCovered: true,
+        signals: ["fraud alert", "nationwide credit reporting", "credit report", "free credit report", "identity theft", "Federal Trade Commission", "FTC"],
+      },
+      {
+        id: "written_delivery_requirements",
+        label: "Defines clear written notice and delivery requirements",
+        requiredForCovered: true,
+        signals: ["clear and conspicuous", "written notice", "in writing", "notice delivery", "deliver the notice"],
       },
     ],
     retrievalQuery:
@@ -343,6 +355,9 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
       "identity theft",
       "federal trade commission",
       "FTC",
+      "clear and conspicuous",
+      "written notice",
+      "notice delivery",
       "account statements",
       "suspicious activity",
     ],
@@ -460,7 +475,7 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
     riskSeverity: "high",
     evidenceCriteria: {
       lookFor: "Written safeguards covering administrative, technical, and physical controls for customer records and information, including information handled by or on behalf of the firm.",
-      strongEvidence: "Policies define safeguards such as access controls, authentication, encryption, monitoring, least privilege, vendor controls, and physical/administrative protections for customer information.",
+      strongEvidence: "Policies define written administrative, technical, and physical safeguards for the required scope of customer information.",
       partialEvidence: "Security controls are described, but the link to customer information or administrative/technical/physical safeguards is incomplete.",
       missingOrNegativeEvidence: "The documents say customer-information safeguards are not maintained or contain only generic security principles without customer-information controls.",
     },
@@ -473,9 +488,27 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
       },
       {
         id: "safeguards_controls",
-        label: "Defines administrative, technical, or physical safeguards",
-        requiredForCovered: true,
+        label: "Defines safeguards controls",
+        requiredForCovered: false,
         signals: ["safeguards", "administrative safeguards", "technical safeguards", "physical safeguards", "access controls", "least privilege", "encryption", "authentication"],
+      },
+      {
+        id: "administrative_safeguards",
+        label: "Defines administrative safeguards",
+        requiredForCovered: true,
+        signals: ["administrative safeguards", "security training", "confidentiality obligations", "access approval", "access review"],
+      },
+      {
+        id: "technical_safeguards",
+        label: "Defines technical safeguards",
+        requiredForCovered: true,
+        signals: ["technical safeguards", "encryption", "authentication", "access restrictions", "passwords", "multifactor authentication"],
+      },
+      {
+        id: "physical_safeguards",
+        label: "Defines physical safeguards",
+        requiredForCovered: true,
+        signals: ["physical safeguards", "locked facility", "secure workspace", "physical access", "visitor access", "device storage"],
       },
     ],
     retrievalQuery:
@@ -622,7 +655,7 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
     riskSeverity: "medium",
     evidenceCriteria: {
       lookFor: "Procedures to preserve logs, forensic data, incident records, chain of custody, investigation notes, and evidence needed for review.",
-      strongEvidence: "Policies require collecting and preserving incident evidence, logs, investigation records, and chain-of-custody or provenance information.",
+      strongEvidence: "Policies define a preservation process for relevant incident logs and evidence, with sufficient investigation, retention, or integrity scope.",
       partialEvidence: "Logs or evidence are mentioned, but retention, ownership, or incident use is unclear.",
       missingOrNegativeEvidence: "The documents say evidence preservation is not defined or only describe monitoring without retaining incident materials.",
     },
@@ -651,6 +684,12 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
         label: "Maintains evidence integrity or chain of custody",
         requiredForCovered: false,
         signals: ["chain of custody", "records integrity", "provenance", "custody"],
+      },
+      {
+        id: "preservation_process",
+        label: "Defines a process for preserving relevant logs or evidence",
+        requiredForCovered: true,
+        signals: ["procedure requires preserving", "preservation process", "preserve relevant logs", "retain logs for investigation", "evidence retention requirements", "chain of custody"],
       },
     ],
     retrievalQuery:
@@ -691,7 +730,7 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
     riskSeverity: "high",
     evidenceCriteria: {
       lookFor: "Recovery procedures, remediation tracking, corrective actions, restored asset verification, vulnerability retesting, lessons learned, and closure validation.",
-      strongEvidence: "Policies require recovery actions and confirmation that remediation or corrective action is completed and validated after incidents or vulnerabilities.",
+      strongEvidence: "Policies require recovery actions, remediation tracking, and validation or closure after incidents; an appendix or record-category list alone is not a procedure.",
       partialEvidence: "Recovery or remediation is mentioned, but validation, testing, ownership, or closure evidence is unclear.",
       missingOrNegativeEvidence: "The documents say recovery validation is not required or only describe informal restoration without confirmation or follow-up.",
     },

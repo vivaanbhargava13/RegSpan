@@ -701,7 +701,7 @@ test("source quote extraction recovers real evidence across core requirements", 
     {
       id: "written_incident_response_program",
       text:
-        "Meridian maintains a written cyber event response standard for incidents involving customer information approved by the Risk Committee and reviewed annually. The standard assigns decision authority, describes escalation, notice decisions, supplier coordination, evidence custody, corrective action tracking, restoration assurance, recovery responsibilities, and final review.",
+        "The firm maintains a written cyber event response standard for incidents involving customer information, designed to detect, respond to, and recover from unauthorized access or use. The standard assigns decision authority, describes escalation, notice decisions, supplier coordination, evidence custody, corrective action tracking, restoration assurance, recovery responsibilities, and final review.",
       relationship: "supports",
       covered: "all",
       missing: [],
@@ -725,7 +725,7 @@ test("source quote extraction recovers real evidence across core requirements", 
     },
     {
       id: "customer_information_safeguards",
-      text: "Customer information repositories require access approval, periodic access review, encryption, authentication, and least privilege controls.",
+      text: "Customer information repositories require access approval, periodic access review, encryption, authentication, least privilege controls, and physical safeguards including locked facilities and visitor access controls.",
       relationship: "supports",
       covered: "all",
       missing: [],
@@ -885,7 +885,8 @@ test("third-party role background alone is not enough for direct grading", async
 
   assert.match(classifier, /const hasExplicitAction = action\.count > 0/);
   assert.match(classifier, /hasVendorIncidentHandlingContext/);
-  assert.match(classifier, /hasExplicitAction && hasVendorIncidentHandlingContext && direct\.count >= 2/);
+  assert.match(classifier, /hasCompleteOperativeCoverage/);
+  assert.match(classifier, /hasExplicitAction && direct\.count >= 2/);
   assert.match(classifier, /direct\.count >= 1[\s\S]*relationship: "partially_supports"/);
 });
 
@@ -952,7 +953,7 @@ test("notice-content evidence covers customer notification content", async () =>
   );
 
   const graded = gradeRetrievedChunk(requirement, organizationChunk(
-    "Customer notices must include a description of the incident, the type of sensitive customer information involved, the incident date range, contact information, and protective steps such as fraud alert placement, credit report review, account statement monitoring, and identity theft resources.",
+    "Clear and conspicuous written notices delivered by mail or email must include a description of the incident, the type of sensitive customer information involved, the incident date range, contact information, and protective steps such as fraud alert placement, nationwide credit report and free report instructions, account statement monitoring, and Federal Trade Commission identity theft resources.",
   ));
 
   assert.equal(graded.grade, "direct");
@@ -999,7 +1000,12 @@ test("safeguards support with nearby limitation is partial support, not negative
   assert.equal(graded.evidence_relationship, "partially_supports");
   assert.equal(graded.negative_evidence, false);
   assert.equal(graded.control_absent_or_out_of_scope, false);
-  assert.deepEqual(graded.covered_elements, ["customer_information_scope", "safeguards_controls"]);
+  assert.deepEqual(graded.covered_elements, [
+    "customer_information_scope",
+    "safeguards_controls",
+    "administrative_safeguards",
+    "technical_safeguards",
+  ]);
   assert.match(graded.supporting_quote, /Customer information repositories require access approval/);
   assert.doesNotMatch(graded.supporting_quote ?? "", /does not fully define/);
 });
@@ -1092,7 +1098,7 @@ test("remediation and recovery validation reference language can grade direct wh
   );
 
   const graded = gradeRetrievedChunk(requirement, retrievedChunk(
-    "Teams should confirm remediation with a follow-up vulnerability scan, repeated testing, recovery capabilities validation, verify restored assets, corrective actions, lessons learned, and remediation tracking.",
+    "The recovery procedure restores affected services, assigns remediation owners and due dates, validates restored assets through follow-up testing, and records closure approval.",
   ));
 
   assert.equal(graded.grade, "direct");
@@ -1142,7 +1148,7 @@ test("equivalent written cyber event response standard grades direct when mainta
   );
 
   const graded = gradeRetrievedChunk(requirement, organizationChunk(
-    "Meridian maintains a written cyber event response standard for incidents involving customer information approved by the Risk Committee and reviewed annually. The standard assigns decision authority, describes escalation, notice decisions, supplier coordination, evidence custody, corrective action tracking, restoration assurance, recovery responsibilities, and final review.",
+    "The firm maintains a written cyber event response standard for incidents involving customer information, designed to detect, respond to, and recover from unauthorized access or use. The standard assigns decision authority, describes escalation, notice decisions, supplier coordination, evidence custody, corrective action tracking, restoration assurance, recovery responsibilities, and final review.",
   ));
 
   assert.equal(graded.grade, "direct");
