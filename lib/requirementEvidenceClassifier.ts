@@ -248,6 +248,14 @@ function negativeScopeSignals(requirement: RegSpRequirement) {
   if (requirement.id === "customer_notification_unauthorized_access") {
     baseSignals.push("breach notice", "breach notices", "customer breach notice", "customer breach notices");
   }
+  if (classifierLegacyRequirementId(requirement.id) === "vendor_incident_handling") {
+    baseSignals.push(
+      "vendor incident reporting",
+      "service provider incident reporting",
+      "supplier incident reporting",
+      "vendor notification responsibilities",
+    );
+  }
   return uniqueStrings(baseSignals);
 }
 
@@ -279,10 +287,13 @@ function detectSentenceScopedNegativeEvidence(
     const directSignalMatch = detectNegativeEvidence(sentence, directSignals);
     if (
       directSignalMatch.isNegativeEvidence
-      && negativeSignalAppearsAfterPhrase(
-        sentence,
-        directSignalMatch.matchedPhrase,
-        directSignalMatch.matchedSignal,
+      && (
+        negativeSignalAppearsAfterPhrase(
+          sentence,
+          directSignalMatch.matchedPhrase,
+          directSignalMatch.matchedSignal,
+        )
+        || classifierLegacyRequirementId(input.requirement.id) === "vendor_incident_handling"
       )
     ) {
       return {
@@ -431,8 +442,15 @@ function extraElementSignals(requirementId: string, elementId: string) {
       incident_materials: [
         "preserving relevant logs",
         "preserve relevant logs",
+        "relevant logs are preserved",
+        "logs are preserved",
+        "retain incident logs",
+        "incident materials retained",
         "preserve evidence",
         "preserving evidence",
+        "investigation notes",
+        "security console exports",
+        "volatile information",
         "logs and evidence",
         "investigation materials",
         "investigation materials retained",
@@ -521,6 +539,8 @@ function extraElementSignals(requirementId: string, elementId: string) {
       compliance_record_scope: [
         "written compliance records",
         "records documenting compliance",
+        "records demonstrating implementation",
+        "records documenting implementation",
         "compliance review materials",
         "compliance records",
       ],
@@ -583,9 +603,9 @@ function quoteSupportedElementIds(
         return normalizedSignal && text.includes(normalizedSignal);
       });
       if (classifierLegacyRequirementId(input.requirement.id) === "evidence_log_preservation" && element.id === "incident_materials") {
-        const retentionAction = /\b(?:preserv|retain|retaining|retained|recordkeeping)\b/.test(text);
-        const incidentMaterial = /\b(?:logs?|evidence|investigation materials|forensic|recordkeeping|security[- ]console exports?)\b/.test(text);
-        return (matches || incidentMaterial) && retentionAction && incidentMaterial;
+        const retentionAction = /\b(?:preserv\w*|retain\w*|maintain\w*)\b/.test(text);
+        const incidentMaterial = /\b(?:logs?|exports?|screenshots?|forensic (?:data|evidence)|investigation (?:materials?|records?|notes)|incident (?:materials?|records?)|security[- ]console exports?|volatile information)\b/.test(text);
+        return retentionAction && incidentMaterial;
       }
       return matches;
     })

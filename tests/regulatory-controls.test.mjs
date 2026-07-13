@@ -125,6 +125,66 @@ test("DB-backed controls convert to requirement definitions with canonical keys"
   assert.match(requirement.retrievalQuery, /unauthorized access/);
 });
 
+test("DB-backed service-provider controls require oversight, safeguards, and notice while keeping cooperation optional", () => {
+  const providerRequirement = regulatoryControlToRegSpRequirement(regulatoryControl({
+    controlKey: "service_provider_incident_oversight_notice",
+    name: "Service provider incident oversight and notice",
+    elements: [
+      {
+        id: "element-provider-scope",
+        elementKey: "service_provider_scope",
+        label: "Requires due diligence and monitoring",
+        description: "Provider oversight.",
+        required: true,
+        evidenceQuestion: null,
+        missingIfAbsent: true,
+        displayOrder: 1,
+        metadata: { signals: ["due diligence", "ongoing monitoring"] },
+      },
+      {
+        id: "element-provider-safeguards",
+        elementKey: "provider_safeguards",
+        label: "Requires provider safeguards",
+        description: "Provider safeguards.",
+        required: true,
+        evidenceQuestion: null,
+        missingIfAbsent: true,
+        displayOrder: 2,
+        metadata: { signals: ["protect against unauthorized access"] },
+      },
+      {
+        id: "element-provider-notice",
+        elementKey: "notice_to_firm",
+        label: "Requires provider notice",
+        description: "Provider notice.",
+        required: true,
+        evidenceQuestion: null,
+        missingIfAbsent: true,
+        displayOrder: 3,
+        metadata: { signals: ["notify the firm", "72 hours"] },
+      },
+      {
+        id: "element-provider-cooperation",
+        elementKey: "cooperation_remediation",
+        label: "Provider cooperation",
+        description: "Provider cooperation.",
+        required: false,
+        evidenceQuestion: null,
+        missingIfAbsent: false,
+        displayOrder: 4,
+        metadata: { signals: ["cooperation"] },
+      },
+    ],
+  }));
+
+  assert.deepEqual(providerRequirement.requiredElementsForCovered, [
+    "service_provider_scope",
+    "provider_safeguards",
+    "notice_to_firm",
+  ]);
+  assert.deepEqual(providerRequirement.optionalElements, ["cooperation_remediation"]);
+});
+
 test("hardcoded fallback framework still exposes the 11 curated controls", () => {
   assert.equal(REG_SP_REQUIREMENTS.length, 11);
   assert.equal(REG_SP_REQUIREMENTS.find((requirement) => requirement.id === "written_incident_response_program")?.riskSeverity, "high");

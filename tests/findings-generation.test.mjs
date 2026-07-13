@@ -1205,16 +1205,16 @@ test("service provider evidence quotes start at a clean sentence instead of a le
   const vendorEvidence = chunk({
     section_path: "Vendor cooperation, investigation, and remediation support",
     content_preview:
-      "Vendor contracts covering customer information require notice to the firm within 72 hours or comparable timing commitment. Vendor cooperation is required for investigation, remediation, and recovery support.",
+      "Vendor contracts require due diligence and ongoing monitoring for vendors handling customer information, safeguards to protect that information against unauthorized access, and notice to the firm within 72 hours. Vendor cooperation is required for investigation, remediation, and recovery support.",
     supporting_quote:
-      "or comparable timing commitment. Vendor cooperation is required for investigation, remediation, and recovery support.",
+      "within 72 hours. Vendor cooperation is required for investigation, remediation, and recovery support.",
   });
 
   const finding = aggregateFindingForRequirement(vendorRequirement, [vendorEvidence]);
 
   assert.equal(finding.status, "covered");
-  assert.match(finding.evidence[0].quote ?? "", /^Vendor contracts covering customer information/);
-  assert.doesNotMatch(finding.evidence[0].quote ?? "", /^or comparable/i);
+  assert.match(finding.evidence[0].quote ?? "", /^Vendor contracts require due diligence/i);
+  assert.doesNotMatch(finding.evidence[0].quote ?? "", /^within 72 hours/i);
 });
 
 test("service provider heading-only quotes are not persisted as substantive evidence", () => {
@@ -2344,7 +2344,7 @@ test("production path keeps complementary written compliance record evidence", a
   const disposalQuote =
     "Certificates of destruction are retained with the disposal register under the retention schedule.";
   const complianceQuote =
-    "Written compliance records include incident determinations, notification determinations, customer notices, and compliance review materials.";
+    "Compliance maintains written records demonstrating implementation of the safeguards and disposal program, including incident determinations, notification determinations, customer notices, and compliance review materials.";
 
   const finding = await productionPathFinding(recordsRequirement, [
     chunk({
@@ -2379,18 +2379,183 @@ function serviceProviderRequirementFixture() {
     id: "service_provider_incident_oversight_notice",
     title: "Service provider incident oversight and notice",
     coverageElements: [
-      { id: "service_provider_scope", label: "Applies to service providers", requiredForCovered: true, signals: ["service providers", "vendor"] },
-      { id: "notice_to_firm", label: "Requires notice to the firm", requiredForCovered: true, signals: ["notify", "notification", "report", "reporting deadline"] },
-      { id: "cooperation_remediation", label: "Requires cooperation", requiredForCovered: true, signals: ["status updates", "forensic support", "remediation plan", "recovery evidence"] },
+      { id: "service_provider_scope", label: "Requires provider oversight", requiredForCovered: true, signals: ["due diligence", "ongoing monitoring"] },
+      { id: "provider_safeguards", label: "Requires provider safeguards", requiredForCovered: true, signals: ["protect customer information", "unauthorized access"] },
+      { id: "notice_to_firm", label: "Requires notice to the firm", requiredForCovered: true, signals: ["notify the firm", "72 hours"] },
+      { id: "cooperation_remediation", label: "Requires cooperation", requiredForCovered: false, signals: ["status updates", "forensic support", "remediation plan", "recovery evidence"] },
     ],
-    requiredElementsForCovered: ["service_provider_scope", "notice_to_firm", "cooperation_remediation"],
+    requiredElementsForCovered: ["service_provider_scope", "provider_safeguards", "notice_to_firm"],
+    optionalElements: ["cooperation_remediation"],
   };
 }
+
+function directServiceProviderRequirementFixture() {
+  return {
+    ...requirement,
+    id: "service_provider_incident_oversight_notice",
+    title: "Service provider incident oversight and notice",
+    coverageElements: [
+      {
+        id: "service_provider_scope",
+        label: "Requires due diligence and monitoring for service providers",
+        requiredForCovered: true,
+        signals: ["due diligence", "ongoing monitoring of service providers"],
+      },
+      {
+        id: "provider_safeguards",
+        label: "Requires service-provider safeguards",
+        requiredForCovered: true,
+        signals: ["protect against unauthorized access"],
+      },
+      {
+        id: "notice_to_firm",
+        label: "Requires notice to the firm",
+        requiredForCovered: true,
+        signals: ["notify the firm", "72 hours"],
+      },
+      {
+        id: "cooperation_remediation",
+        label: "Requires cooperation",
+        requiredForCovered: false,
+        signals: ["cooperation"],
+      },
+    ],
+    requiredElementsForCovered: ["service_provider_scope", "provider_safeguards", "notice_to_firm"],
+    optionalElements: ["cooperation_remediation"],
+  };
+}
+
+test("production path covers direct provider oversight, safeguards, and notice without a cooperation requirement", async () => {
+  const providerRequirement = directServiceProviderRequirementFixture();
+  const directQuote =
+    "The firm performs due diligence and ongoing monitoring of service providers handling customer information and requires those providers to protect against unauthorized access to or use of customer information and notify the firm as soon as possible, but no later than 72 hours after becoming aware of a breach.";
+  const recoveryQuote =
+    "Before returning a material customer information system to normal operation, the owner validates security logging and updates procedures, safeguards, and service-provider requirements.";
+
+  const finding = await productionPathFinding(providerRequirement, [
+    chunk({
+      chunk_id: "66555555-5555-4555-8555-555555555555",
+      section_path: "Service provider oversight",
+      content_preview: directQuote,
+      rerank_score: 80,
+    }),
+    chunk({
+      chunk_id: "66666666-6666-4666-8666-666666666667",
+      section_path: "Recovery validation",
+      content_preview: recoveryQuote,
+      rerank_score: 99,
+    }),
+  ], [
+    classifierClassification({
+      covered_elements: providerRequirement.requiredElementsForCovered,
+      supporting_quote: directQuote,
+    }),
+    classifierClassification({
+      covered_elements: providerRequirement.requiredElementsForCovered,
+      supporting_quote: recoveryQuote,
+    }),
+  ]);
+
+  assert.equal(finding.status, "covered");
+  assert.deepEqual(finding.evidence.map((row) => row.quote), [directQuote]);
+  assert.doesNotMatch(JSON.stringify(finding.evidence), /returning a material|recovery validation/i);
+  assert.match(finding.evidence[0].reason, /due diligence|service providers|safeguards|notify/i);
+  assert.doesNotMatch(finding.evidence[0].reason, /recovery|remediation/i);
+});
+
+test("production path recognizes operative compliance-program records but rejects generic departmental retention", async () => {
+  const recordsRequirement = {
+    ...requirement,
+    id: "written_compliance_records",
+    title: "Written compliance records",
+    coverageElements: [
+      { id: "compliance_record_scope", label: "Requires records documenting compliance", requiredForCovered: true, signals: ["records demonstrating implementation"] },
+      { id: "notice_determination_records", label: "Documents notices", requiredForCovered: true, signals: ["notification determinations"] },
+      { id: "retention_accessibility", label: "Defines retention", requiredForCovered: true, signals: ["easily accessible"] },
+    ],
+    requiredElementsForCovered: ["compliance_record_scope", "notice_determination_records", "retention_accessibility"],
+  };
+  const complianceQuote = [
+    "Compliance maintains true, accurate, and current records demonstrating implementation of the safeguards and disposal program.",
+    "The records include incident and notification determinations.",
+    "These records are retained for five years in an easily accessible place.",
+  ].join(" ");
+
+  const finding = await productionPathFinding(recordsRequirement, [
+    chunk({ content_preview: complianceQuote, section_path: "Compliance records" }),
+  ], [
+    classifierClassification({
+      covered_elements: recordsRequirement.requiredElementsForCovered,
+      supporting_quote: complianceQuote,
+    }),
+  ]);
+
+  assert.equal(finding.status, "covered");
+  assert.match(finding.evidence[0].quote, /^Compliance maintains true, accurate, and current records demonstrating implementation/i);
+  assert.match(finding.evidence[0].reason, /written compliance records|records documenting/i);
+
+  const genericRetention = "Compliance retains departmental records for five years under the ordinary retention schedule.";
+  const genericFinding = await productionPathFinding(recordsRequirement, [
+    chunk({ content_preview: genericRetention, section_path: "Departmental retention" }),
+  ], [
+    classifierClassification({
+      relationship: "partially_supports",
+      requirement_supported: false,
+      covered_elements: ["compliance_record_scope"],
+      supporting_quote: genericRetention,
+    }),
+  ]);
+
+  assert.equal(genericFinding.status, "partial");
+  assert.deepEqual(
+    canonicalElementIdsForFinalPositiveQuote(recordsRequirement, genericFinding.evidence[0].quote),
+    ["retention_accessibility"],
+  );
+});
+
+test("production path recognizes incident material preservation grammar without accepting generic retention", async () => {
+  const preservationRequirement = {
+    ...requirement,
+    id: "incident_evidence_log_preservation",
+    title: "Incident evidence and log preservation",
+    coverageElements: [
+      { id: "incident_materials", label: "Preserves incident materials", requiredForCovered: true, signals: ["preserve logs"] },
+    ],
+    requiredElementsForCovered: ["incident_materials"],
+  };
+  const preservationQuote = "Relevant logs and volatile information are preserved promptly.";
+  const finding = await productionPathFinding(preservationRequirement, [
+    chunk({ content_preview: preservationQuote, section_path: "Incident evidence" }),
+  ], [
+    classifierClassification({
+      covered_elements: ["incident_materials"],
+      supporting_quote: preservationQuote,
+    }),
+  ]);
+
+  assert.equal(finding.status, "covered");
+  assert.equal(finding.evidence[0].quote, preservationQuote);
+
+  const genericRetention = "The organization retains all policy documents under its ordinary records schedule.";
+  const genericFinding = await productionPathFinding(preservationRequirement, [
+    chunk({ content_preview: genericRetention, section_path: "Records retention" }),
+  ], [
+    classifierClassification({
+      relationship: "partially_supports",
+      requirement_supported: false,
+      covered_elements: ["incident_materials"],
+      supporting_quote: genericRetention,
+    }),
+  ]);
+
+  assert.equal(genericFinding.status, "missing");
+  assert.equal(genericFinding.evidence.length, 0);
+});
 
 test("production path rejects customer-notification and disposal leakage from service-provider evidence", async () => {
   const vendorRequirement = serviceProviderRequirementFixture();
   const customerQuote = "The firm communicates promptly with affected customers after customer notification is approved.";
-  const vendorQuote = "Service providers give the firm incident status updates and remediation plans while investigation and recovery work continues.";
+  const vendorQuote = "The firm performs due diligence and ongoing monitoring of service providers handling customer information and requires them to protect that information against unauthorized access.";
   const duplicateVendorQuote = "Vendors coordinate incident remediation with the firm.";
   const disposalQuote = "This policy does not define disposal methods for vendor-held customer records or backups.";
 
@@ -2426,14 +2591,14 @@ test("production path rejects customer-notification and disposal leakage from se
     classifierClassification({
       relationship: "partially_supports",
       requirement_supported: false,
-      covered_elements: ["service_provider_scope", "cooperation_remediation"],
+      covered_elements: ["service_provider_scope", "provider_safeguards"],
       missing_elements: ["notice_to_firm"],
       supporting_quote: vendorQuote,
     }),
     classifierClassification({
       relationship: "partially_supports",
       requirement_supported: false,
-      covered_elements: ["service_provider_scope", "cooperation_remediation"],
+      covered_elements: ["service_provider_scope", "provider_safeguards"],
       missing_elements: ["notice_to_firm"],
       supporting_quote: duplicateVendorQuote,
     }),
@@ -2442,7 +2607,7 @@ test("production path rejects customer-notification and disposal leakage from se
       requirement_supported: false,
       control_absent_or_out_of_scope: true,
       covered_elements: [],
-      missing_elements: ["service_provider_scope", "notice_to_firm", "cooperation_remediation"],
+      missing_elements: ["service_provider_scope", "provider_safeguards", "notice_to_firm"],
       supporting_quote: disposalQuote,
     }),
   ]);
@@ -2455,7 +2620,7 @@ test("production path rejects customer-notification and disposal leakage from se
 
 test("production path retains provider-notice limitations only when scoped to provider notice", async () => {
   const vendorRequirement = serviceProviderRequirementFixture();
-  const vendorQuote = "Vendors provide incident status updates, investigation support, and remediation plans to the firm.";
+  const vendorQuote = "The firm performs due diligence and ongoing monitoring of vendors handling customer information and requires them to protect customer information against unauthorized access.";
   const deadlineQuote = "The firm does not require service providers to notify it within a defined incident-reporting deadline.";
   const disposalQuote = "This procedure does not establish destruction methods for supplier-held customer records.";
 
@@ -2479,7 +2644,7 @@ test("production path retains provider-notice limitations only when scoped to pr
     classifierClassification({
       relationship: "partially_supports",
       requirement_supported: false,
-      covered_elements: ["service_provider_scope", "cooperation_remediation"],
+      covered_elements: ["service_provider_scope", "provider_safeguards"],
       missing_elements: ["notice_to_firm"],
       supporting_quote: vendorQuote,
     }),
@@ -2510,7 +2675,7 @@ test("production path retains provider-notice limitations only when scoped to pr
 test("production path keeps vendor questionnaire evidence for service-provider requirements", async () => {
   const vendorRequirement = serviceProviderRequirementFixture();
   const vendorQuote =
-    "The vendor incident questionnaire requires service providers to report affected systems, data categories, date of discovery, containment status, forensic support, remediation plan, and recovery evidence.";
+    "The vendor incident questionnaire requires due diligence and monitoring of service providers handling customer information, safeguards that protect against unauthorized access to customer information, and notice to the firm no later than 72 hours after a breach.";
 
   const finding = await productionPathFinding(vendorRequirement, [
     chunk({
@@ -2519,7 +2684,7 @@ test("production path keeps vendor questionnaire evidence for service-provider r
     }),
   ], [
     classifierClassification({
-      covered_elements: ["service_provider_scope", "notice_to_firm", "cooperation_remediation"],
+      covered_elements: ["service_provider_scope", "provider_safeguards", "notice_to_firm"],
       supporting_quote: vendorQuote,
     }),
   ]);

@@ -58,6 +58,17 @@ test("written compliance records are represented in MVP scope", () => {
   assert.match(requirement.sourceBasis, /recordkeeping|248\.30\(c\)/i);
 });
 
+test("service-provider coverage models the direct oversight, safeguards, and notice obligations", () => {
+  const requirement = getRegSpRequirement("vendor_incident_handling");
+  assert.ok(requirement);
+  assert.deepEqual(requirement.requiredElementsForCovered, [
+    "service_provider_scope",
+    "provider_safeguards",
+    "notice_to_firm",
+  ]);
+  assert.deepEqual(requirement.optionalElements, ["cooperation_remediation"]);
+});
+
 test("supporting guidance controls are not mislabeled as direct SEC obligations", () => {
   const evidencePreservation = getRegSpRequirement("evidence_log_preservation");
   const regulatorNotice = getRegSpRequirement("regulator_law_enforcement_notification");

@@ -520,6 +520,9 @@ const RISK_COLUMN_PATTERN = /^(?:(?:very\s+)?(?:low|moderate|medium|high|critica
 const FRAGMENTED_PARENTHETICAL_PATTERN = /^(?=.{1,70}\)$)(?:[^.!?]*\b(?:\d+(?:\.\d+)?%?|\d+\s*[-–]\s*\d+)\b[^.!?]*)\)$/;
 const TABLE_DELIMITER_PATTERN = /(?:\s{2,}|\t|\|)/;
 const NOTIFICATION_PROCEDURE_PATTERN = /\b(?:incident|breach|security event|unauthorized access|customer|regulator|law enforcement)\b[\s\S]{0,180}\b(?:notify|report|contact|escalate)\b|\b(?:notify|report|contact|escalate)\b[\s\S]{0,180}\b(?:incident|breach|security event|unauthorized access|customer|regulator|law enforcement)\b/i;
+const NOTICE_CONTENT_INCIDENT_PATTERN = /\b(?:description of (?:the )?(?:incident|event)|type of sensitive customer information|information involved|affected (?:information|customers?))\b/i;
+const NOTICE_CONTENT_PROTECTIVE_PATTERN = /\b(?:protective steps?|steps (?:that )?(?:customers?|individuals?) can take|fraud alert|credit (?:report|monitoring)|identity theft|account[- ]protection)\b/i;
+const NOTICE_CONTENT_DELIVERY_PATTERN = /\b(?:clear and conspicuous|written notice|understandable language|actual written notice|transmitted by a method)\b/i;
 const BACK_MATTER_HEADING_PATTERN = /^(?:acknowledg(?:e)?ments?|about the authors?|index|additional resources|revision history|endnotes?|bibliography|works cited|sources?)$/i;
 const REFERENCE_HEADING_PATTERN = /^(?:references?|bibliography|works cited|sources?|endnotes?|citations?)$/i;
 const ACRONYM_HEADING_PATTERN = /^(?:acronyms?|abbreviations?|glossary|terms and definitions)$/i;
@@ -1327,6 +1330,12 @@ function hasNotificationProcedure(value: string) {
   return GUIDANCE_VERB_PATTERN.test(value) && NOTIFICATION_PROCEDURE_PATTERN.test(value);
 }
 
+function hasSubstantiveNoticeContentObligations(value: string) {
+  return GUIDANCE_VERB_PATTERN.test(value)
+    && NOTICE_CONTENT_INCIDENT_PATTERN.test(value)
+    && (NOTICE_CONTENT_PROTECTIVE_PATTERN.test(value) || NOTICE_CONTENT_DELIVERY_PATTERN.test(value));
+}
+
 function classifyChunkDraft(
   draft: ChunkDraft,
   pageBounds: { first: number; last: number },
@@ -1357,7 +1366,11 @@ function classifyChunkDraft(
     content,
     /(?:\b(?:contact us|telephone|phone|fax|email|mailing address|street address|suite|floor|building|avenue|boulevard|road|highway|postal code|zip code)\b|\bP\.?O\.?\s+Box\b|\b\d{3}[-.)\s]\d{3}[-.\s]\d{4}\b|\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b)/gi,
   );
-  if (contactSignals >= 2 && !hasNotificationProcedure(content)) {
+  if (
+    contactSignals >= 2
+    && !hasNotificationProcedure(content)
+    && !hasSubstantiveNoticeContentObligations(content)
+  ) {
     return decision("contact_block", "contact_or_address_information_without_procedure");
   }
 

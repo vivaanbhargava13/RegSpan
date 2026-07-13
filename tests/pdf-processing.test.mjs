@@ -526,3 +526,40 @@ test("chunk construction is deterministic across retries", () => {
     first.chunks.map((_, index) => index),
   );
 });
+
+test("notice-content obligations survive contact-block filtering when contact details are included", () => {
+  const result = buildDeterministicChunks({
+    pages: [{
+      pageNumber: 1,
+      text: [
+        "Customer notice content",
+        "Each notice must be clear and conspicuous, written in understandable language, and include a description of the incident and the type of sensitive customer information involved.",
+        "The notice must identify protective steps customers can take, including fraud alerts and credit monitoring, and provide contact information by phone at 555-0100, email at help@example.test, and mail at 100 Main Street.",
+      ].join("\n"),
+    }],
+    documentId: "10000000-0000-4000-8000-000000000011",
+    workspaceId: "20000000-0000-4000-8000-000000000012",
+    jobId: "30000000-0000-4000-8000-000000000013",
+    filename: "notice-policy.pdf",
+  });
+
+  assert.ok(result.chunks.length > 0);
+  assert.ok(result.chunks.some((item) => /clear and conspicuous/i.test(item.content)));
+  assert.ok(result.chunks.every((item) => item.metadata.evidence_class !== "contact_block"));
+});
+
+test("pure contact directories remain excluded from substantive chunks", () => {
+  assert.throws(
+    () => buildDeterministicChunks({
+      pages: [{
+        pageNumber: 1,
+        text: "Contact us by phone at 555-0100, email at help@example.test, or mail at 100 Main Street, Suite 200.",
+      }],
+      documentId: "10000000-0000-4000-8000-000000000021",
+      workspaceId: "20000000-0000-4000-8000-000000000022",
+      jobId: "30000000-0000-4000-8000-000000000023",
+      filename: "contacts.pdf",
+    }),
+    (error) => error instanceof PdfProcessingError && error.code === "insufficient_pdf_text",
+  );
+});

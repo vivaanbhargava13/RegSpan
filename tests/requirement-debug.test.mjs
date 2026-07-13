@@ -957,7 +957,7 @@ test("internal escalation does not cover vendor notice but vendor notice and coo
     "The internal incident team escalates supplier-related issues to management.",
   ));
   const vendor = gradeRetrievedChunk(requirement, organizationChunk(
-    "Service providers and suppliers that handle customer information must notify the firm no later than 72 hours after a breach, cooperate with investigation, coordinate remediation, and support recovery.",
+    "The firm performs due diligence and ongoing monitoring of service providers and suppliers that handle customer information, requires them to protect against unauthorized access to or use of that information, and requires them to notify the firm no later than 72 hours after a breach.",
   ));
 
   assert.notEqual(internal.grade, "direct");
@@ -1155,7 +1155,7 @@ test("strong vendor incident handling policy language remains direct evidence", 
   );
 
   const graded = gradeRetrievedChunk(requirement, organizationChunk(
-    "Vendor contracts must require prompt reporting of vendor incidents. Service providers must notify the organization of breaches and coordinate investigation and remediation.",
+    "Vendor contracts must require due diligence and monitoring of service providers, safeguards that protect customer information against unauthorized access to or use, and notice to the organization no later than 72 hours after a breach. Service providers coordinate investigation and remediation.",
   ));
 
   assert.equal(graded.grade, "direct");
@@ -1286,10 +1286,10 @@ test("supplier contract reporting and cooperation obligations grade direct for v
   );
 
   const meridian = gradeRetrievedChunk(requirement, organizationChunk(
-    "Covered supplier contracts must require prompt notice and reporting of supplier incidents, and the supplier shall notify security operations and cooperate with containment, investigation, evidence collection, remediation, and recovery.",
+    "Covered supplier contracts must require due diligence and monitoring of service providers, safeguards that protect customer information against unauthorized access to or use, and notice to the firm no later than 72 hours after a supplier breach. The supplier shall notify security operations and cooperate with containment, investigation, evidence collection, remediation, and recovery.",
   ));
   const atlasPay = gradeRetrievedChunk(requirement, organizationChunk(
-    "Supplier must notify AtlasPay promptly of any security incident, provide incident reports, and cooperate with investigation, containment, evidence preservation, remediation, and recovery activities.",
+    "AtlasPay performs due diligence and monitoring of suppliers handling customer information and requires suppliers to protect customer information against unauthorized access to or use and notify AtlasPay no later than 72 hours after a security incident. Suppliers cooperate with investigation, containment, evidence preservation, remediation, and recovery activities.",
   ));
 
   assert.equal(meridian.grade, "direct");
