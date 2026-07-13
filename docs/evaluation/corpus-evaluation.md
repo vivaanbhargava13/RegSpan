@@ -24,6 +24,20 @@ Run one isolated, run-specific workspace per case:
 npm run eval:corpus -- --mode isolated --allow-external-ai
 ```
 
+Run one or more targeted cases without creating workspaces for the rest of the
+corpus:
+
+```sh
+npm run eval:corpus -- --mode isolated --allow-external-ai \
+  --case partial-evidence-preservation \
+  --case adversarial-scaffolding
+```
+
+`--case` may be repeated. Requested IDs are deduplicated, validated against the
+loaded manifest before any workspace or upload is created, and executed in
+manifest order. An unknown ID fails with the full valid-ID list. Omitting
+`--case` preserves the full enabled-corpus run for the chosen mode.
+
 Run one combined workspace for all combined-enabled cases:
 
 ```sh
@@ -111,9 +125,9 @@ text, excerpts, request headers, or secrets.
 
 Artifacts are written under ignored `eval-results/corpus-*/`:
 
-- `summary.md`: aggregate and per-case status and element summary
-- `results.json`: run status, safe IDs, timings, and assertion results
-- `results.csv`: compact rows including expected, matched, and missing element IDs
+- `summary.md`: aggregate and per-case status and element summary, including selected cases
+- `results.json`: run status, selected-case metadata, safe IDs, timings, and assertion results
+- `results.csv`: compact rows including selected-case metadata and expected, matched, and missing element IDs
 
 `results.json` starts with status `incomplete` and is replaced atomically at safe
 lifecycle boundaries. A hard interruption may leave the last safe partial

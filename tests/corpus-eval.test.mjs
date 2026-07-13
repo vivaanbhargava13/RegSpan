@@ -24,6 +24,7 @@ import {
   recordEvaluationFailure,
   processingResultForReport,
   scoreCaseFindings,
+  selectCorpusCases,
   evaluationWorkspaceName,
   snapshotSetViolations,
   validateCorpusManifest,
@@ -134,6 +135,38 @@ test("corpus manifest rejects unsafe filenames and malformed status definitions"
       },
     }),
     /unknown canonical element id/,
+  );
+});
+
+test("corpus case selection is validated, deduplicated, and ordered by the manifest", () => {
+  const cases = [
+    manifestCase("case-a"),
+    manifestCase("case-b"),
+    manifestCase("case-c"),
+  ];
+  const one = selectCorpusCases({
+    cases,
+    requestedCaseIds: ["case-b"],
+    mode: "isolated",
+  });
+  assert.deepEqual(one.selectedCaseIds, ["case-b"]);
+  assert.equal(one.filtered, true);
+
+  const multiple = selectCorpusCases({
+    cases,
+    requestedCaseIds: ["case-c", "case-a", "case-c"],
+    mode: "isolated",
+  });
+  assert.deepEqual(multiple.selectedCaseIds, ["case-a", "case-c"]);
+  assert.equal(multiple.selectedCases.length, 2);
+
+  const full = selectCorpusCases({ cases, requestedCaseIds: [], mode: "isolated" });
+  assert.deepEqual(full.selectedCaseIds, ["case-a", "case-b", "case-c"]);
+  assert.equal(full.filtered, false);
+
+  assert.throws(
+    () => selectCorpusCases({ cases, requestedCaseIds: ["unknown-case"], mode: "isolated" }),
+    /Unknown corpus case ID: unknown-case\. Valid case IDs: case-a, case-b, case-c\./,
   );
 });
 
@@ -374,12 +407,16 @@ test("partial reports remain incomplete and are written atomically", async () =>
       actorUserId: ACTOR_ID,
       workspacePrefix: "regspan-eval-",
       selectedCases: [{ id: "case-one", tier: "partial", filename: "case-one.pdf" }],
+      filtered: true,
       startedAt: "2026-07-12T00:00:00.000Z",
     });
     recordEvaluationFailure(state, "case-one", "processing_timeout");
     await writeJsonAtomically(path, state);
     const persisted = JSON.parse(await readFile(path, "utf8"));
     assert.equal(persisted.status, "incomplete");
+    assert.deepEqual(persisted.selectedCaseIds, ["case-one"]);
+    assert.equal(persisted.selectedCaseCount, 1);
+    assert.equal(persisted.filtered, true);
     assert.deepEqual(persisted.failures, [{ caseId: "case-one", message: "processing_timeout" }]);
     assert.deepEqual(await readdir(directory), ["results.json"]);
   } finally {
@@ -748,10 +785,18 @@ test("corpus runner is one-shot and contains no resume, adoption, or cleanup pat
   assert.match(runner, /recoverWorkspaceAnalysis/);
   assert.match(runner, /rateLimitWaitCount/);
   assert.match(runner, /rateLimitWaitMs/);
+  assert.match(runner, /--case <case-id>/);
+  assert.match(runner, /Selected case count:/);
+  assert.match(runner, /selected_case_ids/);
   assert.ok(
     runner.indexOf("assertExternalAiEvaluationSafety(args)")
       < runner.indexOf("const state = createState"),
     "external AI checks must run before evaluation workspaces can be created",
+  );
+  assert.ok(
+    runner.indexOf("selectCorpusCases({")
+      < runner.indexOf("const state = createState"),
+    "case selection must be validated before evaluation workspaces can be created",
   );
   assert.doesNotMatch(runner, /--resume|--cleanup|cleanupEvaluation|recoverEvaluation|process\.once\("SIG/);
   assert.match(evaluator, /evaluationAnalysisRateLimitForContext/);
@@ -762,6 +807,7 @@ test("corpus runner is one-shot and contains no resume, adoption, or cleanup pat
   assert.match(evaluator, /assertCorpusDocumentClassification/);
   assert.match(evaluator, /\.in\("status", \["queued", "running", "completed"\]\)/);
   assert.match(evaluatorCore, /external_ai_processing_enabled: true/);
+  assert.match(evaluatorCore, /Unknown corpus case ID/);
   assert.doesNotMatch(evaluator, /\.update\(\{\s*external_ai_processing_enabled/);
   assert.doesNotMatch(evaluator, /deleteDocumentForWorkspace|cleanupEvaluation|recoverEvaluation/);
   assert.doesNotMatch(findingsGeneration, /onAnalysisRunStarted/);
@@ -774,4 +820,5 @@ test("corpus runner is one-shot and contains no resume, adoption, or cleanup pat
   assert.match(gitignore, /^eval-results\/$/m);
   assert.match(gitignore, /^eval\/corpora\/\*\*\/generated\/\*\.pdf$/m);
   assert.match(docs, /npm run eval:corpus/);
+  assert.match(docs, /--case partial-evidence-preservation/);
 });

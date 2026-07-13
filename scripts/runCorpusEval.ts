@@ -33,6 +33,7 @@ import {
   recordEvaluationFailure,
   processingResultForReport,
   retryRateLimitedOperation,
+  selectCorpusCases,
   snapshotSetViolations,
   validateCorpusManifest,
 } from "@/scripts/corpusEvalCore.mjs";
@@ -52,6 +53,7 @@ type RunnerArgs = {
   actorUserId: string | null;
   workspacePrefix: string | null;
   allowExternalAi: boolean;
+  caseIds: string[];
   waitOnRateLimit: boolean;
   maxRateLimitWaitMs: number;
   help: boolean;
@@ -118,6 +120,9 @@ type RunState = {
   completedAt?: string;
   actorUserId: string;
   workspacePrefix: string;
+  selectedCaseIds: string[];
+  selectedCaseCount: number;
+  filtered: boolean;
   workspaces: Record<string, { key: string; name: string; id?: string }>;
   cases: Record<string, CaseState>;
   failures: Array<{ caseId: string | null; message: string; diagnosticCode?: string }>;
@@ -136,6 +141,7 @@ Options:
   --min-score <0..1>           Minimum expected-status score. Defaults to ${DEFAULT_MIN_SCORE}.
   --actor-user-id <uuid>       Evaluation workspace owner; overrides REGSPAN_EVAL_ACTOR_USER_ID.
   --workspace-prefix <prefix>  Explicit prefix beginning regspan-eval-; overrides REGSPAN_EVAL_WORKSPACE_PREFIX.
+  --case <case-id>             Run one manifest case; repeat to select multiple cases.
   --allow-external-ai          Allow external AI for newly created evaluation workspaces.
   --wait-on-rate-limit         Wait and retry Analysis rate limits (default).
   --no-wait-on-rate-limit      Fail immediately when Analysis is rate limited.
@@ -156,6 +162,7 @@ function parseArgs(argv: string[]): RunnerArgs {
     actorUserId: null,
     workspacePrefix: null,
     allowExternalAi: false,
+    caseIds: [],
     waitOnRateLimit: true,
     maxRateLimitWaitMs: DEFAULT_MAX_RATE_LIMIT_WAIT_MS,
     help: false,
@@ -170,6 +177,11 @@ function parseArgs(argv: string[]): RunnerArgs {
     else if (arg === "--min-score") { args.minScore = Number(next); index += 1; }
     else if (arg === "--actor-user-id") { args.actorUserId = next ?? null; index += 1; }
     else if (arg === "--workspace-prefix") { args.workspacePrefix = next ?? null; index += 1; }
+    else if (arg === "--case") {
+      if (!next || next.startsWith("--")) throw new Error("--case requires a case ID.");
+      args.caseIds.push(next);
+      index += 1;
+    }
     else if (arg === "--allow-external-ai") args.allowExternalAi = true;
     else if (arg === "--wait-on-rate-limit") args.waitOnRateLimit = true;
     else if (arg === "--no-wait-on-rate-limit") args.waitOnRateLimit = false;
@@ -287,6 +299,8 @@ function markdown(state: RunState) {
     return `| ${entry.caseId} | ${entry.tier} | ${entry.processingStatus ?? "not started"} | ${entry.processingStep ?? ""} | ${entry.processingError ?? ""} | ${entry.analysisStatus ?? "not started"} | ${entry.rateLimitWaitCount ?? 0} | ${entry.rateLimitWaitMs ?? 0} | ${entry.score ? `${entry.score.matchedStatuses}/${entry.score.expectedStatuses}` : "-"} | ${expectedElements} | ${matchedElements} | ${missingElements} | ${elementPass} | ${entry.diagnosticCode ?? ""} | ${entry.error ?? ""} |`;
   });
   return `# RegSpan Corpus Evaluation\n\nStatus: ${state.status}\n\nRun ID: ${state.runId}\n\n`
+    + `Selected cases: ${state.selectedCaseIds.join(", ")}\n\n`
+    + `Selected case count: ${state.selectedCaseCount}; filtered run: ${state.filtered ? "yes" : "no"}\n\n`
     + `Expected status score: ${(summary.score * 100).toFixed(1)}% (${summary.matched}/${summary.expected})\n\n`
     + `Evidence concepts: ${summary.conceptsMatched}/${summary.conceptsExpected}; evidence elements: ${summary.elementsMatched}/${summary.elementsExpected}; unexpected covered/partial: ${summary.unexpectedCovered}\n\n`
     + `| Case | Tier | Processing | Step | Processing error | Analysis | Rate-limit waits | Rate-limit wait ms | Status score | Expected elements | Matched elements | Missing elements | Element result | Diagnostic code | Error |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n${rows.join("\n")}\n`;
@@ -294,11 +308,12 @@ function markdown(state: RunState) {
 
 function csv(state: RunState) {
   const quote = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
-  const rows = ["case_id,tier,workspace_id,document_id,processing_job_id,analysis_run_id,processing_status,processing_step,processing_error,analysis_status,rate_limit_wait_count,rate_limit_wait_ms,status_matches,status_expected,expected_evidence_elements,matched_evidence_elements,missing_evidence_elements,evidence_elements_passed,diagnostic_code,error"];
+  const rows = ["case_id,tier,selected_case_ids,selected_case_count,filtered_run,workspace_id,document_id,processing_job_id,analysis_run_id,processing_status,processing_step,processing_error,analysis_status,rate_limit_wait_count,rate_limit_wait_ms,status_matches,status_expected,expected_evidence_elements,matched_evidence_elements,missing_evidence_elements,evidence_elements_passed,diagnostic_code,error"];
   for (const entry of Object.values(state.cases)) {
     const elementResults = entry.score?.elementResults ?? [];
     rows.push([
-      entry.caseId, entry.tier, state.workspaces[entry.workspaceKey]?.id, entry.documentId,
+      entry.caseId, entry.tier, state.selectedCaseIds.join("|"), state.selectedCaseCount, state.filtered,
+      state.workspaces[entry.workspaceKey]?.id, entry.documentId,
       entry.processingJobId, entry.analysisRunId, entry.processingStatus, entry.processingStep, entry.processingError, entry.analysisStatus, entry.rateLimitWaitCount, entry.rateLimitWaitMs,
       entry.score?.matchedStatuses, entry.score?.expectedStatuses,
       elementResults.flatMap((result) => result.elements).join("|"),
@@ -491,12 +506,14 @@ async function analyzeAndScore({
 function createState({
   manifest,
   selectedCases,
+  filtered,
   mode,
   actorUserId,
   workspacePrefix,
 }: {
   manifest: { id: string };
   selectedCases: CorpusCase[];
+  filtered: boolean;
   mode: "isolated" | "combined";
   actorUserId: string;
   workspacePrefix: string;
@@ -509,6 +526,7 @@ function createState({
     actorUserId,
     workspacePrefix,
     selectedCases,
+    filtered,
     startedAt: new Date().toISOString(),
   }) as RunState;
 }
@@ -526,10 +544,22 @@ async function main() {
     requirement,
   ]));
   const manifest = await loadManifest(corpusDir, requirements);
-  const selectedCases = manifest.cases.filter((definition) => definition.include[args.mode]);
+  const selection = selectCorpusCases({
+    cases: manifest.cases,
+    requestedCaseIds: args.caseIds,
+    mode: args.mode,
+  }) as unknown as { selectedCases: CorpusCase[]; selectedCaseIds: string[]; filtered: boolean };
+  const selectedCases = selection.selectedCases;
   if (selectedCases.length === 0) throw new Error(`No corpus cases are enabled for ${args.mode} mode.`);
 
-  const state = createState({ manifest, selectedCases, mode: args.mode, actorUserId, workspacePrefix });
+  const state = createState({
+    manifest,
+    selectedCases,
+    filtered: selection.filtered,
+    mode: args.mode,
+    actorUserId,
+    workspacePrefix,
+  });
   const outputDir = resolve("eval-results", `corpus-${manifest.id}-${args.mode}-${state.runId}`);
   await writeReports(outputDir, state);
 

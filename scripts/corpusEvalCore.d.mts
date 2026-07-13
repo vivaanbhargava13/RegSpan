@@ -9,6 +9,15 @@ export function validateCorpusManifest(manifest: unknown, options?: {
   version: 1;
   cases: Array<Record<string, unknown>>;
 };
+export function selectCorpusCases(input: {
+  cases: Array<{ id: string; include?: { isolated?: boolean; combined?: boolean } }>;
+  requestedCaseIds?: string[];
+  mode: "isolated" | "combined";
+}): {
+  selectedCases: Array<{ id: string; include?: { isolated?: boolean; combined?: boolean } }>;
+  selectedCaseIds: string[];
+  filtered: boolean;
+};
 export function corpusChunkClassificationViolations(input: {
   chunks: Array<{ metadata?: Record<string, unknown> | null }>;
   sourceType: "client_policy" | "client_procedure" | "client_standard";

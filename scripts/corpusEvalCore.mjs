@@ -163,6 +163,47 @@ export function validateCorpusManifest(manifest, { canonicalRequirementElements 
   return { id: manifest.id, version: manifest.version, cases };
 }
 
+export function selectCorpusCases({ cases, requestedCaseIds = [], mode }) {
+  if (!Array.isArray(cases)) {
+    throw new CorpusManifestError("Corpus cases must be loaded before selection.");
+  }
+  if (mode !== "isolated" && mode !== "combined") {
+    throw new CorpusManifestError("Corpus mode must be isolated or combined.");
+  }
+  if (!Array.isArray(requestedCaseIds)
+    || requestedCaseIds.some((caseId) => typeof caseId !== "string" || !caseId.trim())) {
+    throw new CorpusManifestError("Requested corpus case IDs must be non-empty strings.");
+  }
+
+  const requested = [...new Set(requestedCaseIds.map((caseId) => caseId.trim()))];
+  const validIds = cases.map((entry) => entry.id);
+  const unknown = requested.filter((caseId) => !validIds.includes(caseId));
+  if (unknown.length > 0) {
+    throw new CorpusManifestError(
+      `Unknown corpus case ID${unknown.length === 1 ? "" : "s"}: ${unknown.join(", ")}. Valid case IDs: ${validIds.join(", ")}.`,
+    );
+  }
+
+  const requestedSet = new Set(requested);
+  const requestedCases = cases.filter((entry) => requestedSet.has(entry.id));
+  const unavailable = requestedCases.filter((entry) => entry.include?.[mode] === false).map((entry) => entry.id);
+  if (unavailable.length > 0) {
+    throw new CorpusManifestError(
+      `Selected corpus case ID${unavailable.length === 1 ? "" : "s"} not enabled for ${mode}: ${unavailable.join(", ")}.`,
+    );
+  }
+
+  const selectedCases = requested.length > 0
+    ? requestedCases
+    : cases.filter((entry) => entry.include?.[mode] !== false);
+
+  return {
+    selectedCases,
+    selectedCaseIds: selectedCases.map((entry) => entry.id),
+    filtered: requested.length > 0,
+  };
+}
+
 export function corpusChunkClassificationViolations({ chunks, sourceType, requireOrganizationEvidence }) {
   const violations = [];
   if (!Array.isArray(chunks) || chunks.length === 0) violations.push("missing_document_chunks");
@@ -280,6 +321,7 @@ export function createOneShotEvaluationState({
   actorUserId,
   workspacePrefix,
   selectedCases,
+  filtered = false,
   startedAt,
 }) {
   const workspaceKeys = mode === "combined" ? ["combined"] : selectedCases.map((entry) => entry.id);
@@ -292,6 +334,9 @@ export function createOneShotEvaluationState({
     startedAt,
     actorUserId,
     workspacePrefix,
+    selectedCaseIds: selectedCases.map((entry) => entry.id),
+    selectedCaseCount: selectedCases.length,
+    filtered,
     workspaces: Object.fromEntries(workspaceKeys.map((key) => [key, {
       key,
       name: evaluationWorkspaceName({ workspacePrefix, corpusId, mode, runId, workspaceKey: key }),
