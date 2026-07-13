@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile as execFileCallback } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -22,6 +23,7 @@ import {
   pollForTerminal,
   retryRateLimitedOperation,
   recordEvaluationFailure,
+  normalizeCorpusManifest,
   processingResultForReport,
   scoreCaseFindings,
   selectCorpusCases,
@@ -83,6 +85,67 @@ test("corpus manifest validates the committed 12-case tiered structure", async (
     evidenceRows: [],
   });
   assert.equal(score.statusResults[0].matched, true);
+});
+
+test("V2 realistic-company manifest normalizes to the canonical evaluator schema", async () => {
+  const raw = JSON.parse(await readFile("eval/corpora/regspan-v2-realistic-corpus/manifest.json", "utf8"));
+  const normalized = normalizeCorpusManifest(raw);
+  const validated = validateCorpusManifest(raw);
+
+  assert.equal(validated.id, "regspan-v2-realistic-company-policies");
+  assert.equal(validated.version, 2);
+  assert.equal(validated.cases.length, 12);
+  const harborview = validated.cases.find((entry) => entry.id === "harborview-asset-advisors");
+  assert.equal(harborview.sourceType, "client_policy");
+  assert.equal(harborview.documentPath, "documents/harborview_customer_information_safeguards_program.pdf");
+  assert.deepEqual(harborview.expectedStatuses.safeguards_customer_information, ["covered"]);
+  assert.equal(normalized.id, validated.id);
+  assert.equal(harborview.include.isolated, true);
+  assert.equal(harborview.include.combined, false);
+});
+
+test("V2 case selection remains isolated, ordered, and corpus-scoped", async () => {
+  const raw = JSON.parse(await readFile("eval/corpora/regspan-v2-realistic-corpus/manifest.json", "utf8"));
+  const { cases } = validateCorpusManifest(raw);
+  const selected = selectCorpusCases({
+    cases,
+    requestedCaseIds: ["meridian-transfer-trust", "harborview-asset-advisors", "meridian-transfer-trust"],
+    mode: "isolated",
+  });
+  assert.deepEqual(selected.selectedCaseIds, ["harborview-asset-advisors", "meridian-transfer-trust"]);
+  assert.equal(selected.filtered, true);
+  assert.throws(
+    () => selectCorpusCases({ cases, requestedCaseIds: ["strong-safeguards"], mode: "isolated" }),
+    /Unknown corpus case ID: strong-safeguards/,
+  );
+  assert.throws(
+    () => selectCorpusCases({ cases, requestedCaseIds: ["harborview-asset-advisors"], mode: "combined" }),
+    /not enabled for combined/,
+  );
+});
+
+test("V2 manifest rejects invalid requirement IDs before evaluation workspaces can be created", async () => {
+  const raw = JSON.parse(await readFile("eval/corpora/regspan-v2-realistic-corpus/manifest.json", "utf8"));
+  raw.cases[0].expectedStatuses[0].requirementId = "not_a_current_requirement";
+  assert.throws(() => validateCorpusManifest(raw), /not a canonical requirement id/);
+});
+
+test("V2 inventory hashes and byte counts match its selected PDF fixtures", async () => {
+  const root = "eval/corpora/regspan-v2-realistic-corpus";
+  const manifest = validateCorpusManifest(JSON.parse(await readFile(join(root, "manifest.json"), "utf8")));
+  const inventory = await readFile(join(root, "inventory.csv"), "utf8");
+  const expected = new Map(inventory.trim().split(/\r?\n/).slice(1).map((line) => {
+    const [filename] = line.split(",", 1);
+    const match = line.match(/,(\d+),([a-f0-9]{64})$/i);
+    return [filename, { bytes: Number(match?.[1]), sha256: match?.[2].toLowerCase() }];
+  }));
+  for (const definition of manifest.cases) {
+    const bytes = await readFile(join(root, definition.documentPath));
+    const entry = expected.get(definition.filename);
+    assert.ok(entry, `missing inventory entry for ${definition.filename}`);
+    assert.equal(bytes.byteLength, entry.bytes);
+    assert.equal(createHash("sha256").update(bytes).digest("hex"), entry.sha256);
+  }
 });
 
 test("corpus manifest rejects unsafe filenames and malformed status definitions", () => {
@@ -403,6 +466,8 @@ test("partial reports remain incomplete and are written atomically", async () =>
     const state = createOneShotEvaluationState({
       runId: RUN_ID,
       corpusId: "regspan-v1",
+      corpusVersion: 1,
+      corpusPath: "eval/corpora/regspan-v1",
       mode: "isolated",
       actorUserId: ACTOR_ID,
       workspacePrefix: "regspan-eval-",
@@ -414,6 +479,8 @@ test("partial reports remain incomplete and are written atomically", async () =>
     await writeJsonAtomically(path, state);
     const persisted = JSON.parse(await readFile(path, "utf8"));
     assert.equal(persisted.status, "incomplete");
+    assert.equal(persisted.corpusVersion, 1);
+    assert.equal(persisted.corpusPath, "eval/corpora/regspan-v1");
     assert.deepEqual(persisted.selectedCaseIds, ["case-one"]);
     assert.equal(persisted.selectedCaseCount, 1);
     assert.equal(persisted.filtered, true);
@@ -786,6 +853,13 @@ test("corpus runner is one-shot and contains no resume, adoption, or cleanup pat
   assert.match(runner, /rateLimitWaitCount/);
   assert.match(runner, /rateLimitWaitMs/);
   assert.match(runner, /--case <case-id>/);
+  assert.match(runner, /const DEFAULT_CORPUS = "regspan-v1"/);
+  assert.match(runner, /--corpus <corpus-id-or-directory>/);
+  assert.match(runner, /resolveCorpusDirectory\(args\.corpus\)/);
+  assert.match(runner, /preflightCorpusFiles/);
+  assert.match(runner, /Corpus version:/);
+  assert.match(runner, /expectedStatusTotals/);
+  assert.match(runner, /actualStatusTotals/);
   assert.match(runner, /Selected case count:/);
   assert.match(runner, /selected_case_ids/);
   assert.ok(
@@ -821,4 +895,5 @@ test("corpus runner is one-shot and contains no resume, adoption, or cleanup pat
   assert.match(gitignore, /^eval\/corpora\/\*\*\/generated\/\*\.pdf$/m);
   assert.match(docs, /npm run eval:corpus/);
   assert.match(docs, /--case partial-evidence-preservation/);
+  assert.match(docs, /--corpus regspan-v2-realistic-corpus/);
 });

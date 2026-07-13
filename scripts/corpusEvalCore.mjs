@@ -1,4 +1,4 @@
-const VALID_TIERS = new Set(["weak", "partial", "strong", "adversarial"]);
+const VALID_TIERS = new Set(["weak", "partial", "strong", "developing", "mixed", "adversarial"]);
 const VALID_STATUSES = new Set([
   "covered",
   "partial",
@@ -57,7 +57,9 @@ function statusMap(value, label, arrayValues = false) {
     if (!CANONICAL_REQUIREMENT_IDS.has(requirementId)) {
       throw new CorpusManifestError(`${label}.${requirementId} is not a canonical requirement id.`);
     }
-    const statuses = arrayValues ? stringArray(rawStatus, `${label}.${requirementId}`) : [rawStatus];
+    const statuses = arrayValues || Array.isArray(rawStatus)
+      ? stringArray(rawStatus, `${label}.${requirementId}`)
+      : [rawStatus];
     normalized[requirementId] = statuses.map((status) => {
       const value = normalizedStatus(status);
       if (!VALID_STATUSES.has(value)) {
@@ -67,6 +69,63 @@ function statusMap(value, label, arrayValues = false) {
     });
   }
   return normalized;
+}
+
+function isSafeRelativePdfPath(value) {
+  return typeof value === "string"
+    && value.toLowerCase().endsWith(".pdf")
+    && !value.startsWith("/")
+    && !value.startsWith("\\")
+    && value.split(/[\\/]/).every((segment) => segment && segment !== "." && segment !== "..");
+}
+
+function v2ExpectedStatusMap(value, caseId) {
+  if (!Array.isArray(value)) {
+    throw new CorpusManifestError(`Case ${caseId} expectedStatuses must be an array.`);
+  }
+  const map = {};
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)
+      || typeof entry.requirementId !== "string" || !entry.requirementId.trim()) {
+      throw new CorpusManifestError(`Case ${caseId} has an invalid expected-status entry.`);
+    }
+    if (Object.hasOwn(map, entry.requirementId)) {
+      throw new CorpusManifestError(`Case ${caseId} repeats expected status for ${entry.requirementId}.`);
+    }
+    map[entry.requirementId] = entry.expected;
+  }
+  return map;
+}
+
+export function normalizeCorpusManifest(manifest) {
+  if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) return manifest;
+  if (manifest.version !== 2 || typeof manifest.corpusId !== "string") return manifest;
+  if (!Array.isArray(manifest.cases)) return manifest;
+
+  return {
+    version: manifest.version,
+    id: manifest.corpusId,
+    cases: manifest.cases.map((entry) => ({
+      id: entry.id,
+      filename: entry.filename,
+      documentPath: entry.path,
+      documentType: entry.documentType,
+      notes: entry.notes,
+      companyName: entry.companyName,
+      entityType: entry.entityType,
+      tier: entry.tier,
+      enabled: entry.enabled !== false,
+      sourceType: entry.sourceType,
+      // Every V2 fixture represents a different fictional company. Keep its
+      // documents isolated rather than allowing a mixed-company combined run.
+      include: { isolated: entry.enabled !== false, combined: false },
+      expectedStatuses: v2ExpectedStatusMap(entry.expectedStatuses, entry.id),
+      acceptableAlternateStatuses: {},
+      forbiddenMatches: {},
+      expectedEvidenceConcepts: {},
+      expectedEvidenceElements: {},
+    })),
+  };
 }
 
 function expectedEvidenceElementMap(value, label, canonicalRequirementElements) {
@@ -91,10 +150,13 @@ function expectedEvidenceElementMap(value, label, canonicalRequirementElements) 
 }
 
 export function validateCorpusManifest(manifest, { canonicalRequirementElements } = {}) {
+  manifest = normalizeCorpusManifest(manifest);
   if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
     throw new CorpusManifestError("Corpus manifest must be an object.");
   }
-  if (manifest.version !== 1) throw new CorpusManifestError("Corpus manifest version must be 1.");
+  if (manifest.version !== 1 && manifest.version !== 2) {
+    throw new CorpusManifestError("Corpus manifest version must be 1 or 2.");
+  }
   if (typeof manifest.id !== "string" || !/^[a-z0-9][a-z0-9-]{1,63}$/.test(manifest.id)) {
     throw new CorpusManifestError("Corpus manifest id must be a lowercase slug.");
   }
@@ -123,9 +185,13 @@ export function validateCorpusManifest(manifest, { canonicalRequirementElements 
       throw new CorpusManifestError(`Case ${entry.id} sourceType is invalid.`);
     }
 
-    const include = entry.include ?? { isolated: true, combined: true };
-    if (!include || typeof include !== "object" || (!include.isolated && !include.combined)) {
+    const enabled = entry.enabled !== false;
+    const include = entry.include ?? { isolated: enabled, combined: enabled };
+    if (!include || typeof include !== "object" || (enabled && !include.isolated && !include.combined)) {
       throw new CorpusManifestError(`Case ${entry.id} must opt into isolated or combined mode.`);
+    }
+    if (entry.documentPath !== undefined && !isSafeRelativePdfPath(entry.documentPath)) {
+      throw new CorpusManifestError(`Case ${entry.id} documentPath must be a safe relative PDF path.`);
     }
 
     return {
@@ -133,7 +199,19 @@ export function validateCorpusManifest(manifest, { canonicalRequirementElements 
       filename: entry.filename,
       tier: entry.tier,
       sourceType: entry.sourceType,
+      enabled,
       include: { isolated: include.isolated !== false, combined: include.combined !== false },
+      documentPath: entry.documentPath,
+      documentType: typeof entry.documentType === "string" && entry.documentType.trim()
+        ? entry.documentType.trim()
+        : undefined,
+      notes: typeof entry.notes === "string" && entry.notes.trim() ? entry.notes.trim() : undefined,
+      companyName: typeof entry.companyName === "string" && entry.companyName.trim()
+        ? entry.companyName.trim()
+        : undefined,
+      entityType: typeof entry.entityType === "string" && entry.entityType.trim()
+        ? entry.entityType.trim()
+        : undefined,
       expectedStatuses: statusMap(entry.expectedStatuses ?? {}, `cases.${entry.id}.expectedStatuses`),
       acceptableAlternateStatuses: statusMap(
         entry.acceptableAlternateStatuses ?? {},
@@ -186,7 +264,9 @@ export function selectCorpusCases({ cases, requestedCaseIds = [], mode }) {
 
   const requestedSet = new Set(requested);
   const requestedCases = cases.filter((entry) => requestedSet.has(entry.id));
-  const unavailable = requestedCases.filter((entry) => entry.include?.[mode] === false).map((entry) => entry.id);
+  const unavailable = requestedCases
+    .filter((entry) => entry.enabled === false || entry.include?.[mode] === false)
+    .map((entry) => entry.id);
   if (unavailable.length > 0) {
     throw new CorpusManifestError(
       `Selected corpus case ID${unavailable.length === 1 ? "" : "s"} not enabled for ${mode}: ${unavailable.join(", ")}.`,
@@ -195,7 +275,7 @@ export function selectCorpusCases({ cases, requestedCaseIds = [], mode }) {
 
   const selectedCases = requested.length > 0
     ? requestedCases
-    : cases.filter((entry) => entry.include?.[mode] !== false);
+    : cases.filter((entry) => entry.enabled !== false && entry.include?.[mode] !== false);
 
   return {
     selectedCases,
@@ -317,6 +397,8 @@ export function newEvaluationWorkspaceValues({
 export function createOneShotEvaluationState({
   runId,
   corpusId,
+  corpusVersion = 1,
+  corpusPath = "",
   mode,
   actorUserId,
   workspacePrefix,
@@ -329,6 +411,8 @@ export function createOneShotEvaluationState({
     schemaVersion: 1,
     runId,
     corpusId,
+    corpusVersion,
+    corpusPath,
     mode,
     status: "incomplete",
     startedAt,

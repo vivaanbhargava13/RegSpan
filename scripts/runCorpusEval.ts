@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
-import { readFile, writeFile } from "node:fs/promises";
-import { basename, join, resolve } from "node:path";
+import { createHash } from "node:crypto";
+import { readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { assertExternalAiProcessingServerAvailable } from "@/lib/aiProcessingPolicy";
 import { canonicalElementIdsForFinalPositiveQuote } from "@/lib/findingsAggregation";
 import { RateLimitError } from "@/lib/rateLimit";
@@ -39,7 +40,8 @@ import {
 } from "@/scripts/corpusEvalCore.mjs";
 import { writeJsonAtomically } from "@/scripts/corpusEvalState.mjs";
 
-const DEFAULT_CORPUS = "eval/corpora/regspan-v1";
+const CORPUS_ROOT = "eval/corpora";
+const DEFAULT_CORPUS = "regspan-v1";
 const DEFAULT_POLL_TIMEOUT_MS = 300_000;
 const DEFAULT_MIN_SCORE = 0.8;
 const DEFAULT_MAX_RATE_LIMIT_WAIT_MS = 3_600_000;
@@ -64,7 +66,13 @@ type CorpusCase = {
   filename: string;
   tier: string;
   sourceType: "client_policy" | "client_procedure" | "client_standard";
+  enabled: boolean;
   include: { isolated: boolean; combined: boolean };
+  documentPath?: string;
+  documentType?: string;
+  notes?: string;
+  companyName?: string;
+  entityType?: string;
   expectedStatuses: Record<string, string[]>;
   acceptableAlternateStatuses: Record<string, string[]>;
   forbiddenMatches: Record<string, string[]>;
@@ -73,7 +81,13 @@ type CorpusCase = {
 };
 
 type CaseScore = {
-  statusResults: Array<{ actual: string | null; matched: boolean }>;
+  statusResults: Array<{
+    requirementId: string;
+    expected: string[];
+    alternates: string[];
+    actual: string | null;
+    matched: boolean;
+  }>;
   conceptResults: Array<{ matched: boolean }>;
   elementResults: Array<{
     elements: string[];
@@ -85,6 +99,19 @@ type CaseScore = {
   unexpectedCovered: string[];
   matchedStatuses: number;
   expectedStatuses: number;
+};
+
+type RunSummary = {
+  expected: number;
+  matched: number;
+  score: number;
+  conceptsExpected: number;
+  conceptsMatched: number;
+  elementsExpected: number;
+  elementsMatched: number;
+  unexpectedCovered: number;
+  expectedStatusTotals: Record<string, number>;
+  actualStatusTotals: Record<string, number>;
 };
 
 type CaseState = {
@@ -114,6 +141,8 @@ type RunState = {
   schemaVersion: 1;
   runId: string;
   corpusId: string;
+  corpusVersion: number;
+  corpusPath: string;
   mode: "isolated" | "combined";
   status: "incomplete" | "completed";
   startedAt: string;
@@ -126,6 +155,7 @@ type RunState = {
   workspaces: Record<string, { key: string; name: string; id?: string }>;
   cases: Record<string, CaseState>;
   failures: Array<{ caseId: string | null; message: string; diagnosticCode?: string }>;
+  summary?: RunSummary;
 };
 
 function usage() {
@@ -135,7 +165,7 @@ Usage:
   npm run eval:corpus -- [options]
 
 Options:
-  --corpus <path>              Corpus directory. Defaults to ${DEFAULT_CORPUS}.
+  --corpus <corpus-id-or-directory>  Corpus directory or ID. Defaults to ${DEFAULT_CORPUS}.
   --mode isolated|combined     Evaluation mode. Defaults to isolated.
   --timeout-ms <number>        Polling deadline for jobs/runs. Defaults to ${DEFAULT_POLL_TIMEOUT_MS}.
   --min-score <0..1>           Minimum expected-status score. Defaults to ${DEFAULT_MIN_SCORE}.
@@ -234,19 +264,152 @@ function canonicalRequirementElements(requirements: RegSpRequirement[]) {
 }
 
 async function loadManifest(corpusDir: string, requirements: RegSpRequirement[]) {
-  return validateCorpusManifest(
+  const manifest = validateCorpusManifest(
     JSON.parse(await readFile(join(corpusDir, "manifest.json"), "utf8")),
     { canonicalRequirementElements: canonicalRequirementElements(requirements) },
   ) as unknown as {
-    id: string; version: 1; cases: CorpusCase[];
+    id: string; version: number; cases: CorpusCase[];
   };
+  const requirementIds = new Set<string>(requirements.map((requirement) => canonicalControlKeyForRequirement(requirement)));
+  for (const definition of manifest.cases) {
+    const unknownRequirementIds = Object.keys(definition.expectedStatuses)
+      .filter((requirementId) => !requirementIds.has(requirementId));
+    if (unknownRequirementIds.length > 0) {
+      throw new CorpusManifestError(
+        `Case ${definition.id} references requirement IDs not available to the evaluator: ${unknownRequirementIds.join(", ")}.`,
+      );
+    }
+  }
+  return manifest;
 }
 
-async function loadPdfBytes(corpusDir: string, filename: string) {
-  for (const directory of ["sources", "generated"]) {
-    try { return await readFile(join(corpusDir, directory, filename)); } catch { /* Try the next directory. */ }
+async function availableCorpusIds() {
+  try {
+    const entries = await readdir(CORPUS_ROOT, { withFileTypes: true });
+    return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
+  } catch {
+    return [];
   }
-  throw new Error(`Corpus PDF is missing for case filename ${basename(filename)}.`);
+}
+
+async function resolveCorpusDirectory(corpus: string) {
+  const looksLikeDirectory = corpus.includes("/") || corpus.includes("\\") || corpus.startsWith(".");
+  const corpusDir = resolve(looksLikeDirectory ? corpus : join(CORPUS_ROOT, corpus));
+  try {
+    if (!(await stat(corpusDir)).isDirectory()) throw new Error("not_directory");
+    await stat(join(corpusDir, "manifest.json"));
+    return corpusDir;
+  } catch {
+    const available = await availableCorpusIds();
+    throw new CorpusManifestError(
+      `Unknown corpus ${basename(corpus)}. Available corpus IDs: ${available.join(", ") || "none"}.`,
+    );
+  }
+}
+
+function corpusFilePath(corpusDir: string, relativePath: string) {
+  const root = resolve(corpusDir);
+  const resolvedPath = resolve(root, relativePath);
+  const relativePathFromRoot = relative(root, resolvedPath);
+  if (!relativePathFromRoot || relativePathFromRoot === ".."
+    || relativePathFromRoot.startsWith(`..${sep}`) || isAbsolute(relativePathFromRoot)) {
+    throw new CorpusManifestError("Corpus document path must remain within the selected corpus.");
+  }
+  return resolvedPath;
+}
+
+async function loadCorpusPdf({ corpusDir, definition }: { corpusDir: string; definition: CorpusCase }) {
+  const candidates = definition.documentPath
+    ? [definition.documentPath]
+    : [join("sources", definition.filename), join("generated", definition.filename)];
+  for (const relativePath of candidates) {
+    try {
+      const path = corpusFilePath(corpusDir, relativePath);
+      return { path, bytes: new Uint8Array(await readFile(path)) };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+  }
+  throw new CorpusManifestError(`Corpus PDF is missing for case filename ${basename(definition.filename)}.`);
+}
+
+type InventoryEntry = { bytes: number; sha256: string };
+
+function parseCsvLine(line: string) {
+  const values: string[] = [];
+  let value = "";
+  let quoted = false;
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index];
+    if (character === '"') {
+      if (quoted && line[index + 1] === '"') {
+        value += '"';
+        index += 1;
+      } else {
+        quoted = !quoted;
+      }
+    } else if (character === "," && !quoted) {
+      values.push(value);
+      value = "";
+    } else {
+      value += character;
+    }
+  }
+  if (quoted) throw new CorpusManifestError("Corpus inventory contains an unterminated CSV value.");
+  values.push(value);
+  return values;
+}
+
+async function loadInventory(corpusDir: string) {
+  let contents: string;
+  try {
+    contents = await readFile(join(corpusDir, "inventory.csv"), "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return new Map<string, InventoryEntry>();
+    throw error;
+  }
+  const lines = contents.split(/\r?\n/).filter((line) => line.trim());
+  if (lines.length < 2) throw new CorpusManifestError("Corpus inventory must contain a header and at least one PDF entry.");
+  const header = parseCsvLine(lines[0]);
+  const filenameIndex = header.indexOf("filename");
+  const bytesIndex = header.indexOf("bytes");
+  const hashIndex = header.indexOf("sha256");
+  if (filenameIndex < 0 || bytesIndex < 0 || hashIndex < 0) {
+    throw new CorpusManifestError("Corpus inventory must include filename, bytes, and sha256 columns.");
+  }
+  const entries = new Map<string, InventoryEntry>();
+  for (const line of lines.slice(1)) {
+    const values = parseCsvLine(line);
+    const filename = values[filenameIndex]?.trim();
+    const bytes = Number(values[bytesIndex]);
+    const sha256 = values[hashIndex]?.trim().toLowerCase();
+    if (!filename || !Number.isSafeInteger(bytes) || bytes < 0 || !/^[a-f0-9]{64}$/.test(sha256 ?? "")) {
+      throw new CorpusManifestError("Corpus inventory contains an invalid PDF entry.");
+    }
+    if (entries.has(filename)) throw new CorpusManifestError(`Corpus inventory repeats filename ${filename}.`);
+    entries.set(filename, { bytes, sha256 });
+  }
+  return entries;
+}
+
+async function preflightCorpusFiles(corpusDir: string, definitions: CorpusCase[]) {
+  const inventory = await loadInventory(corpusDir);
+  const files = new Map<string, Uint8Array>();
+  for (const definition of definitions) {
+    const { bytes } = await loadCorpusPdf({ corpusDir, definition });
+    const expected = inventory.get(definition.filename);
+    if (inventory.size > 0 && !expected) {
+      throw new CorpusManifestError(`Corpus inventory is missing ${definition.filename}.`);
+    }
+    if (expected) {
+      const actualHash = createHash("sha256").update(bytes).digest("hex");
+      if (expected.bytes !== bytes.byteLength || expected.sha256 !== actualHash) {
+        throw new CorpusManifestError(`Corpus inventory validation failed for ${definition.filename}.`);
+      }
+    }
+    files.set(definition.id, bytes);
+  }
+  return files;
 }
 
 function runContext(state: RunState): EvaluationRunContext {
@@ -276,6 +439,14 @@ function summarize(state: RunState) {
   const matched = scored.reduce((total, entry) => total + (entry.score?.matchedStatuses ?? 0), 0);
   const concepts = scored.flatMap((entry) => entry.score?.conceptResults ?? []);
   const elements = scored.flatMap((entry) => entry.score?.elementResults ?? []);
+  const expectedStatusTotals: Record<string, number> = {};
+  const actualStatusTotals: Record<string, number> = {};
+  for (const result of scored.flatMap((entry) => entry.score?.statusResults ?? [])) {
+    for (const expectedStatus of result.expected) {
+      expectedStatusTotals[expectedStatus] = (expectedStatusTotals[expectedStatus] ?? 0) + 1;
+    }
+    if (result.actual) actualStatusTotals[result.actual] = (actualStatusTotals[result.actual] ?? 0) + 1;
+  }
   return {
     expected,
     matched,
@@ -285,7 +456,14 @@ function summarize(state: RunState) {
     elementsExpected: elements.length,
     elementsMatched: elements.filter((entry) => entry.matched).length,
     unexpectedCovered: scored.flatMap((entry) => entry.score?.unexpectedCovered ?? []).length,
+    expectedStatusTotals,
+    actualStatusTotals,
   };
+}
+
+function formatStatusTotals(totals: Record<string, number>) {
+  const entries = Object.entries(totals).sort(([left], [right]) => left.localeCompare(right));
+  return entries.length === 0 ? "none" : entries.map(([status, count]) => `${status}: ${count}`).join(", ");
 }
 
 function markdown(state: RunState) {
@@ -296,26 +474,32 @@ function markdown(state: RunState) {
     const matchedElements = elementResults.flatMap((result) => result.matchedElements).join(", ");
     const missingElements = elementResults.flatMap((result) => result.missingElements).join(", ");
     const elementPass = elementResults.length === 0 ? "-" : elementResults.every((result) => result.matched) ? "pass" : "fail";
-    return `| ${entry.caseId} | ${entry.tier} | ${entry.processingStatus ?? "not started"} | ${entry.processingStep ?? ""} | ${entry.processingError ?? ""} | ${entry.analysisStatus ?? "not started"} | ${entry.rateLimitWaitCount ?? 0} | ${entry.rateLimitWaitMs ?? 0} | ${entry.score ? `${entry.score.matchedStatuses}/${entry.score.expectedStatuses}` : "-"} | ${expectedElements} | ${matchedElements} | ${missingElements} | ${elementPass} | ${entry.diagnosticCode ?? ""} | ${entry.error ?? ""} |`;
+    const expectedStatuses = (entry.score?.statusResults ?? []).map((result) => `${result.requirementId}: ${result.expected.join(" or ")}`).join("; ");
+    const actualStatuses = (entry.score?.statusResults ?? []).map((result) => `${result.requirementId}: ${result.actual ?? "absent"}`).join("; ");
+    return `| ${entry.caseId} | ${entry.tier} | ${entry.processingStatus ?? "not started"} | ${entry.processingStep ?? ""} | ${entry.processingError ?? ""} | ${entry.analysisStatus ?? "not started"} | ${entry.rateLimitWaitCount ?? 0} | ${entry.rateLimitWaitMs ?? 0} | ${entry.score ? `${entry.score.matchedStatuses}/${entry.score.expectedStatuses}` : "-"} | ${expectedStatuses} | ${actualStatuses} | ${expectedElements} | ${matchedElements} | ${missingElements} | ${elementPass} | ${entry.diagnosticCode ?? ""} | ${entry.error ?? ""} |`;
   });
-  return `# RegSpan Corpus Evaluation\n\nStatus: ${state.status}\n\nRun ID: ${state.runId}\n\n`
+  return `# RegSpan Corpus Evaluation\n\nStatus: ${state.status}\n\nRun ID: ${state.runId}\n\nCorpus ID: ${state.corpusId}\n\nCorpus version: ${state.corpusVersion}\n\nCorpus path: ${state.corpusPath}\n\n`
     + `Selected cases: ${state.selectedCaseIds.join(", ")}\n\n`
     + `Selected case count: ${state.selectedCaseCount}; filtered run: ${state.filtered ? "yes" : "no"}\n\n`
     + `Expected status score: ${(summary.score * 100).toFixed(1)}% (${summary.matched}/${summary.expected})\n\n`
+    + `Expected status totals: ${formatStatusTotals(summary.expectedStatusTotals)}\n\n`
+    + `Actual status totals: ${formatStatusTotals(summary.actualStatusTotals)}\n\n`
     + `Evidence concepts: ${summary.conceptsMatched}/${summary.conceptsExpected}; evidence elements: ${summary.elementsMatched}/${summary.elementsExpected}; unexpected covered/partial: ${summary.unexpectedCovered}\n\n`
-    + `| Case | Tier | Processing | Step | Processing error | Analysis | Rate-limit waits | Rate-limit wait ms | Status score | Expected elements | Matched elements | Missing elements | Element result | Diagnostic code | Error |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n${rows.join("\n")}\n`;
+    + `| Case | Tier | Processing | Step | Processing error | Analysis | Rate-limit waits | Rate-limit wait ms | Status score | Expected statuses | Actual statuses | Expected elements | Matched elements | Missing elements | Element result | Diagnostic code | Error |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n${rows.join("\n")}\n`;
 }
 
 function csv(state: RunState) {
   const quote = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
-  const rows = ["case_id,tier,selected_case_ids,selected_case_count,filtered_run,workspace_id,document_id,processing_job_id,analysis_run_id,processing_status,processing_step,processing_error,analysis_status,rate_limit_wait_count,rate_limit_wait_ms,status_matches,status_expected,expected_evidence_elements,matched_evidence_elements,missing_evidence_elements,evidence_elements_passed,diagnostic_code,error"];
+  const rows = ["corpus_id,corpus_version,corpus_path,case_id,tier,selected_case_ids,selected_case_count,filtered_run,workspace_id,document_id,processing_job_id,analysis_run_id,processing_status,processing_step,processing_error,analysis_status,rate_limit_wait_count,rate_limit_wait_ms,status_matches,status_expected,expected_requirement_statuses,actual_requirement_statuses,expected_evidence_elements,matched_evidence_elements,missing_evidence_elements,evidence_elements_passed,diagnostic_code,error"];
   for (const entry of Object.values(state.cases)) {
     const elementResults = entry.score?.elementResults ?? [];
     rows.push([
-      entry.caseId, entry.tier, state.selectedCaseIds.join("|"), state.selectedCaseCount, state.filtered,
+      state.corpusId, state.corpusVersion, state.corpusPath, entry.caseId, entry.tier, state.selectedCaseIds.join("|"), state.selectedCaseCount, state.filtered,
       state.workspaces[entry.workspaceKey]?.id, entry.documentId,
       entry.processingJobId, entry.analysisRunId, entry.processingStatus, entry.processingStep, entry.processingError, entry.analysisStatus, entry.rateLimitWaitCount, entry.rateLimitWaitMs,
       entry.score?.matchedStatuses, entry.score?.expectedStatuses,
+      (entry.score?.statusResults ?? []).map((result) => `${result.requirementId}:${result.expected.join("|")}`).join(";"),
+      (entry.score?.statusResults ?? []).map((result) => `${result.requirementId}:${result.actual ?? "absent"}`).join(";"),
       elementResults.flatMap((result) => result.elements).join("|"),
       elementResults.flatMap((result) => result.matchedElements).join("|"),
       elementResults.flatMap((result) => result.missingElements).join("|"),
@@ -327,6 +511,7 @@ function csv(state: RunState) {
 }
 
 async function writeReports(outputDir: string, state: RunState) {
+  state.summary = summarize(state);
   await persistState(outputDir, state);
   await writeFile(join(outputDir, "summary.md"), markdown(state), "utf8");
   await writeFile(join(outputDir, "results.csv"), csv(state), "utf8");
@@ -347,25 +532,26 @@ async function processCase({
   definition,
   state,
   context,
-  corpusDir,
+  bytes,
   outputDir,
   pollTimeoutMs,
 }: {
   definition: CorpusCase;
   state: RunState;
   context: EvaluationWorkspaceContext;
-  corpusDir: string;
+  bytes: Uint8Array;
   outputDir: string;
   pollTimeoutMs: number;
 }) {
   const entry = state.cases[definition.id];
-  const bytes = await loadPdfBytes(corpusDir, definition.filename);
   const startedAt = Date.now();
   const uploaded = await uploadCorpusDocument({
     supabase: getServerSupabaseAdminClient(),
     context,
     filename: definition.filename,
     sourceType: definition.sourceType,
+    documentType: definition.documentType,
+    notes: definition.notes,
     bytes,
     correlationId: crypto.randomUUID(),
   });
@@ -505,13 +691,15 @@ async function analyzeAndScore({
 
 function createState({
   manifest,
+  corpusPath,
   selectedCases,
   filtered,
   mode,
   actorUserId,
   workspacePrefix,
 }: {
-  manifest: { id: string };
+  manifest: { id: string; version: number };
+  corpusPath: string;
   selectedCases: CorpusCase[];
   filtered: boolean;
   mode: "isolated" | "combined";
@@ -522,6 +710,8 @@ function createState({
   return createOneShotEvaluationState({
     runId,
     corpusId: manifest.id,
+    corpusVersion: manifest.version,
+    corpusPath,
     mode,
     actorUserId,
     workspacePrefix,
@@ -537,7 +727,7 @@ async function main() {
   if (args.help) return usage();
   const { actorUserId, workspacePrefix } = assertRunnerSafety(args);
   assertExternalAiEvaluationSafety(args);
-  const corpusDir = resolve(args.corpus);
+  const corpusDir = await resolveCorpusDirectory(args.corpus);
   const requirements = await loadRegSpRequirementsForFindings({ supabase: getServerSupabaseAdminClient() });
   const requirementsById = new Map(requirements.map((requirement) => [
     canonicalControlKeyForRequirement(requirement),
@@ -551,9 +741,14 @@ async function main() {
   }) as unknown as { selectedCases: CorpusCase[]; selectedCaseIds: string[]; filtered: boolean };
   const selectedCases = selection.selectedCases;
   if (selectedCases.length === 0) throw new Error(`No corpus cases are enabled for ${args.mode} mode.`);
+  const preparedFiles = await preflightCorpusFiles(
+    corpusDir,
+    manifest.cases.filter((definition) => definition.enabled),
+  );
 
   const state = createState({
     manifest,
+    corpusPath: corpusDir,
     selectedCases,
     filtered: selection.filtered,
     mode: args.mode,
@@ -569,14 +764,14 @@ async function main() {
       const context = await createWorkspace(state, "combined", outputDir);
       for (const definition of selectedCases) {
         activeCaseId = definition.id;
-        await processCase({ definition, state, context, corpusDir, outputDir, pollTimeoutMs: args.pollTimeoutMs });
+        await processCase({ definition, state, context, bytes: preparedFiles.get(definition.id)!, outputDir, pollTimeoutMs: args.pollTimeoutMs });
       }
       await analyzeAndScore({ definitions: selectedCases, state, context, outputDir, pollTimeoutMs: args.pollTimeoutMs, waitOnRateLimit: args.waitOnRateLimit, maxRateLimitWaitMs: args.maxRateLimitWaitMs, requirementsById });
     } else {
       for (const definition of selectedCases) {
         activeCaseId = definition.id;
         const context = await createWorkspace(state, definition.id, outputDir);
-        await processCase({ definition, state, context, corpusDir, outputDir, pollTimeoutMs: args.pollTimeoutMs });
+        await processCase({ definition, state, context, bytes: preparedFiles.get(definition.id)!, outputDir, pollTimeoutMs: args.pollTimeoutMs });
         await analyzeAndScore({ definitions: [definition], state, context, outputDir, pollTimeoutMs: args.pollTimeoutMs, waitOnRateLimit: args.waitOnRateLimit, maxRateLimitWaitMs: args.maxRateLimitWaitMs, requirementsById });
       }
     }

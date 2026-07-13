@@ -2,11 +2,12 @@ export class CorpusManifestError extends Error {}
 export class CorpusEvaluationTimeoutError extends Error {}
 export class CorpusEvaluationRateLimitWaitExceededError extends Error {}
 export class CorpusEvaluationSafetyError extends Error {}
+export function normalizeCorpusManifest(manifest: unknown): Record<string, unknown>;
 export function validateCorpusManifest(manifest: unknown, options?: {
   canonicalRequirementElements?: Record<string, string[]>;
 }): {
   id: string;
-  version: 1;
+  version: 1 | 2;
   cases: Array<Record<string, unknown>>;
 };
 export function selectCorpusCases(input: {

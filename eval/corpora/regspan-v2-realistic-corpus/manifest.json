@@ -1,0 +1,973 @@
+{
+  "corpusId": "regspan-v2-realistic-company-policies",
+  "version": 2,
+  "description": "Twelve fictional company-authored policies with naturally varying Regulation S-P compliance. The corpus is designed as ordinary client uploads, not as adversarial traps.",
+  "baseline": {
+    "source": "SEC Release No. 34-100155, Regulation S-P: Privacy of Consumer Financial Information and Safeguarding Customer Information",
+    "effectiveDate": "2024-08-02",
+    "rule": "17 CFR 248.30 as amended",
+    "notes": "Expected statuses use a strict reading of the final rule and the current RegSpan 11-requirement model."
+  },
+  "cases": [
+    {
+      "id": "harborview-asset-advisors",
+      "companyName": "Harborview Asset Advisors LLC",
+      "entityType": "Registered Investment Adviser",
+      "tier": "strong",
+      "enabled": true,
+      "filename": "harborview_customer_information_safeguards_program.pdf",
+      "path": "documents/harborview_customer_information_safeguards_program.pdf",
+      "documentType": "Information Security",
+      "sourceType": "client_policy",
+      "notes": "Fictional Registered Investment Adviser policy. Source type: client_policy. Upload as organization evidence.",
+      "expectedStatuses": [
+        {
+          "requirementId": "written_incident_response_program",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "incident_assessment_containment_control",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "customer_notification_unauthorized_access",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "customer_notification_content",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "service_provider_incident_oversight_notice",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "safeguards_customer_information",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "disposal_consumer_customer_information",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "written_compliance_records",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "incident_evidence_log_preservation",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "regulator_law_enforcement_notification_coordination",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "response_recovery_remediation_validation",
+          "expected": [
+            "covered"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "meridian-transfer-trust",
+      "companyName": "Meridian Transfer & Trust Company",
+      "entityType": "Transfer Agent",
+      "tier": "strong",
+      "enabled": true,
+      "filename": "meridian_securityholder_information_manual.pdf",
+      "path": "documents/meridian_securityholder_information_manual.pdf",
+      "documentType": "Incident Response",
+      "sourceType": "client_procedure",
+      "notes": "Fictional Transfer Agent policy. Source type: client_procedure. Upload as organization evidence.",
+      "expectedStatuses": [
+        {
+          "requirementId": "written_incident_response_program",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "incident_assessment_containment_control",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "customer_notification_unauthorized_access",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "customer_notification_content",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "service_provider_incident_oversight_notice",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "safeguards_customer_information",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "disposal_consumer_customer_information",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "written_compliance_records",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "incident_evidence_log_preservation",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "regulator_law_enforcement_notification_coordination",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "response_recovery_remediation_validation",
+          "expected": [
+            "covered"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "northline-brokerage-services",
+      "companyName": "Northline Brokerage Services, Inc.",
+      "entityType": "Broker-Dealer",
+      "tier": "strong",
+      "enabled": true,
+      "filename": "northline_regulation_sp_policy.pdf",
+      "path": "documents/northline_regulation_sp_policy.pdf",
+      "documentType": "Privacy and Security",
+      "sourceType": "client_policy",
+      "notes": "Fictional Broker-Dealer policy. Source type: client_policy. Upload as organization evidence.",
+      "expectedStatuses": [
+        {
+          "requirementId": "written_incident_response_program",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "incident_assessment_containment_control",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "customer_notification_unauthorized_access",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "customer_notification_content",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "service_provider_incident_oversight_notice",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "safeguards_customer_information",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "disposal_consumer_customer_information",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "written_compliance_records",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "incident_evidence_log_preservation",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "regulator_law_enforcement_notification_coordination",
+          "expected": [
+            "partial"
+          ]
+        },
+        {
+          "requirementId": "response_recovery_remediation_validation",
+          "expected": [
+            "covered"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cedar-ridge-capital-advisors",
+      "companyName": "Cedar Ridge Capital Advisors, LLC",
+      "entityType": "Registered Investment Adviser",
+      "tier": "developing",
+      "enabled": true,
+      "filename": "cedar_ridge_information_security_privacy_policy.pdf",
+      "path": "documents/cedar_ridge_information_security_privacy_policy.pdf",
+      "documentType": "Information Security",
+      "sourceType": "client_policy",
+      "notes": "Fictional Registered Investment Adviser policy. Source type: client_policy. Upload as organization evidence.",
+      "expectedStatuses": [
+        {
+          "requirementId": "written_incident_response_program",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "incident_assessment_containment_control",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "customer_notification_unauthorized_access",
+          "expected": [
+            "partial"
+          ]
+        },
+        {
+          "requirementId": "customer_notification_content",
+          "expected": [
+            "partial"
+          ]
+        },
+        {
+          "requirementId": "service_provider_incident_oversight_notice",
+          "expected": [
+            "partial"
+          ]
+        },
+        {
+          "requirementId": "safeguards_customer_information",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "disposal_consumer_customer_information",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "written_compliance_records",
+          "expected": [
+            "partial"
+          ]
+        },
+        {
+          "requirementId": "incident_evidence_log_preservation",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "regulator_law_enforcement_notification_coordination",
+          "expected": [
+            "missing"
+          ]
+        },
+        {
+          "requirementId": "response_recovery_remediation_validation",
+          "expected": [
+            "partial"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "bluefield-investment-funds",
+      "companyName": "Bluefield Investment Funds",
+      "entityType": "Registered Investment Company",
+      "tier": "mixed",
+      "enabled": true,
+      "filename": "bluefield_customer_information_protection_standard.pdf",
+      "path": "documents/bluefield_customer_information_protection_standard.pdf",
+      "documentType": "Information Security",
+      "sourceType": "client_standard",
+      "notes": "Fictional Registered Investment Company policy. Source type: client_standard. Upload as organization evidence.",
+      "expectedStatuses": [
+        {
+          "requirementId": "written_incident_response_program",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "incident_assessment_containment_control",
+          "expected": [
+            "partial"
+          ]
+        },
+        {
+          "requirementId": "customer_notification_unauthorized_access",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "customer_notification_content",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "service_provider_incident_oversight_notice",
+          "expected": [
+            "partial"
+          ]
+        },
+        {
+          "requirementId": "safeguards_customer_information",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "disposal_consumer_customer_information",
+          "expected": [
+            "partial"
+          ]
+        },
+        {
+          "requirementId": "written_compliance_records",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "incident_evidence_log_preservation",
+          "expected": [
+            "partial"
+          ]
+        },
+        {
+          "requirementId": "regulator_law_enforcement_notification_coordination",
+          "expected": [
+            "partial"
+          ]
+        },
+        {
+          "requirementId": "response_recovery_remediation_validation",
+          "expected": [
+            "covered"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "summitcrowd-markets",
+      "companyName": "SummitCrowd Markets LLC",
+      "entityType": "Funding Portal",
+      "tier": "developing",
+      "enabled": true,
+      "filename": "summitcrowd_cybersecurity_incident_procedures.pdf",
+      "path": "documents/summitcrowd_cybersecurity_incident_procedures.pdf",
+      "documentType": "Incident Response",
+      "sourceType": "client_procedure",
+      "notes": "Fictional Funding Portal policy. Source type: client_procedure. Upload as organization evidence.",
+      "expectedStatuses": [
+        {
+          "requirementId": "written_incident_response_program",
+          "expected": [
+            "partial"
+          ]
+        },
+        {
+          "requirementId": "incident_assessment_containment_control",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "customer_notification_unauthorized_access",
+          "expected": [
+            "partial"
+          ]
+        },
+        {
+          "requirementId": "customer_notification_content",
+          "expected": [
+            "partial"
+          ]
+        },
+        {
+          "requirementId": "service_provider_incident_oversight_notice",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "safeguards_customer_information",
+          "expected": [
+            "partial"
+          ]
+        },
+        {
+          "requirementId": "disposal_consumer_customer_information",
+          "expected": [
+            "missing"
+          ]
+        },
+        {
+          "requirementId": "written_compliance_records",
+          "expected": [
+            "partial"
+          ]
+        },
+        {
+          "requirementId": "incident_evidence_log_preservation",
+          "expected": [
+            "partial"
+          ]
+        },
+        {
+          "requirementId": "regulator_law_enforcement_notification_coordination",
+          "expected": [
+            "missing"
+          ]
+        },
+        {
+          "requirementId": "response_recovery_remediation_validation",
+          "expected": [
+            "partial"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "lakeshore-wealth-partners",
+      "companyName": "Lakeshore Wealth Partners, LLC",
+      "entityType": "Registered Investment Adviser",
+      "tier": "mixed",
+      "enabled": true,
+      "filename": "lakeshore_regulation_sp_compliance_program.pdf",
+      "path": "documents/lakeshore_regulation_sp_compliance_program.pdf",
+      "documentType": "Privacy and Security",
+      "sourceType": "client_policy",
+      "notes": "Fictional Registered Investment Adviser policy. Source type: client_policy. Upload as organization evidence.",
+      "expectedStatuses": [
+        {
+          "requirementId": "written_incident_response_program",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "incident_assessment_containment_control",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "customer_notification_unauthorized_access",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "customer_notification_content",
+          "expected": [
+            "partial"
+          ]
+        },
+        {
+          "requirementId": "service_provider_incident_oversight_notice",
+          "expected": [
+            "missing"
+          ]
+        },
+        {
+          "requirementId": "safeguards_customer_information",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "disposal_consumer_customer_information",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "written_compliance_records",
+          "expected": [
+            "partial"
+          ]
+        },
+        {
+          "requirementId": "incident_evidence_log_preservation",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "regulator_law_enforcement_notification_coordination",
+          "expected": [
+            "partial"
+          ]
+        },
+        {
+          "requirementId": "response_recovery_remediation_validation",
+          "expected": [
+            "covered"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "westbridge-securities",
+      "companyName": "Westbridge Securities Corporation",
+      "entityType": "Broker-Dealer",
+      "tier": "weak",
+      "enabled": true,
+      "filename": "westbridge_information_technology_security_policy.pdf",
+      "path": "documents/westbridge_information_technology_security_policy.pdf",
+      "documentType": "Information Security",
+      "sourceType": "client_policy",
+      "notes": "Fictional Broker-Dealer policy. Source type: client_policy. Upload as organization evidence.",
+      "expectedStatuses": [
+        {
+          "requirementId": "written_incident_response_program",
+          "expected": [
+            "partial"
+          ]
+        },
+        {
+          "requirementId": "incident_assessment_containment_control",
+          "expected": [
+            "missing"
+          ]
+        },
+        {
+          "requirementId": "customer_notification_unauthorized_access",
+          "expected": [
+            "missing"
+          ]
+        },
+        {
+          "requirementId": "customer_notification_content",
+          "expected": [
+            "missing"
+          ]
+        },
+        {
+          "requirementId": "service_provider_incident_oversight_notice",
+          "expected": [
+            "missing"
+          ]
+        },
+        {
+          "requirementId": "safeguards_customer_information",
+          "expected": [
+            "partial"
+          ]
+        },
+        {
+          "requirementId": "disposal_consumer_customer_information",
+          "expected": [
+            "partial"
+          ]
+        },
+        {
+          "requirementId": "written_compliance_records",
+          "expected": [
+            "missing"
+          ]
+        },
+        {
+          "requirementId": "incident_evidence_log_preservation",
+          "expected": [
+            "missing"
+          ]
+        },
+        {
+          "requirementId": "regulator_law_enforcement_notification_coordination",
+          "expected": [
+            "missing"
+          ]
+        },
+        {
+          "requirementId": "response_recovery_remediation_validation",
+          "expected": [
+            "missing"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pine-street-transfer-services",
+      "companyName": "Pine Street Transfer Services, Inc.",
+      "entityType": "Transfer Agent",
+      "tier": "developing",
+      "enabled": true,
+      "filename": "pine_street_records_security_disposal_procedures.pdf",
+      "path": "documents/pine_street_records_security_disposal_procedures.pdf",
+      "documentType": "Operations and Security",
+      "sourceType": "client_procedure",
+      "notes": "Fictional Transfer Agent policy. Source type: client_procedure. Upload as organization evidence.",
+      "expectedStatuses": [
+        {
+          "requirementId": "written_incident_response_program",
+          "expected": [
+            "partial"
+          ]
+        },
+        {
+          "requirementId": "incident_assessment_containment_control",
+          "expected": [
+            "partial"
+          ]
+        },
+        {
+          "requirementId": "customer_notification_unauthorized_access",
+          "expected": [
+            "missing"
+          ]
+        },
+        {
+          "requirementId": "customer_notification_content",
+          "expected": [
+            "missing"
+          ]
+        },
+        {
+          "requirementId": "service_provider_incident_oversight_notice",
+          "expected": [
+            "partial"
+          ]
+        },
+        {
+          "requirementId": "safeguards_customer_information",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "disposal_consumer_customer_information",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "written_compliance_records",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "incident_evidence_log_preservation",
+          "expected": [
+            "partial"
+          ]
+        },
+        {
+          "requirementId": "regulator_law_enforcement_notification_coordination",
+          "expected": [
+            "missing"
+          ]
+        },
+        {
+          "requirementId": "response_recovery_remediation_validation",
+          "expected": [
+            "partial"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "greenway-registered-funds",
+      "companyName": "Greenway Registered Funds",
+      "entityType": "Registered Investment Company",
+      "tier": "strong",
+      "enabled": true,
+      "filename": "greenway_enterprise_customer_information_framework.pdf",
+      "path": "documents/greenway_enterprise_customer_information_framework.pdf",
+      "documentType": "Information Security",
+      "sourceType": "client_standard",
+      "notes": "Fictional Registered Investment Company policy. Source type: client_standard. Upload as organization evidence.",
+      "expectedStatuses": [
+        {
+          "requirementId": "written_incident_response_program",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "incident_assessment_containment_control",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "customer_notification_unauthorized_access",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "customer_notification_content",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "service_provider_incident_oversight_notice",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "safeguards_customer_information",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "disposal_consumer_customer_information",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "written_compliance_records",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "incident_evidence_log_preservation",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "regulator_law_enforcement_notification_coordination",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "response_recovery_remediation_validation",
+          "expected": [
+            "partial"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stonehaven-advisory-partners",
+      "companyName": "Stonehaven Advisory Partners, LLC",
+      "entityType": "Registered Investment Adviser",
+      "tier": "weak",
+      "enabled": true,
+      "filename": "stonehaven_privacy_cybersecurity_practices.pdf",
+      "path": "documents/stonehaven_privacy_cybersecurity_practices.pdf",
+      "documentType": "Privacy and Security",
+      "sourceType": "client_policy",
+      "notes": "Fictional Registered Investment Adviser policy. Source type: client_policy. Upload as organization evidence.",
+      "expectedStatuses": [
+        {
+          "requirementId": "written_incident_response_program",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "incident_assessment_containment_control",
+          "expected": [
+            "partial"
+          ]
+        },
+        {
+          "requirementId": "customer_notification_unauthorized_access",
+          "expected": [
+            "partial"
+          ]
+        },
+        {
+          "requirementId": "customer_notification_content",
+          "expected": [
+            "missing"
+          ]
+        },
+        {
+          "requirementId": "service_provider_incident_oversight_notice",
+          "expected": [
+            "partial"
+          ]
+        },
+        {
+          "requirementId": "safeguards_customer_information",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "disposal_consumer_customer_information",
+          "expected": [
+            "partial"
+          ]
+        },
+        {
+          "requirementId": "written_compliance_records",
+          "expected": [
+            "partial"
+          ]
+        },
+        {
+          "requirementId": "incident_evidence_log_preservation",
+          "expected": [
+            "missing"
+          ]
+        },
+        {
+          "requirementId": "regulator_law_enforcement_notification_coordination",
+          "expected": [
+            "missing"
+          ]
+        },
+        {
+          "requirementId": "response_recovery_remediation_validation",
+          "expected": [
+            "partial"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "beaconraise-funding-portal",
+      "companyName": "BeaconRaise Funding Portal LLC",
+      "entityType": "Funding Portal",
+      "tier": "mixed",
+      "enabled": true,
+      "filename": "beaconraise_customer_information_incident_handbook.pdf",
+      "path": "documents/beaconraise_customer_information_incident_handbook.pdf",
+      "documentType": "Incident Response",
+      "sourceType": "client_procedure",
+      "notes": "Fictional Funding Portal policy. Source type: client_procedure. Upload as organization evidence.",
+      "expectedStatuses": [
+        {
+          "requirementId": "written_incident_response_program",
+          "expected": [
+            "partial"
+          ]
+        },
+        {
+          "requirementId": "incident_assessment_containment_control",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "customer_notification_unauthorized_access",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "customer_notification_content",
+          "expected": [
+            "partial"
+          ]
+        },
+        {
+          "requirementId": "service_provider_incident_oversight_notice",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "safeguards_customer_information",
+          "expected": [
+            "partial"
+          ]
+        },
+        {
+          "requirementId": "disposal_consumer_customer_information",
+          "expected": [
+            "missing"
+          ]
+        },
+        {
+          "requirementId": "written_compliance_records",
+          "expected": [
+            "covered"
+          ]
+        },
+        {
+          "requirementId": "incident_evidence_log_preservation",
+          "expected": [
+            "partial"
+          ]
+        },
+        {
+          "requirementId": "regulator_law_enforcement_notification_coordination",
+          "expected": [
+            "partial"
+          ]
+        },
+        {
+          "requirementId": "response_recovery_remediation_validation",
+          "expected": [
+            "covered"
+          ]
+        }
+      ]
+    }
+  ]
+}

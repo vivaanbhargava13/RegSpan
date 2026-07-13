@@ -13,7 +13,9 @@ It does not expose an HTTP evaluation endpoint.
 3. Set `REGSPAN_EVAL_WORKSPACE_PREFIX=regspan-eval-` explicitly.
 4. Add the 12 locally approved PDFs named by
    `eval/corpora/regspan-v1/manifest.json` under `sources/` or `generated/`.
-   No PDFs are committed by this repository.
+   The separate V2 realistic-company corpus keeps its fixture PDFs under its
+   own `documents/` directory. No generated V1 PDFs are committed by this
+   repository.
 5. Ensure the normal local ingestion configuration is working: Supabase server
    credentials, n8n webhook, worker bearer secret, and an enabled external AI
    embedding provider.
@@ -23,6 +25,36 @@ Run one isolated, run-specific workspace per case:
 ```sh
 npm run eval:corpus -- --mode isolated --allow-external-ai
 ```
+
+V1 remains the default. Select another corpus explicitly by directory name or
+path. V2 cases represent separate fictional companies and are intentionally
+available only in isolated mode:
+
+```sh
+npm run eval:corpus -- \
+  --corpus regspan-v2-realistic-corpus \
+  --mode isolated \
+  --allow-external-ai \
+  --case harborview-asset-advisors
+```
+
+A three-case V2 smoke test uses the same command shape:
+
+```sh
+npm run eval:corpus -- \
+  --corpus regspan-v2-realistic-corpus \
+  --mode isolated \
+  --allow-external-ai \
+  --case harborview-asset-advisors \
+  --case meridian-transfer-trust \
+  --case westbridge-securities
+```
+
+Before creating an evaluation workspace, the runner validates the selected
+corpus directory, manifest version and unique IDs, canonical requirement IDs,
+source classifications, all enabled PDF fixtures, and `inventory.csv` byte and
+SHA-256 values when an inventory is present. Unknown corpus and case IDs fail
+before uploads or workspace creation.
 
 Run one or more targeted cases without creating workspaces for the rest of the
 corpus:
@@ -125,9 +157,9 @@ text, excerpts, request headers, or secrets.
 
 Artifacts are written under ignored `eval-results/corpus-*/`:
 
-- `summary.md`: aggregate and per-case status and element summary, including selected cases
-- `results.json`: run status, selected-case metadata, safe IDs, timings, and assertion results
-- `results.csv`: compact rows including selected-case metadata and expected, matched, and missing element IDs
+- `summary.md`: aggregate and per-case status and element summary, including corpus ID, version, path, selected cases, and expected/actual status totals
+- `results.json`: run status, corpus and selected-case metadata, safe IDs, timings, aggregate status totals, and assertion results
+- `results.csv`: compact rows including corpus metadata, selected-case metadata, expected/actual requirement statuses, and expected, matched, and missing element IDs
 
 `results.json` starts with status `incomplete` and is replaced atomically at safe
 lifecycle boundaries. A hard interruption may leave the last safe partial

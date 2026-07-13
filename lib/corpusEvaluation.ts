@@ -193,6 +193,8 @@ export async function uploadCorpusDocument({
   context,
   filename,
   sourceType,
+  documentType,
+  notes,
   bytes,
   correlationId,
 }: {
@@ -200,6 +202,8 @@ export async function uploadCorpusDocument({
   context: EvaluationWorkspaceContext;
   filename: string;
   sourceType: "client_policy" | "client_procedure" | "client_standard";
+  documentType?: string;
+  notes?: string;
   bytes: Uint8Array;
   correlationId: string;
 }) {
@@ -236,8 +240,11 @@ export async function uploadCorpusDocument({
     correlationId,
     workspaceId: context.workspaceId,
     file,
-    documentType: "Information Security",
-    notes: `Automated corpus evaluation run ${context.runId}. Source type: ${sourceType.replace("_", " ")}.`,
+    documentType: documentType?.trim() || "Information Security",
+    notes: [
+      notes?.trim(),
+      `Automated corpus evaluation run ${context.runId}. Source type: ${sourceType.replace("_", " ")}.`,
+    ].filter(Boolean).join("\n\n"),
   });
 }
 
