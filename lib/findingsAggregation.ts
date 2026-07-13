@@ -55,6 +55,10 @@ type TextSpan = {
   end: number;
 };
 
+// These bounds permit one ordinary policy list while keeping persisted excerpts reviewable.
+const MAX_CONTIGUOUS_QUOTE_SPAN_SENTENCES = 8;
+const MAX_CONTIGUOUS_QUOTE_SPAN_CHARS = 1_800;
+
 const highImpactRequirements = new Set<RegSpRequirementId>([
   "written_incident_response_program",
   "incident_assessment_containment_control",
@@ -864,7 +868,7 @@ function finalQuoteCandidateScore(requirement: RegSpRequirement, chunk: GradedEv
   };
 }
 
-function candidateQuoteSpans(chunk: GradedEvidenceChunk) {
+function candidateQuoteSpans(requirement: RegSpRequirement, chunk: GradedEvidenceChunk) {
   const rawText = chunk.content_preview;
   const candidates: TextSpan[] = [];
   const seen = new Set<string>();
@@ -887,13 +891,28 @@ function candidateQuoteSpans(chunk: GradedEvidenceChunk) {
       if (!last) continue;
       addCandidate(sourceSpanBetween(rawText, sentences[index], last));
     }
+
+    const startElements = supportedElementIdsForQuote(requirement, sentences[index].text);
+    if (startElements.length === 0) continue;
+    const finalIndex = Math.min(
+      sentences.length,
+      index + MAX_CONTIGUOUS_QUOTE_SPAN_SENTENCES,
+    );
+    for (let endIndex = index + 1; endIndex < finalIndex; endIndex += 1) {
+      const endElements = supportedElementIdsForQuote(requirement, sentences[endIndex].text);
+      if (endElements.length === 0) continue;
+      const span = sourceSpanBetween(rawText, sentences[index], sentences[endIndex]);
+      if (!span || span.text.length > MAX_CONTIGUOUS_QUOTE_SPAN_CHARS) break;
+      const spanElements = supportedElementIdsForQuote(requirement, span.text);
+      if (spanElements.length > startElements.length) addCandidate(span);
+    }
   }
 
   return candidates;
 }
 
 function finalizedSourceQuote(requirement: RegSpRequirement, chunk: GradedEvidenceChunk) {
-  const ranked = candidateQuoteSpans(chunk)
+  const ranked = candidateQuoteSpans(requirement, chunk)
     .map((candidate) => finalQuoteCandidateScore(requirement, chunk, candidate.text))
     .filter((candidate) =>
       candidate.supportedElements.length > 0

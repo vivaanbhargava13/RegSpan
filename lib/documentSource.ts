@@ -13,13 +13,19 @@ export type EvidenceRole =
   | "requirement_reference"
   | "supporting_context";
 
-type DocumentSourceInput = {
+export type DocumentSourceInput = {
   filename?: string | null;
   documentType?: string | null;
   notes?: string | null;
   sectionPath?: string | null;
   contentPreview?: string | null;
   evidenceReason?: string | null;
+};
+
+export type ResolvedDocumentChunkProvenance = {
+  sourceType: DocumentSourceType;
+  evidenceRole: EvidenceRole;
+  source: "persisted" | "inferred";
 };
 
 function normalize(value: string | null | undefined) {
@@ -279,4 +285,64 @@ export function inferEvidenceRole(input: DocumentSourceInput): EvidenceRole {
   }
 
   return evidenceRoleForSourceType(sourceType);
+}
+
+function isDocumentSourceType(value: unknown): value is DocumentSourceType {
+  return value === "client_policy"
+    || value === "client_procedure"
+    || value === "client_standard"
+    || value === "vendor_contract"
+    || value === "regulatory_guidance"
+    || value === "control_framework"
+    || value === "sample_template"
+    || value === "unknown";
+}
+
+function isEvidenceRole(value: unknown): value is EvidenceRole {
+  return value === "organization_evidence"
+    || value === "requirement_reference"
+    || value === "supporting_context";
+}
+
+/**
+ * Resolves provenance only from metadata loaded from the server-controlled
+ * document_chunks table. The document/workspace identifiers and canonical
+ * source-type/role pairing prevent arbitrary document fields from changing a
+ * persisted regulatory or client classification during retrieval.
+ */
+export function resolvePersistedDocumentChunkProvenance({
+  metadata,
+  documentId,
+  workspaceId,
+  fallback,
+}: {
+  metadata: Record<string, unknown> | null | undefined;
+  documentId: string;
+  workspaceId: string;
+  fallback: DocumentSourceInput;
+}): ResolvedDocumentChunkProvenance {
+  const sourceType = metadata?.source_type;
+  const evidenceRole = metadata?.evidence_role;
+  const hasMatchingScope = metadata?.document_id === documentId
+    && metadata?.workspace_id === workspaceId;
+
+  if (
+    hasMatchingScope
+    && isDocumentSourceType(sourceType)
+    && isEvidenceRole(evidenceRole)
+    && evidenceRoleForSourceType(sourceType) === evidenceRole
+  ) {
+    return {
+      sourceType,
+      evidenceRole,
+      source: "persisted",
+    };
+  }
+
+  const inferredSourceType = inferDocumentSourceType(fallback);
+  return {
+    sourceType: inferredSourceType,
+    evidenceRole: inferEvidenceRole(fallback),
+    source: "inferred",
+  };
 }

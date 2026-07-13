@@ -359,6 +359,42 @@ function rawSpanForSentences(rawText: string, firstSentence: string, lastSentenc
   return span && rawText.includes(span) ? span : null;
 }
 
+// These bounds permit one ordinary policy list while keeping persisted excerpts reviewable.
+const MAX_CONTIGUOUS_QUOTE_SPAN_SENTENCES = 8;
+const MAX_CONTIGUOUS_QUOTE_SPAN_CHARS = 1_800;
+
+function boundedContiguousCoverageSpans(
+  input: RequirementEvidenceClassifierInput,
+  classification: Omit<RequirementEvidenceClassification, "classifier_provider">,
+  sentences: string[],
+) {
+  const candidates: string[] = [];
+  for (let startIndex = 0; startIndex < sentences.length; startIndex += 1) {
+    const startElements = quoteSupportedElementIds(input, classification, sentences[startIndex]);
+    if (startElements.length === 0) continue;
+
+    const finalIndex = Math.min(
+      sentences.length,
+      startIndex + MAX_CONTIGUOUS_QUOTE_SPAN_SENTENCES,
+    );
+    for (let endIndex = startIndex + 1; endIndex < finalIndex; endIndex += 1) {
+      const endElements = quoteSupportedElementIds(input, classification, sentences[endIndex]);
+      if (endElements.length === 0) continue;
+
+      const span = rawSpanForSentences(
+        input.chunkContent,
+        sentences[startIndex],
+        sentences[endIndex],
+      );
+      if (!span || span.length > MAX_CONTIGUOUS_QUOTE_SPAN_CHARS) break;
+
+      const spanElements = quoteSupportedElementIds(input, classification, span);
+      if (spanElements.length > startElements.length) candidates.push(span);
+    }
+  }
+  return candidates;
+}
+
 function completedSourceQuote(chunkContent: string, quote: string) {
   if (!chunkContent.includes(quote)) return quote;
   const quoteStart = chunkContent.indexOf(quote);
@@ -733,17 +769,20 @@ function extractSourceQuote(
   }
 
   const sentences = sourceSentences(input.chunkContent);
-  const candidates: string[] = [];
+  const candidates = new Set<string>();
   for (let index = 0; index < sentences.length; index += 1) {
-    candidates.push(sentences[index]);
+    candidates.add(sentences[index]);
     const next = sentences[index + 1];
     if (next) {
       const span = rawSpanForSentences(input.chunkContent, sentences[index], next);
-      if (span) candidates.push(span);
+      if (span) candidates.add(span);
     }
   }
+  for (const span of boundedContiguousCoverageSpans(input, classification, sentences)) {
+    candidates.add(span);
+  }
 
-  const ranked = candidates
+  const ranked = [...candidates]
     .map((candidate) => ({
       candidate,
       score: scoreQuoteCandidate(candidate, input, classification),

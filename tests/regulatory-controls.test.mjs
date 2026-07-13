@@ -207,6 +207,55 @@ test("hardcoded fallback framework still exposes the 11 curated controls", () =>
   );
 });
 
+test("written compliance record parent signals remain aligned with the canonical requirement", async () => {
+  const canonical = REG_SP_REQUIREMENTS.find(
+    (requirement) => requirement.id === "written_compliance_records",
+  );
+  assert.ok(canonical);
+
+  const mapped = regulatoryControlToRegSpRequirement(regulatoryControl({
+    controlKey: "written_compliance_records",
+    metadata: {
+      directSignals: canonical.directSignals,
+    },
+    elements: [
+      {
+        id: "records-scope",
+        elementKey: "compliance_record_scope",
+        label: "Requires written records documenting compliance",
+        description: "Records document safeguards and disposal compliance.",
+        required: true,
+        evidenceQuestion: null,
+        missingIfAbsent: true,
+        displayOrder: 1,
+        metadata: {
+          signals: [
+            "written records documenting compliance",
+            "records documenting compliance",
+            "records demonstrating implementation",
+            "records documenting implementation",
+            "maintain written records",
+            "make and maintain written records",
+          ],
+        },
+      },
+    ],
+  }));
+
+  assert.deepEqual(mapped.directSignals, canonical.directSignals);
+  assert.ok(mapped.coverageElements[0].signals.includes("records demonstrating implementation"));
+
+  const migration = await readFile(
+    "supabase/migrations/023_align_written_compliance_record_signals.sql",
+    "utf8",
+  );
+  assert.match(migration, /023_align_written_compliance_record_signals/);
+  assert.match(migration, /control_key = 'written_compliance_records'/);
+  for (const signal of canonical.directSignals) {
+    assert.match(migration, new RegExp(signal.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+});
+
 test("regulatory chunks cannot satisfy client compliance findings", () => {
   const requirement = regulatoryControlToRegSpRequirement(regulatoryControl({
     elements: [

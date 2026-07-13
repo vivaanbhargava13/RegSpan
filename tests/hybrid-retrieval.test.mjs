@@ -72,6 +72,8 @@ test("semantic retrieval path remains intact beside hybrid retrieval", async () 
   assert.match(retrieval, /match_document_chunks_v1/);
   assert.match(hybrid, /export async function retrieveRequirementHybridChunks/);
   assert.match(hybrid, /retrieveRelevantChunks/);
+  assert.match(retrieval, /resolvePersistedDocumentChunkProvenance/);
+  assert.match(hybrid, /resolvePersistedDocumentChunkProvenance/);
   assert.match(route, /retrieveRequirementHybridChunks/);
 });
 

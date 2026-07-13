@@ -2,8 +2,7 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  inferEvidenceRole,
-  inferDocumentSourceType,
+  resolvePersistedDocumentChunkProvenance,
 } from "@/lib/documentSource";
 import { EmbeddingProcessingError, type EmbeddingProvider } from "@/lib/embeddings";
 import {
@@ -173,21 +172,18 @@ async function hydrateKeywordCandidates({
     const embeddingInput = typeof metadata.embedding_input === "string"
       ? metadata.embedding_input
       : null;
-    const sourceType = inferDocumentSourceType({
-      filename: document?.filename ?? null,
-      documentType: document?.documentType,
-      notes: document?.notes,
-      sectionPath: row.section_path,
-      contentPreview: row.content,
-      evidenceReason,
-    });
-    const evidenceRole = inferEvidenceRole({
-      filename: document?.filename ?? null,
-      documentType: document?.documentType,
-      notes: document?.notes,
-      sectionPath: row.section_path,
-      contentPreview: row.content,
-      evidenceReason,
+    const provenance = resolvePersistedDocumentChunkProvenance({
+      metadata,
+      documentId: row.document_id,
+      workspaceId,
+      fallback: {
+        filename: document?.filename ?? null,
+        documentType: document?.documentType,
+        notes: document?.notes,
+        sectionPath: row.section_path,
+        contentPreview: row.content,
+        evidenceReason,
+      },
     });
 
     return {
@@ -202,8 +198,8 @@ async function hydrateKeywordCandidates({
       similarity: 0,
       evidence_reason: evidenceReason,
       embedding_input: embeddingInput,
-      source_type: sourceType,
-      evidence_role: evidenceRole,
+      source_type: provenance.sourceType,
+      evidence_role: provenance.evidenceRole,
       rerank_score: null,
       rerank_reason: null,
     };

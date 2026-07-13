@@ -8,8 +8,7 @@ import {
 } from "@/lib/embeddings";
 import type { WorkspaceExternalAiProcessingPolicy } from "@/lib/aiProcessingPolicy";
 import {
-  inferEvidenceRole,
-  inferDocumentSourceType,
+  resolvePersistedDocumentChunkProvenance,
   type DocumentSourceType,
   type EvidenceRole,
 } from "@/lib/documentSource";
@@ -172,21 +171,18 @@ export async function retrieveRelevantChunks(input: RetrieveRelevantChunksInput)
     const embeddingInput = typeof metadata.embedding_input === "string"
       ? metadata.embedding_input
       : null;
-    const sourceType = inferDocumentSourceType({
-      filename: document?.filename ?? result.filename,
-      documentType: document?.documentType,
-      notes: document?.notes,
-      sectionPath: result.section_path,
-      contentPreview: result.content_preview,
-      evidenceReason,
-    });
-    const evidenceRole = inferEvidenceRole({
-      filename: document?.filename ?? result.filename,
-      documentType: document?.documentType,
-      notes: document?.notes,
-      sectionPath: result.section_path,
-      contentPreview: result.content_preview,
-      evidenceReason,
+    const provenance = resolvePersistedDocumentChunkProvenance({
+      metadata,
+      documentId: result.document_id,
+      workspaceId,
+      fallback: {
+        filename: document?.filename ?? result.filename,
+        documentType: document?.documentType,
+        notes: document?.notes,
+        sectionPath: result.section_path,
+        contentPreview: result.content_preview,
+        evidenceReason,
+      },
     });
 
     return {
@@ -194,8 +190,8 @@ export async function retrieveRelevantChunks(input: RetrieveRelevantChunksInput)
       rank: index + 1,
       evidence_reason: evidenceReason,
       embedding_input: embeddingInput,
-      source_type: sourceType,
-      evidence_role: evidenceRole,
+      source_type: provenance.sourceType,
+      evidence_role: provenance.evidenceRole,
       rerank_score: null,
       rerank_reason: null,
     };

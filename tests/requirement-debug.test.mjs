@@ -150,8 +150,7 @@ test("requirement debug output includes source type and evidence role", async ()
 
   assert.match(retrieval, /source_type: DocumentSourceType/);
   assert.match(retrieval, /evidence_role: EvidenceRole/);
-  assert.match(retrieval, /inferDocumentSourceType/);
-  assert.match(retrieval, /inferEvidenceRole/);
+  assert.match(retrieval, /resolvePersistedDocumentChunkProvenance/);
   assert.match(client, /source_type: DocumentSourceType/);
   assert.match(client, /evidence_role: EvidenceRole/);
   assert.match(client, /formatSourceType/);

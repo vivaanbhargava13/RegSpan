@@ -2513,6 +2513,98 @@ test("production path recognizes operative compliance-program records but reject
   );
 });
 
+test("production path retains a bounded contiguous same-chunk records span for complete coverage", async () => {
+  const recordsRequirement = {
+    ...requirement,
+    id: "written_compliance_records",
+    title: "Written compliance records",
+    coverageElements: [
+      { id: "compliance_record_scope", label: "Requires records documenting compliance", requiredForCovered: true, signals: ["records demonstrating implementation"] },
+      { id: "notice_determination_records", label: "Documents notices", requiredForCovered: true, signals: ["customer notices"] },
+      { id: "retention_accessibility", label: "Defines retention", requiredForCovered: true, signals: ["easily accessible place"] },
+    ],
+    requiredElementsForCovered: ["compliance_record_scope", "notice_determination_records", "retention_accessibility"],
+  };
+  const fullSection = [
+    "Program Documentation",
+    "Compliance maintains true, accurate, and current records demonstrating implementation of the safeguards and disposal program.",
+    "Records are indexed by incident, requirement, and responsible owner and are available for examination.",
+    "• current and prior written safeguards and disposal policies;",
+    "• notification investigations, determinations, supporting facts, and the basis for any no-notice decision;",
+    "• copies of customer notices and delivery records, including notices sent by service providers;",
+    "These records are preserved for three years in an easily accessible place.",
+  ].join("\n");
+  const narrowQuote = [
+    "• notification investigations, determinations, supporting facts, and the basis for any no-notice decision;",
+    "• copies of customer notices and delivery records, including notices sent by service providers;",
+    "These records are preserved for three years in an easily accessible place.",
+  ].join("\n");
+
+  const finding = await productionPathFinding(recordsRequirement, [
+    chunk({ content_preview: fullSection, section_path: "Program documentation" }),
+  ], [
+    classifierClassification({
+      relationship: "partially_supports",
+      requirement_supported: false,
+      covered_elements: ["notice_determination_records", "retention_accessibility"],
+      missing_elements: ["compliance_record_scope"],
+      supporting_quote: narrowQuote,
+    }),
+  ]);
+
+  const [evidence] = finding.evidence;
+  assert.equal(finding.status, "covered");
+  assert.equal(evidence.relationship, "supports");
+  assert.match(evidence.quote, /^Compliance maintains true, accurate, and current records demonstrating implementation/i);
+  assert.match(evidence.quote, /copies of customer notices/i);
+  assert.match(evidence.quote, /easily accessible place/i);
+  assert.ok(evidence.quote.length <= 1_800);
+  assert.deepEqual(
+    canonicalElementIdsForFinalPositiveQuote(recordsRequirement, evidence.quote),
+    ["compliance_record_scope", "notice_determination_records", "retention_accessibility"],
+  );
+  assert.match(evidence.reason, /requires written compliance records/i);
+  assert.doesNotMatch(evidence.reason, /additional required elements are not proven/i);
+  assert.match(finding.remediation, /^Keep this procedure current/i);
+});
+
+test("same-chunk curation does not merge non-contiguous compliance-record passages", async () => {
+  const recordsRequirement = {
+    ...requirement,
+    id: "written_compliance_records",
+    title: "Written compliance records",
+    coverageElements: [
+      { id: "compliance_record_scope", label: "Requires records documenting compliance", requiredForCovered: true, signals: ["records demonstrating implementation"] },
+      { id: "notice_determination_records", label: "Documents notices", requiredForCovered: true, signals: ["customer notices"] },
+      { id: "retention_accessibility", label: "Defines retention", requiredForCovered: true, signals: ["easily accessible place"] },
+    ],
+    requiredElementsForCovered: ["compliance_record_scope", "notice_determination_records", "retention_accessibility"],
+  };
+  const separatedSection = [
+    "Compliance maintains records demonstrating implementation of the safeguards and disposal program.",
+    ...Array.from({ length: 8 }, (_, index) => `General background statement ${index + 1}.`),
+    "Copies of customer notices are retained in an easily accessible place.",
+  ].join(" ");
+  const finding = await productionPathFinding(recordsRequirement, [
+    chunk({ content_preview: separatedSection, section_path: "Program documentation" }),
+  ], [
+    classifierClassification({
+      relationship: "partially_supports",
+      requirement_supported: false,
+      covered_elements: ["notice_determination_records", "retention_accessibility"],
+      missing_elements: ["compliance_record_scope"],
+      supporting_quote: "Copies of customer notices are retained in an easily accessible place.",
+    }),
+  ]);
+
+  assert.equal(finding.status, "partial");
+  assert.doesNotMatch(finding.evidence[0].quote, /records demonstrating implementation/i);
+  assert.deepEqual(
+    canonicalElementIdsForFinalPositiveQuote(recordsRequirement, finding.evidence[0].quote),
+    ["notice_determination_records", "retention_accessibility"],
+  );
+});
+
 test("production path recognizes incident material preservation grammar without accepting generic retention", async () => {
   const preservationRequirement = {
     ...requirement,

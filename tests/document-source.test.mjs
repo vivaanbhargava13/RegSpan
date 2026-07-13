@@ -146,6 +146,121 @@ test("client policy metadata is not overridden by incidental public-reference te
   assert.equal(evidenceRoleForSourceType(sourceType), "organization_evidence");
 });
 
+test("server-persisted client provenance remains authoritative during retrieval hydration", async () => {
+  const { resolvePersistedDocumentChunkProvenance } = await loadTsModule("lib/documentSource.ts");
+
+  const clientPolicy = resolvePersistedDocumentChunkProvenance({
+    metadata: {
+      document_id: "document-a",
+      workspace_id: "workspace-a",
+      source_type: "client_policy",
+      evidence_role: "organization_evidence",
+    },
+    documentId: "document-a",
+    workspaceId: "workspace-a",
+    fallback: {
+      filename: "Customer Notice Policy.pdf",
+      documentType: "Policy",
+      contentPreview: "The notice includes FTC and usa.gov identity-theft guidance.",
+    },
+  });
+  const clientProcedure = resolvePersistedDocumentChunkProvenance({
+    metadata: {
+      document_id: "document-b",
+      workspace_id: "workspace-a",
+      source_type: "client_procedure",
+      evidence_role: "organization_evidence",
+    },
+    documentId: "document-b",
+    workspaceId: "workspace-a",
+    fallback: {
+      filename: "Customer Notice Procedure.pdf",
+      documentType: "Procedure",
+      contentPreview: "Follow FTC and usa.gov guidance when preparing customer notices.",
+    },
+  });
+
+  assert.deepEqual(clientPolicy, {
+    sourceType: "client_policy",
+    evidenceRole: "organization_evidence",
+    source: "persisted",
+  });
+  assert.deepEqual(clientProcedure, {
+    sourceType: "client_procedure",
+    evidenceRole: "organization_evidence",
+    source: "persisted",
+  });
+});
+
+test("server-persisted regulatory provenance remains excluded from client evidence", async () => {
+  const { resolvePersistedDocumentChunkProvenance } = await loadTsModule("lib/documentSource.ts");
+  const provenance = resolvePersistedDocumentChunkProvenance({
+    metadata: {
+      document_id: "document-a",
+      workspace_id: "workspace-a",
+      source_type: "regulatory_guidance",
+      evidence_role: "requirement_reference",
+    },
+    documentId: "document-a",
+    workspaceId: "workspace-a",
+    fallback: {
+      filename: "Customer Incident Response Policy.pdf",
+      documentType: "Source type: client policy",
+      contentPreview: "FTC guidance describes customer notification content.",
+    },
+  });
+
+  assert.deepEqual(provenance, {
+    sourceType: "regulatory_guidance",
+    evidenceRole: "requirement_reference",
+    source: "persisted",
+  });
+});
+
+test("invalid or unscoped provenance falls back to server-side inference", async () => {
+  const { resolvePersistedDocumentChunkProvenance } = await loadTsModule("lib/documentSource.ts");
+  const fallback = {
+    filename: "FTC Safeguards Rule compliance guide.pdf",
+    documentType: "Source type: client policy",
+    contentPreview: "FTC guidance for covered institutions.",
+  };
+
+  const malformed = resolvePersistedDocumentChunkProvenance({
+    metadata: {
+      document_id: "document-a",
+      workspace_id: "workspace-a",
+      source_type: "regulatory_guidance",
+      evidence_role: "organization_evidence",
+    },
+    documentId: "document-a",
+    workspaceId: "workspace-a",
+    fallback,
+  });
+  const unscoped = resolvePersistedDocumentChunkProvenance({
+    metadata: {
+      document_id: "another-document",
+      workspace_id: "workspace-a",
+      source_type: "client_policy",
+      evidence_role: "organization_evidence",
+    },
+    documentId: "document-a",
+    workspaceId: "workspace-a",
+    fallback,
+  });
+  const missing = resolvePersistedDocumentChunkProvenance({
+    metadata: null,
+    documentId: "document-a",
+    workspaceId: "workspace-a",
+    fallback,
+  });
+
+  for (const provenance of [malformed, unscoped, missing]) {
+    assert.equal(provenance.source, "inferred");
+    assert.equal(provenance.sourceType, "regulatory_guidance");
+    assert.equal(provenance.evidenceRole, "requirement_reference");
+  }
+});
+
 test("explicit document text metadata classifies client and vendor documents", async () => {
   const {
     inferDocumentSourceType,
