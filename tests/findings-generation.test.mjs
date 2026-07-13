@@ -969,6 +969,45 @@ test("regulator and law-enforcement partial evidence yields partial instead of m
   assert.equal(finding.evidence[0].relationship, "partially_supports");
 });
 
+test("production path retains an incident-specific Legal delay procedure as partial coordination evidence", async () => {
+  const [{ REG_SP_REQUIREMENTS }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+  ]);
+  const regulatorRequirement = REG_SP_REQUIREMENTS.find((item) => item.id === "regulator_law_enforcement_notification");
+  assert.ok(regulatorRequirement);
+  const content = [
+    "Legal coordinates with regulators and law-enforcement agencies during significant incidents.",
+    "Customer communications may be postponed when law enforcement requests a delay.",
+    "Legal records the request and advises management when communications may resume.",
+  ].join(" ");
+
+  const finding = await productionPathFinding(regulatorRequirement, [
+    chunk({
+      content_preview: content,
+      section_path: "National security and public safety delay",
+    }),
+  ], [
+    classifierClassification({
+      relationship: "partially_supports",
+      requirement_supported: false,
+      covered_elements: ["legal_compliance_coordination"],
+      missing_elements: ["external_notification_decisioning"],
+      supporting_quote: content,
+      reason: "Legal coordinates the authority-requested delay and records the request.",
+    }),
+  ]);
+
+  assert.equal(finding.status, "partial");
+  assert.equal(finding.evidence[0].relationship, "partially_supports");
+  assert.match(finding.evidence[0].quote, /Legal coordinates with regulators/i);
+  assert.deepEqual(
+    canonicalElementIdsForFinalPositiveQuote(regulatorRequirement, finding.evidence[0].quote),
+    ["legal_compliance_coordination"],
+  );
+  assert.match(finding.rationale, /who decides whether external notification is required/i);
+  assert.match(finding.remediation, /Attorney General and Commission procedure/i);
+});
+
 test("incident assessment can be covered by a broader direct quote spanning assessment, systems, and containment", () => {
   const assessmentRequirement = {
     ...requirement,

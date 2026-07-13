@@ -1550,12 +1550,17 @@ function needsReviewDetailForRequirement(requirement: RegSpRequirement, missingR
 }
 
 function partialRemediationForRequirement(requirement: RegSpRequirement, missingRequired: string[]) {
+  const requirementId = copyRequirementId(requirement);
+  if (requirementId === "regulator_law_enforcement_notification") {
+    return "The reviewed documents show some legal or compliance coordination, but they do not clearly define who decides whether external notification is required after an incident. Define that decision process and, for customer-notice delays, the Attorney General and Commission procedure, written determination, national-security or public-safety standard, timing, extensions, and resumption steps.";
+  }
+
   const missing = renderedElementList(requirement, missingRequired, "missing");
   if (missing) {
     return `The reviewed documents mention this area, but they do not clearly define ${missing}. Add or update the relevant policy or procedure so those missing details are explicit.`;
   }
 
-  switch (copyRequirementId(requirement)) {
+  switch (requirementId) {
     case "customer_notification_content":
       return "The reviewed documents mention this area, but they do not clearly define notice-content requirements. Add requirements covering what happened, what information was involved, what the firm is doing, how affected individuals can get help, protective steps, and required contact information.";
     case "customer_notification_unauthorized_access":

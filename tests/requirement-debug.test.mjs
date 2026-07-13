@@ -214,6 +214,52 @@ test("post-processing expands a scoped records quote through its final retention
   assert.ok(((result.supporting_quote ?? "").match(/[^.!?]+[.!?]+/g) ?? []).length <= 8);
 });
 
+test("post-processing preserves an incident-specific Legal delay procedure as partial evidence", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { postProcessOpenAiClassification }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementEvidenceClassifier.ts"),
+  ]);
+  const requirement = REG_SP_REQUIREMENTS.find((item) => item.id === "regulator_law_enforcement_notification");
+  assert.ok(requirement);
+  const content = [
+    "Legal coordinates with regulators and law-enforcement agencies during significant incidents.",
+    "Customer communications may be postponed when law enforcement requests a delay.",
+    "Legal records the request and advises management when communications may resume.",
+  ].join(" ");
+
+  const result = postProcessOpenAiClassification({
+    relationship: "partially_supports",
+    confidence: "high",
+    requirement_supported: false,
+    control_absent_or_out_of_scope: false,
+    covered_elements: ["legal_compliance_coordination"],
+    missing_elements: ["external_notification_decisioning"],
+    vague_elements: [],
+    reason: "The procedure coordinates an authority-requested delay through Legal.",
+    supporting_quote: content,
+  }, {
+    requirement,
+    evaluationGuidance: "Test guidance.",
+    chunkContent: content,
+    chunkMetadata: {
+      filename: "Incident response procedure.pdf",
+      sectionPath: "External authority coordination",
+      pageStart: 1,
+      pageEnd: 1,
+      chunkIndex: 0,
+      sourceType: "client_policy",
+      evidenceRole: "organization_evidence",
+      evidenceReason: "substantive policy evidence",
+    },
+  });
+
+  assert.equal(result.relationship, "partially_supports");
+  assert.deepEqual(result.covered_elements, ["legal_compliance_coordination"]);
+  assert.ok(result.missing_elements.includes("external_notification_decisioning"));
+  assert.match(result.supporting_quote ?? "", /Legal coordinates with regulators/i);
+  assert.match(result.supporting_quote ?? "", /communications may be postponed/i);
+});
+
 test("requirement evidence classifier exposes prompt and provider abstraction", async () => {
   const classifier = await readFile("lib/requirementEvidenceClassifier.ts", "utf8");
   const envExample = await readFile(".env.example", "utf8");

@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { aggregateFindingForRequirement } from "../lib/findingsAggregation.ts";
+import {
+  aggregateFindingForRequirement,
+  canonicalElementIdsForFinalPositiveQuote,
+} from "../lib/findingsAggregation.ts";
 import { requirementSpecificElementMatch } from "../lib/operativeEvidenceRules.mjs";
 import { getRegSpRequirement } from "../lib/regSpRequirements.ts";
 
@@ -242,7 +245,44 @@ test("contact authority alone does not cover external-notification coordination"
   const text = "Only senior management may contact regulators or law-enforcement authorities. Employees should refer external inquiries to Legal.";
 
   assert.equal(requirementSpecificElementMatch(definition.id, "external_notification_decisioning", text), false);
+  assert.equal(requirementSpecificElementMatch(definition.id, "legal_compliance_coordination", text), false);
   assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(definition, text)]).status, "missing");
+});
+
+test("incident-specific Legal delay and resumption coordination remains partial", () => {
+  const definition = requirement("regulator_law_enforcement_notification");
+  const text = [
+    "Legal coordinates with regulators and law-enforcement agencies during significant incidents.",
+    "Customer communications may be postponed when law enforcement requests a delay.",
+    "Legal records the request and advises management when communications may resume.",
+  ].join(" ");
+  const finding = aggregateFindingForRequirement(definition, [gradedChunk(definition, text)]);
+
+  assert.equal(requirementSpecificElementMatch(definition.id, "legal_compliance_coordination", text), true);
+  assert.equal(requirementSpecificElementMatch(definition.id, "external_notification_decisioning", text), false);
+  assert.equal(finding.status, "partial");
+  assert.equal(finding.evidence[0].relationship, "partially_supports");
+  assert.match(finding.evidence[0].quote, /Legal coordinates with regulators/i);
+  assert.match(finding.evidence[0].quote, /communications may be postponed/i);
+  assert.deepEqual(
+    canonicalElementIdsForFinalPositiveQuote(definition, finding.evidence[0].quote),
+    ["legal_compliance_coordination"],
+  );
+  assert.match(finding.rationale, /who decides whether external notification is required/i);
+  assert.match(finding.remediation, /Attorney General and Commission procedure/i);
+});
+
+test("generic regulator contact and delay language do not establish legal coordination", () => {
+  const definition = requirement("regulator_law_enforcement_notification");
+  for (const text of [
+    "Legal serves as the regulatory contact.",
+    "Compliance handles regulator communications.",
+    "Customer communications may be delayed when appropriate.",
+  ]) {
+    assert.equal(requirementSpecificElementMatch(definition.id, "legal_compliance_coordination", text), false);
+    assert.equal(requirementSpecificElementMatch(definition.id, "external_notification_decisioning", text), false);
+    assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(definition, text)]).status, "missing");
+  }
 });
 
 test("incident-specific external-notification decisioning and legal coordination remain covered", () => {
