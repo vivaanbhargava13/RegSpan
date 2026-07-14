@@ -593,10 +593,6 @@ function evidencePreservationElementMatches(text: string) {
   return (hasSpecificIncidentMaterial && hasPreservationAction) || hasDedicatedEvidencePreservation;
 }
 
-function hasDisposalAlignedLanguage(text: string) {
-  return /\b(?:dispos(?:al|e|es|ed|ing)|destruct(?:ion)?|destroy(?:s|ed|ing)?|shredd?(?:ing|ed|s)?|wip(?:e|es|ed|ing)|saniti[zs](?:e|es|ed|ing|ation)|media disposal|backup disposal|device return|disposal attestation|records disposal)\b/.test(text);
-}
-
 function hasServiceProviderActor(text: string) {
   return /\b(?:service[- ]providers?|vendors?|suppliers?|third[- ]part(?:y|ies))\b/.test(text);
 }
@@ -646,18 +642,6 @@ function elementSignalMatches(requirement: RegSpRequirement, elementId: string, 
   const signals = elementSignals(requirement, elementId);
   if (copyRequirementId(requirement) === "evidence_log_preservation" && elementId === "incident_materials") {
     return evidencePreservationElementMatches(normalizedText);
-  }
-
-  if (copyRequirementId(requirement) === "disposal_consumer_customer_information" && !hasDisposalAlignedLanguage(normalizedText)) {
-    return false;
-  }
-
-  if (copyRequirementId(requirement) === "disposal_consumer_customer_information" && elementId === "secure_disposal_method") {
-    return signals.some((signal) => {
-      const normalizedSignal = normalize(signal);
-      if (!normalizedSignal || normalizedSignal === "disposal") return false;
-      return normalizedText.includes(normalizedSignal);
-    });
   }
 
   return signals.some((signal) => {

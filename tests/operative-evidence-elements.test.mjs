@@ -154,6 +154,12 @@ test("incident evidence coverage requires a preservation process for covered", (
   assert.doesNotMatch(finding.remediation, /preserving relevant logs or evidence/i);
   assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(definition, partial)]).status, "partial");
   assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(definition, ticketPartial)]).status, "partial");
+  const pinePartial = "The response coordinator records major actions and decisions in the incident ticket and attaches available screenshots or system reports. The incident owner chooses the attachments needed to explain the response and resolution.";
+  const pineFinding = aggregateFindingForRequirement(definition, [gradedChunk(definition, pinePartial)]);
+  assert.equal(requirementSpecificElementMatch(definition.id, "incident_materials", pinePartial), true);
+  assert.equal(requirementSpecificElementMatch(definition.id, "preservation_process", pinePartial), false);
+  assert.equal(pineFinding.status, "partial");
+  assert.match(pineFinding.remediation, /defined process for preserving relevant logs or evidence/i);
   assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(
     definition,
     "Technology closes support tickets after reported problems are resolved. Employees should keep relevant emails until the issue is complete.",
@@ -204,6 +210,24 @@ test("an incomplete mandatory customer breach-notification obligation remains pa
     requirementSpecificElementMatch(definition.id, "unauthorized_access_or_use", text),
     true,
   );
+});
+
+test("incident-specific customer-notification evaluation remains partial without a complete trigger standard", () => {
+  const definition = requirement("customer_notification_unauthorized_access");
+  const text = [
+    "Legal evaluates customer notification after unauthorized access to sensitive customer information.",
+    "The goal is to send notice as soon as practical, with 30 days used as an internal target.",
+    "Legal may extend the target when the investigation remains active or material facts are still developing.",
+  ].join(" ");
+  const finding = aggregateFindingForRequirement(definition, [gradedChunk(definition, text)]);
+
+  assert.equal(requirementSpecificElementMatch(definition.id, "unauthorized_access_or_use", text), true);
+  assert.equal(requirementSpecificElementMatch(definition.id, "notice_timing", text), true);
+  assert.equal(requirementSpecificElementMatch(definition.id, "notice_trigger_standard", text), false);
+  assert.equal(finding.status, "partial");
+  assert.match(finding.evidence[0].quote, /Legal evaluates customer notification after unauthorized access/i);
+  assert.match(finding.remediation, /decision standard for when notice is required/i);
+  assert.doesNotMatch(finding.remediation, /required notice timing/i);
 });
 
 test("a notice presumption with a customer-information trigger and timing remains covered", () => {
@@ -261,12 +285,105 @@ test("firm-enforced provider oversight remains operative without treating intern
   })]).status, "covered");
 });
 
+test("substantive but incomplete provider oversight procedures remain partial", () => {
+  const definition = requirement("vendor_incident_handling");
+  const fixtures = [
+    {
+      text: [
+        "The firm obtains security questionnaires and assurance reports from selected vendors and requires vendors to cooperate with investigations.",
+        "Vendors must report incidents promptly.",
+        "Business owners escalate provider notices to Compliance and Technology for review and follow-up.",
+      ].join(" "),
+      elements: ["service_provider_scope", "notice_to_firm"],
+    },
+    {
+      text: [
+        "Critical vendors are reviewed before engagement and periodically thereafter.",
+        "Contracts should address confidentiality, security controls, and prompt incident reporting.",
+        "The policy asks providers to report material incidents within five business days after confirming that customer data was affected.",
+      ].join(" "),
+      elements: ["service_provider_scope"],
+    },
+    {
+      text: [
+        "Business owners monitor important service providers and escalate security concerns to Compliance.",
+        "Written agreements may include breach-notification terms.",
+        "Oversight activities are documented in the vendor file and reviewed during contract renewal.",
+      ].join(" "),
+      elements: ["service_provider_scope"],
+    },
+  ];
+
+  for (const fixture of fixtures) {
+    const finding = aggregateFindingForRequirement(definition, [gradedChunk(definition, fixture.text)]);
+    assert.equal(finding.status, "partial");
+    for (const elementId of fixture.elements) {
+      assert.equal(requirementSpecificElementMatch(definition.id, elementId, fixture.text), true);
+    }
+    assert.equal(requirementSpecificElementMatch(definition.id, "provider_safeguards", fixture.text), false);
+  }
+
+  const discretionaryOnly = "Vendors should be reviewed before engagement, and vendor agreements may include breach-notification terms and should address security controls.";
+  assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(definition, discretionaryOnly)]).status, "missing");
+});
+
+test("monitoring vendor notices does not establish service-provider oversight", () => {
+  const definition = requirement("vendor_incident_handling");
+  const detectionInputs = "Detect: monitor security alerts, access anomalies, customer complaints, lost devices, vendor notices, and misuse reports.";
+  const expectationAndFollowUp = "Vendors are expected to comply. Procurement follows up with vendors after an issue is reported.";
+
+  for (const text of [detectionInputs, expectationAndFollowUp]) {
+    assert.equal(requirementSpecificElementMatch(definition.id, "service_provider_scope", text), false);
+    assert.equal(requirementSpecificElementMatch(definition.id, "provider_safeguards", text), false);
+    assert.equal(requirementSpecificElementMatch(definition.id, "notice_to_firm", text), false);
+    assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(definition, text)]).status, "missing");
+  }
+});
+
+test("canonical disposal matching rejects incident outcomes while preserving scoped disposal boundaries", () => {
+  const definition = requirement("disposal_consumer_customer_information");
+  const covered = "The firm securely destroys customer information records through cross-cut shredding and approved media sanitization.";
+  const partial = "The firm must dispose of customer information after the retention period expires.";
+  const incidentImpact = "The assessment identifies whether data was viewed, copied, altered, transmitted, or destroyed.";
+  const destroyedDuringIncident = "Customer information was destroyed during the ransomware incident.";
+  const obsoleteFiles = "Departments may delete obsolete customer files when convenient.";
+
+  assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(definition, covered, {
+    grade: "direct",
+    evidence_relationship: "supports",
+    requirement_supported: true,
+  })]).status, "covered");
+  assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(definition, partial)]).status, "partial");
+  for (const text of [incidentImpact, destroyedDuringIncident, obsoleteFiles]) {
+    assert.equal(requirementSpecificElementMatch(definition.id, "disposal_scope", text), false);
+    assert.equal(requirementSpecificElementMatch(definition.id, "secure_disposal_method", text), false);
+    assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(definition, text)]).status, "missing");
+  }
+});
+
 test("generic operational retention does not establish written compliance records", () => {
   const definition = requirement("written_compliance_records");
   const text = "Other operational records are retained according to department practice.";
 
   assert.equal(requirementSpecificElementMatch(definition.id, "retention_accessibility", text), false);
   assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(definition, text)]).status, "missing");
+});
+
+test("scoped policy, incident, and vendor records remain partial when complete coverage is absent", () => {
+  const definition = requirement("written_compliance_records");
+  const summit = "Compliance maintains the current policy, annual reviews, and records of significant incidents. Records are kept under the corporate retention schedule.";
+  const stonehaven = "Incident and vendor records must be retained for a minimum of three years unless Legal directs otherwise. The records are stored in the compliance repository and may be retained longer when the matter remains open.";
+
+  const summitFinding = aggregateFindingForRequirement(definition, [gradedChunk(definition, summit)]);
+  assert.equal(requirementSpecificElementMatch(definition.id, "compliance_record_scope", summit), true);
+  assert.equal(requirementSpecificElementMatch(definition.id, "retention_accessibility", summit), false);
+  assert.equal(summitFinding.status, "partial");
+
+  const stonehavenFinding = aggregateFindingForRequirement(definition, [gradedChunk(definition, stonehaven)]);
+  assert.equal(requirementSpecificElementMatch(definition.id, "compliance_record_scope", stonehaven), true);
+  assert.equal(requirementSpecificElementMatch(definition.id, "retention_accessibility", stonehaven), true);
+  assert.equal(stonehavenFinding.status, "partial");
+  assert.match(stonehavenFinding.remediation, /incident or notification determinations and notice records/i);
 });
 
 test("records documenting safeguards and disposal implementation remain covered", () => {
@@ -417,6 +534,19 @@ test("generic regulator contact and delay language do not establish legal coordi
     assert.equal(requirementSpecificElementMatch(definition.id, "external_notification_decisioning", text), false);
     assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(definition, text)]).status, "missing");
   }
+});
+
+test("records inventories cannot combine separate coordination signals into an operative procedure", () => {
+  const definition = requirement("regulator_law_enforcement_notification");
+  const inventory = [
+    "Books and records include notification investigations, determinations, supporting facts, and the basis for any no-notice decision.",
+    "The file also includes written documentation from the Attorney General concerning any delay in notice.",
+    "These records are preserved for five years.",
+  ].join("\n• ");
+
+  assert.equal(requirementSpecificElementMatch(definition.id, "external_notification_decisioning", inventory), false);
+  assert.equal(requirementSpecificElementMatch(definition.id, "legal_compliance_coordination", inventory), false);
+  assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(definition, inventory)]).status, "missing");
 });
 
 test("incident-specific external-notification decisioning and legal coordination remain covered", () => {

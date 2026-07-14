@@ -266,6 +266,120 @@ test("post-processing and final aggregation downgrade incomplete notice content 
   assert.match(finding.remediation, /written notice and delivery/i);
 });
 
+test("production path preserves grounded partial procedures without promoting them to covered", async () => {
+  const notificationRequirement = {
+    ...requirement,
+    id: "customer_notification_unauthorized_access",
+    title: "Customer notification after unauthorized access",
+    coverageElements: [
+      { id: "unauthorized_access_or_use", label: "Defines unauthorized access to customer information", requiredForCovered: true, signals: ["unauthorized access", "customer information"] },
+      { id: "notice_trigger_standard", label: "Defines the notice decision standard", requiredForCovered: true, signals: ["substantial harm"] },
+      { id: "notice_timing", label: "Defines customer-notice timing", requiredForCovered: true, signals: ["30 days"] },
+    ],
+    requiredElementsForCovered: ["unauthorized_access_or_use", "notice_trigger_standard", "notice_timing"],
+  };
+  const providerRequirement = {
+    ...requirement,
+    id: "vendor_incident_handling",
+    title: "Service provider incident oversight and notice",
+    coverageElements: [
+      { id: "service_provider_scope", label: "Requires provider due diligence and monitoring", requiredForCovered: true, signals: ["vendor review"] },
+      { id: "provider_safeguards", label: "Requires provider safeguards", requiredForCovered: true, signals: ["protect customer information"] },
+      { id: "notice_to_firm", label: "Requires provider notice", requiredForCovered: true, signals: ["notify the firm"] },
+    ],
+    requiredElementsForCovered: ["service_provider_scope", "provider_safeguards", "notice_to_firm"],
+  };
+  const recordsRequirement = {
+    ...requirement,
+    id: "written_compliance_records",
+    title: "Written compliance records",
+    coverageElements: [
+      { id: "compliance_record_scope", label: "Requires written compliance records", requiredForCovered: true, signals: ["compliance maintains records"] },
+      { id: "notice_determination_records", label: "Documents notice determinations", requiredForCovered: true, signals: ["notice determinations"] },
+      { id: "retention_accessibility", label: "Defines retention or accessible storage", requiredForCovered: true, signals: ["three years"] },
+    ],
+    requiredElementsForCovered: ["compliance_record_scope", "notice_determination_records", "retention_accessibility"],
+  };
+  const evidenceRequirement = {
+    ...requirement,
+    id: "incident_evidence_log_preservation",
+    title: "Incident evidence and log preservation",
+    coverageElements: [
+      { id: "incident_materials", label: "Captures incident materials", requiredForCovered: true, signals: ["system reports"] },
+      { id: "preservation_process", label: "Defines a preservation process", requiredForCovered: true, signals: ["legal hold"] },
+    ],
+    requiredElementsForCovered: ["incident_materials", "preservation_process"],
+  };
+  const scenarios = [
+    {
+      requirement: notificationRequirement,
+      content: "Legal evaluates customer notification after unauthorized access to sensitive customer information. The goal is to send notice as soon as practical, with 30 days used as an internal target. Legal may extend the target when the investigation remains active or material facts are still developing.",
+      expectedElements: ["unauthorized_access_or_use", "notice_timing"],
+      missingRemediation: /decision standard for when notice is required/i,
+    },
+    {
+      requirement: providerRequirement,
+      content: "The firm obtains security questionnaires and assurance reports from selected vendors and requires vendors to cooperate with investigations. Vendors must report incidents promptly. Business owners escalate provider notices to Compliance and Technology for review and follow-up.",
+      expectedElements: ["service_provider_scope", "notice_to_firm"],
+      missingRemediation: /provider safeguards/i,
+    },
+    {
+      requirement: recordsRequirement,
+      content: "Incident and vendor records must be retained for a minimum of three years unless Legal directs otherwise. The records are stored in the compliance repository and may be retained longer when the matter remains open.",
+      expectedElements: ["compliance_record_scope", "retention_accessibility"],
+      missingRemediation: /incident or notification determinations/i,
+    },
+    {
+      requirement: evidenceRequirement,
+      content: "The response coordinator records major actions and decisions in the incident ticket and attaches available screenshots or system reports. The incident owner chooses the attachments needed to explain the response and resolution.",
+      expectedElements: ["incident_materials"],
+      missingRemediation: /defined process for preserving relevant logs or evidence/i,
+    },
+  ];
+  const { postProcessOpenAiClassification } = await loadTsModule("lib/requirementEvidenceClassifier.ts");
+
+  for (const scenario of scenarios) {
+    const classification = postProcessOpenAiClassification({
+      relationship: "supports",
+      confidence: "high",
+      requirement_supported: true,
+      control_absent_or_out_of_scope: false,
+      covered_elements: scenario.requirement.requiredElementsForCovered,
+      missing_elements: [],
+      vague_elements: [],
+      reason: "The cited text fully supports the requirement.",
+      supporting_quote: scenario.content,
+    }, {
+      requirement: scenario.requirement,
+      evaluationGuidance: "Test guidance.",
+      chunkContent: scenario.content,
+      chunkMetadata: {
+        filename: "Client procedure.pdf",
+        sectionPath: "Client procedure",
+        pageStart: 1,
+        pageEnd: 1,
+        chunkIndex: 0,
+        sourceType: "client_procedure",
+        evidenceRole: "organization_evidence",
+        evidenceReason: "substantive procedure evidence",
+      },
+    });
+
+    assert.equal(classification.relationship, "partially_supports");
+    assert.deepEqual(classification.covered_elements, scenario.expectedElements);
+
+    const finding = await productionPathFinding(scenario.requirement, [
+      chunk({ content_preview: scenario.content, source_type: "client_procedure" }),
+    ], [classification]);
+    assert.equal(finding.status, "partial");
+    assert.deepEqual(
+      canonicalElementIdsForFinalPositiveQuote(scenario.requirement, finding.evidence[0].quote),
+      scenario.expectedElements,
+    );
+    assert.match(finding.remediation, scenario.missingRemediation);
+  }
+});
+
 function reportFinding(overrides = {}) {
   return {
     requirement_id: "customer_notification_unauthorized_access",
@@ -614,8 +728,8 @@ test("disposal remains partial unless all required disposal elements are source-
       requirement_supported: false,
       covered_elements: ["disposal_scope"],
       missing_elements: ["secure_disposal_method"],
-      supporting_quote: "Customer information disposal requirements apply to customer records.",
-      content_preview: "Customer information disposal requirements apply to customer records.",
+      supporting_quote: "The firm must dispose of customer information after its retention period expires.",
+      content_preview: "The firm must dispose of customer information after its retention period expires.",
       grade_reason: "The cited text identifies disposal scope but not secure disposal methods.",
     }),
   ]);
@@ -1072,6 +1186,65 @@ test("production path retains an incident-specific Legal delay procedure as part
   );
   assert.match(finding.rationale, /who decides whether external notification is required/i);
   assert.match(finding.remediation, /Attorney General and Commission procedure/i);
+});
+
+test("production path prefers a grounded delay procedure over a high-signal records inventory", async () => {
+  const [{ REG_SP_REQUIREMENTS }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+  ]);
+  const regulatorRequirement = REG_SP_REQUIREMENTS.find((item) => item.id === "regulator_law_enforcement_notification");
+  assert.ok(regulatorRequirement);
+  const inventory = [
+    "Books and records include notification investigations, determinations, supporting facts, and the basis for any no-notice decision.",
+    "The file also includes written documentation from the Attorney General concerning any delay in notice.",
+    "These records are preserved for five years.",
+  ].join("\n• ");
+  const procedure = [
+    "Legal coordinates with appropriate regulators and law-enforcement agencies during significant incidents.",
+    "Customer communications may be postponed when law enforcement requests a delay or when disclosure could interfere with an active investigation.",
+    "Legal records the request and advises management when external communications may resume.",
+  ].join(" ");
+
+  const finding = await productionPathFinding(regulatorRequirement, [
+    chunk({
+      chunk_id: "44444444-4444-4444-8444-444444444444",
+      content_preview: inventory,
+      section_path: "Books and records",
+      rerank_score: 99,
+    }),
+    chunk({
+      chunk_id: "55555555-5555-4555-8555-555555555555",
+      content_preview: procedure,
+      section_path: "Law-enforcement delay procedure",
+      rerank_score: 80,
+    }),
+  ], [
+    classifierClassification({
+      covered_elements: ["external_notification_decisioning", "legal_compliance_coordination"],
+      supporting_quote: inventory,
+      reason: "The records list references notification decisions and an Attorney General delay.",
+    }),
+    classifierClassification({
+      relationship: "partially_supports",
+      requirement_supported: false,
+      covered_elements: ["legal_compliance_coordination"],
+      missing_elements: ["external_notification_decisioning"],
+      supporting_quote: procedure,
+      reason: "Legal coordinates an authority-requested delay and resumption procedure.",
+    }),
+  ]);
+
+  assert.equal(finding.status, "partial");
+  assert.equal(finding.evidence.length, 1);
+  assert.match(finding.evidence[0].quote, /Legal coordinates with appropriate regulators/i);
+  assert.match(finding.evidence[0].quote, /communications may be postponed when law enforcement requests a delay/i);
+  assert.doesNotMatch(finding.evidence[0].quote, /Books and records/i);
+  assert.deepEqual(
+    canonicalElementIdsForFinalPositiveQuote(regulatorRequirement, finding.evidence[0].quote),
+    ["legal_compliance_coordination"],
+  );
+  assert.match(finding.rationale, /legal or compliance/i);
+  assert.match(finding.remediation, /who decides whether external notification is required/i);
 });
 
 test("incident assessment can be covered by a broader direct quote spanning assessment, systems, and containment", () => {
@@ -3109,6 +3282,32 @@ test("production path accepts disposal-aligned destruction and shredding evidenc
 
   assert.equal(finding.status, "covered");
   assert.equal(finding.evidence[0].quote, quote);
+});
+
+test("production path rejects incident-impact destruction wording as disposal evidence", async () => {
+  const disposalRequirement = {
+    ...requirement,
+    id: "disposal_consumer_customer_information",
+    title: "Disposal of consumer and customer information",
+    coverageElements: [
+      { id: "disposal_scope", label: "Applies to consumer or customer information", requiredForCovered: true, signals: ["customer information"] },
+      { id: "secure_disposal_method", label: "Requires secure disposal methods", requiredForCovered: true, signals: ["secure disposal"] },
+    ],
+    requiredElementsForCovered: ["disposal_scope", "secure_disposal_method"],
+  };
+  const quote = "For every suspected incident involving unauthorized access to customer information, the assessment identifies whether data was viewed, copied, altered, transmitted, or destroyed.";
+  const finding = await productionPathFinding(disposalRequirement, [
+    chunk({ content_preview: quote, section_path: "Incident assessment" }),
+  ], [
+    classifierClassification({
+      covered_elements: ["disposal_scope", "secure_disposal_method"],
+      supporting_quote: quote,
+      reason: "The assessment describes destruction of customer information.",
+    }),
+  ]);
+
+  assert.equal(finding.status, "missing");
+  assert.equal(finding.evidence.length, 0);
 });
 
 test("production path does not use customer-notification negative evidence for incident assessment", async () => {

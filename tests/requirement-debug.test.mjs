@@ -717,11 +717,11 @@ test("source quote extraction recovers real evidence across core requirements", 
     },
     {
       id: "disposal_consumer_customer_information",
-      text: "Customer information is retained according to the records schedule before disposal review.",
+      text: "The firm must dispose of customer information after the records retention period expires.",
       relationship: "partially_supports",
       covered: ["disposal_scope"],
       missing: ["secure_disposal_method"],
-      expectedQuote: /Customer information is retained/,
+      expectedQuote: /must dispose of customer information/,
     },
     {
       id: "customer_information_safeguards",
