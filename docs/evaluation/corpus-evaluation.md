@@ -6,6 +6,11 @@ generation, and evidence persistence services as RegSpan. It never deletes
 evaluation resources automatically.
 It does not expose an HTTP evaluation endpoint.
 
+V1 is a known targeted regression suite and V2 is a known realistic-company
+regression suite. Neither is an unbiased accuracy benchmark. Use the separate
+[blind holdout workflow](./blind-holdouts.md) to execute label-free policies
+and score them later with an externally supplied answer key.
+
 ## Setup
 
 1. Create or select a local non-production user account.

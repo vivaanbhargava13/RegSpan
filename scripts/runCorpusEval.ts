@@ -41,6 +41,11 @@ import {
   summarizeEvaluationState,
   validateCorpusManifest,
 } from "@/scripts/corpusEvalCore.mjs";
+import {
+  quoteDigest,
+  toBlindExecutionArtifact,
+  validateBlindCorpusManifest,
+} from "@/scripts/blindHoldoutCore.mjs";
 import { writeJsonAtomically } from "@/scripts/corpusEvalState.mjs";
 
 const CORPUS_ROOT = "eval/corpora";
@@ -61,6 +66,7 @@ type RunnerArgs = {
   caseIds: string[];
   waitOnRateLimit: boolean;
   maxRateLimitWaitMs: number;
+  blind: boolean;
   help: boolean;
 };
 
@@ -170,6 +176,19 @@ type CaseState = {
   rateLimitWaitCount?: number;
   rateLimitWaitMs?: number;
   expectedStatuses: Record<string, string[]>;
+  engineOutput?: {
+    findings: Array<{ findingId: string; requirementId: string; status: string }>;
+    evidence: Array<{
+      evidenceId: string;
+      findingId: string;
+      documentId: string;
+      chunkId: string;
+      relationship: string;
+      quoteHash: string;
+      quoteLength: number;
+      finalElementIds: string[];
+    }>;
+  };
   score?: CaseScore;
   integrityViolations?: string[];
   error?: string;
@@ -186,7 +205,7 @@ type RunState = {
   mode: "isolated" | "combined";
   status: "incomplete" | "completed";
   executionStatus: "running" | "completed" | "incomplete";
-  evaluationStatus: "pending" | "passed" | "failed";
+  evaluationStatus: "pending" | "passed" | "failed" | "not_scored";
   startedAt: string;
   completedAt?: string;
   actorUserId: string;
@@ -203,6 +222,7 @@ type RunState = {
     assertion: "forbidden_evidence";
   }>;
   summary?: RunSummary;
+  blindExecution?: boolean;
 };
 
 function usage() {
@@ -223,6 +243,7 @@ Options:
   --wait-on-rate-limit         Wait and retry Analysis rate limits (default).
   --no-wait-on-rate-limit      Fail immediately when Analysis is rate limited.
   --max-rate-limit-wait-ms <n> Maximum total wait for Analysis rate limits. Defaults to ${DEFAULT_MAX_RATE_LIMIT_WAIT_MS}.
+  --blind                    Run a label-free blind holdout manifest in isolated mode.
   --help                       Show this help.
 
 Every invocation creates new workspaces. Interrupted or failed resources are
@@ -242,6 +263,7 @@ function parseArgs(argv: string[]): RunnerArgs {
     caseIds: [],
     waitOnRateLimit: true,
     maxRateLimitWaitMs: DEFAULT_MAX_RATE_LIMIT_WAIT_MS,
+    blind: false,
     help: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -263,6 +285,7 @@ function parseArgs(argv: string[]): RunnerArgs {
     else if (arg === "--wait-on-rate-limit") args.waitOnRateLimit = true;
     else if (arg === "--no-wait-on-rate-limit") args.waitOnRateLimit = false;
     else if (arg === "--max-rate-limit-wait-ms") { args.maxRateLimitWaitMs = Number(next); index += 1; }
+    else if (arg === "--blind") args.blind = true;
     else throw new Error(`Unknown option: ${arg}`);
   }
   if (args.mode !== "isolated" && args.mode !== "combined") throw new Error("--mode must be isolated or combined.");
@@ -276,6 +299,9 @@ function parseArgs(argv: string[]): RunnerArgs {
     || args.maxRateLimitWaitMs < 1_000
     || args.maxRateLimitWaitMs > 3_600_000) {
     throw new Error("--max-rate-limit-wait-ms must be an integer from 1000 through 3600000.");
+  }
+  if (args.blind && args.mode !== "isolated") {
+    throw new Error("--blind supports isolated mode only so each holdout document remains independently scorable.");
   }
   return args;
 }
@@ -310,11 +336,31 @@ function canonicalRequirementElements(requirements: RegSpRequirement[]) {
   ]));
 }
 
-async function loadManifest(corpusDir: string, requirements: RegSpRequirement[]) {
-  const manifest = validateCorpusManifest(
-    JSON.parse(await readFile(join(corpusDir, "manifest.json"), "utf8")),
-    { canonicalRequirementElements: canonicalRequirementElements(requirements) },
-  ) as unknown as {
+async function loadManifest(corpusDir: string, requirements: RegSpRequirement[], blind: boolean) {
+  const rawManifest = JSON.parse(await readFile(join(corpusDir, "manifest.json"), "utf8"));
+  const validated = blind
+    ? validateBlindCorpusManifest(rawManifest)
+    : validateCorpusManifest(
+      rawManifest,
+      { canonicalRequirementElements: canonicalRequirementElements(requirements) },
+    );
+  const manifest = (blind
+    ? {
+      ...validated,
+      cases: validated.cases.map((candidate) => {
+        const definition = { ...candidate };
+        delete definition.notes;
+        return {
+          ...definition,
+          expectedStatuses: {},
+          acceptableAlternateStatuses: {},
+          forbiddenMatches: {},
+          expectedEvidenceConcepts: {},
+          expectedEvidenceElements: {},
+        };
+      }),
+    }
+    : validated) as unknown as {
     id: string; version: number; cases: CorpusCase[];
   };
   const requirementIds = new Set<string>(requirements.map((requirement) => canonicalControlKeyForRequirement(requirement)));
@@ -477,7 +523,10 @@ function assertExternalAiEvaluationSafety(args: RunnerArgs) {
 }
 
 async function persistState(outputDir: string, state: RunState) {
-  await writeJsonAtomically(join(outputDir, "results.json"), state);
+  await writeJsonAtomically(
+    join(outputDir, "results.json"),
+    state.blindExecution ? toBlindExecutionArtifact(state) : state,
+  );
 }
 
 function summarize(state: RunState) {
@@ -615,7 +664,61 @@ function csv(state: RunState) {
   return `${rows.join("\n")}\n`;
 }
 
+function blindExecutionSummary(state: RunState) {
+  const entries = Object.values(state.cases);
+  const completedCases = entries.filter((entry) => entry.completed && entry.engineOutput).length;
+  const operationallyFailedCases = entries.filter((entry) => Boolean(entry.error || entry.diagnosticCode)).length;
+  return {
+    completedCases,
+    operationallyFailedCases,
+    notStartedCases: Math.max(0, entries.length - completedCases - operationallyFailedCases),
+    findingCount: entries.reduce((total, entry) => total + (entry.engineOutput?.findings.length ?? 0), 0),
+    evidenceCount: entries.reduce((total, entry) => total + (entry.engineOutput?.evidence.length ?? 0), 0),
+  };
+}
+
+function blindMarkdown(state: RunState) {
+  const summary = blindExecutionSummary(state);
+  const rows = Object.values(state.cases).map((entry) =>
+    `| ${entry.caseId} | ${entry.tier} | ${entry.processingStatus ?? "not started"} | ${entry.analysisStatus ?? "not started"} | ${entry.engineOutput?.findings.length ?? 0} | ${entry.engineOutput?.evidence.length ?? 0} | ${entry.diagnosticCode ?? ""} |`,
+  );
+  return `# RegSpan Blind Holdout Execution\n\nRun ID: ${state.runId}\n\nCorpus ID: ${state.corpusId}\n\nCorpus version: ${state.corpusVersion}\n\n`
+    + `Selected cases: ${state.selectedCaseIds.join(", ")}\n\n`
+    + `Execution status: ${state.executionStatus}\n\n`
+    + `Scoring status: not scored; provide an external answer key to \`npm run eval:score-holdout\`.\n\n`
+    + `Completed/analyzed cases: ${summary.completedCases}; operationally failed cases: ${summary.operationallyFailedCases}; not-started cases: ${summary.notStartedCases}\n\n`
+    + `Engine findings: ${summary.findingCount}; final evidence rows: ${summary.evidenceCount}\n\n`
+    + `The JSON artifact contains no expected statuses, answer-key elements, rationales, or evidence spans.\n\n`
+    + `| Case | Tier | Processing | Analysis | Engine findings | Evidence rows | Diagnostic code |\n| --- | --- | --- | --- | --- | --- | --- |\n${rows.join("\n")}\n`;
+}
+
+function blindCsv(state: RunState) {
+  const quote = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
+  const rows = ["run_id,corpus_id,corpus_version,execution_status,case_id,tier,workspace_id,document_id,analysis_run_id,finding_id,requirement_id,actual_status,evidence_id,relationship,quote_hash,quote_length,final_element_ids,diagnostic_code"];
+  for (const entry of Object.values(state.cases)) {
+    for (const finding of entry.engineOutput?.findings ?? []) {
+      const evidenceRows = (entry.engineOutput?.evidence ?? []).filter((evidence) => evidence.findingId === finding.findingId);
+      for (const evidence of evidenceRows.length > 0 ? evidenceRows : [undefined]) {
+        rows.push([
+          state.runId, state.corpusId, state.corpusVersion, state.executionStatus, entry.caseId, entry.tier,
+          state.workspaces[entry.workspaceKey]?.id, entry.documentId, entry.analysisRunId,
+          finding.findingId, finding.requirementId, finding.status,
+          evidence?.evidenceId, evidence?.relationship, evidence?.quoteHash, evidence?.quoteLength,
+          evidence?.finalElementIds.join("|"), entry.diagnosticCode,
+        ].map(quote).join(","));
+      }
+    }
+  }
+  return `${rows.join("\n")}\n`;
+}
+
 async function writeReports(outputDir: string, state: RunState) {
+  if (state.blindExecution) {
+    await persistState(outputDir, state);
+    await writeFile(join(outputDir, "summary.md"), blindMarkdown(state), "utf8");
+    await writeFile(join(outputDir, "results.csv"), blindCsv(state), "utf8");
+    return;
+  }
   state.summary = summarize(state);
   await persistState(outputDir, state);
   await writeFile(join(outputDir, "summary.md"), markdown(state), "utf8");
@@ -664,6 +767,14 @@ function finalizeEvaluationOutcome(state: RunState, minScore: number) {
   state.status = state.evaluationStatus === "passed" ? "completed" : "incomplete";
   state.summary = summarize(state);
   return state.summary;
+}
+
+function finalizeBlindExecutionOutcome(state: RunState) {
+  const summary = blindExecutionSummary(state);
+  state.executionStatus = summary.notStartedCases === 0 ? "completed" : "incomplete";
+  state.evaluationStatus = "not_scored";
+  state.status = state.executionStatus === "completed" ? "completed" : "incomplete";
+  return summary;
 }
 
 async function createWorkspace(state: RunState, workspaceKey: string, outputDir: string) {
@@ -824,15 +935,49 @@ async function analyzeAndScore({
   for (const definition of definitions) {
     const entry = state.cases[definition.id];
     entry.integrityViolations = [];
-    entry.score = scoreCaseFindings({
-      caseDefinition: definition,
-      findings: data.findings,
-      evidenceRows: data.evidence,
-      resolveFinalQuoteElementIds: ({ requirementId, quote }) => {
-        const requirement = requirementsById.get(requirementId);
-        return requirement ? canonicalElementIdsForFinalPositiveQuote(requirement, quote) : [];
-      },
-    }) as unknown as CaseScore;
+    if (state.blindExecution) {
+      const findings = data.findings
+        .map((finding) => ({
+          findingId: finding.id,
+          requirementId: finding.requirement_id,
+          status: String(finding.status ?? "").trim().toLowerCase(),
+        }))
+        .sort((left, right) => left.requirementId.localeCompare(right.requirementId));
+      const requirementByFindingId = new Map(findings.map((finding) => [finding.findingId, finding.requirementId]));
+      entry.engineOutput = {
+        findings,
+        evidence: data.evidence
+          .filter((evidence) => requirementByFindingId.has(evidence.finding_id))
+          .map((evidence) => {
+            const quote = String(evidence.quote ?? evidence.evidence_quote ?? "").trim();
+            const requirement = requirementsById.get(requirementByFindingId.get(evidence.finding_id)!);
+            const positive = ["supports", "partially_supports"].includes(String(evidence.relationship ?? "").trim());
+            return {
+              evidenceId: evidence.id,
+              findingId: evidence.finding_id,
+              documentId: evidence.document_id,
+              chunkId: evidence.chunk_id,
+              relationship: String(evidence.relationship ?? "").trim(),
+              quoteHash: quoteDigest(quote),
+              quoteLength: quote.length,
+              finalElementIds: positive && requirement && quote
+                ? canonicalElementIdsForFinalPositiveQuote(requirement, quote)
+                : [],
+            };
+          })
+          .sort((left, right) => left.evidenceId.localeCompare(right.evidenceId)),
+      };
+    } else {
+      entry.score = scoreCaseFindings({
+        caseDefinition: definition,
+        findings: data.findings,
+        evidenceRows: data.evidence,
+        resolveFinalQuoteElementIds: ({ requirementId, quote }) => {
+          const requirement = requirementsById.get(requirementId);
+          return requirement ? canonicalElementIdsForFinalPositiveQuote(requirement, quote) : [];
+        },
+      }) as unknown as CaseScore;
+    }
     entry.completed = true;
   }
   await persistState(outputDir, state);
@@ -846,6 +991,7 @@ function createState({
   mode,
   actorUserId,
   workspacePrefix,
+  blind,
 }: {
   manifest: { id: string; version: number };
   corpusPath: string;
@@ -854,9 +1000,10 @@ function createState({
   mode: "isolated" | "combined";
   actorUserId: string;
   workspacePrefix: string;
+  blind: boolean;
 }): RunState {
   const runId = crypto.randomUUID();
-  return createOneShotEvaluationState({
+  const state = createOneShotEvaluationState({
     runId,
     corpusId: manifest.id,
     corpusVersion: manifest.version,
@@ -864,10 +1011,14 @@ function createState({
     mode,
     actorUserId,
     workspacePrefix,
-    selectedCases,
+    selectedCases: blind
+      ? selectedCases.map((definition) => ({ ...definition, expectedStatuses: {} }))
+      : selectedCases,
     filtered,
     startedAt: new Date().toISOString(),
   }) as RunState;
+  state.blindExecution = blind;
+  return state;
 }
 
 function diagnosticCodeForError(error: unknown) {
@@ -888,7 +1039,7 @@ async function main() {
     canonicalControlKeyForRequirement(requirement),
     requirement,
   ]));
-  const manifest = await loadManifest(corpusDir, requirements);
+  const manifest = await loadManifest(corpusDir, requirements, args.blind);
   const selection = selectCorpusCases({
     cases: manifest.cases,
     requestedCaseIds: args.caseIds,
@@ -909,8 +1060,12 @@ async function main() {
     mode: args.mode,
     actorUserId,
     workspacePrefix,
+    blind: args.blind,
   });
-  const outputDir = resolve("eval-results", `corpus-${manifest.id}-${args.mode}-${state.runId}`);
+  const outputDir = resolve(
+    "eval-results",
+    `${args.blind ? "blind-holdout" : "corpus"}-${manifest.id}-${args.mode}-${state.runId}`,
+  );
   await writeReports(outputDir, state);
 
   let activeCaseId: string | null = null;
@@ -947,17 +1102,29 @@ async function main() {
       diagnosticCodeForError(error),
     );
   }
-  const finalSummary = finalizeEvaluationOutcome(state, args.minScore);
+  const finalSummary = args.blind
+    ? finalizeBlindExecutionOutcome(state)
+    : finalizeEvaluationOutcome(state, args.minScore);
   state.completedAt = new Date().toISOString();
   await writeReports(outputDir, state);
   console.log(`Evaluation run ${state.runId}: execution ${state.executionStatus}; evaluation ${state.evaluationStatus}.`);
-  console.log(
-    `Primary status accuracy: ${(finalSummary.primaryStatusScore * 100).toFixed(1)}% (${finalSummary.primaryStatusMatched}/${finalSummary.primaryStatusExpected}); `
-    + `accepted status accuracy: ${(finalSummary.acceptedStatusScore * 100).toFixed(1)}% (${finalSummary.acceptedStatusMatched}/${finalSummary.acceptedStatusExpected}); `
-    + `alternate matches: ${finalSummary.alternateStatusMatches}; `
-    + `operational failures: ${finalSummary.operationallyFailedCases}; `
-    + `forbidden-evidence assertion failures: ${finalSummary.forbiddenEvidenceAssertionFailureCount}.`,
-  );
+  if (args.blind) {
+    const blindSummary = finalSummary as ReturnType<typeof blindExecutionSummary>;
+    console.log(
+      `Blind execution completed cases: ${blindSummary.completedCases}; `
+      + `operational failures: ${blindSummary.operationallyFailedCases}; `
+      + `engine findings: ${blindSummary.findingCount}.`,
+    );
+  } else {
+    const scoredSummary = finalSummary as RunSummary;
+    console.log(
+      `Primary status accuracy: ${(scoredSummary.primaryStatusScore * 100).toFixed(1)}% (${scoredSummary.primaryStatusMatched}/${scoredSummary.primaryStatusExpected}); `
+      + `accepted status accuracy: ${(scoredSummary.acceptedStatusScore * 100).toFixed(1)}% (${scoredSummary.acceptedStatusMatched}/${scoredSummary.acceptedStatusExpected}); `
+      + `alternate matches: ${scoredSummary.alternateStatusMatches}; `
+      + `operational failures: ${scoredSummary.operationallyFailedCases}; `
+      + `forbidden-evidence assertion failures: ${scoredSummary.forbiddenEvidenceAssertionFailureCount}.`,
+    );
+  }
   console.log(`Results: ${outputDir}`);
   if (state.status !== "completed") process.exitCode = 1;
 }
