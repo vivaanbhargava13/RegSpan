@@ -415,6 +415,8 @@ export function createOneShotEvaluationState({
     corpusPath,
     mode,
     status: "incomplete",
+    executionStatus: "running",
+    evaluationStatus: "pending",
     startedAt,
     actorUserId,
     workspacePrefix,
@@ -433,6 +435,7 @@ export function createOneShotEvaluationState({
       expectedStatuses: definition.expectedStatuses ?? {},
     }])),
     failures: [],
+    assertionFailures: [],
   };
 }
 
@@ -458,23 +461,47 @@ export async function runIsolatedCaseSequence({ cases, runCase, onCaseFailure })
 
 function expectedStatusEntries(entry) {
   return Object.entries(entry.expectedStatuses ?? {}).flatMap(([requirementId, statuses]) =>
-    (Array.isArray(statuses) ? statuses : []).map((status) => ({ requirementId, status }))
+    (Array.isArray(statuses) ? statuses : typeof statuses === "string" ? [statuses] : [])
+      .map((status) => ({ requirementId, status }))
   );
 }
 
 export function summarizeEvaluationState(state) {
   const entries = Object.values(state.cases ?? {});
   const scored = entries.filter((entry) => entry.score);
-  const evaluatedExpected = scored.reduce(
-    (total, entry) => total + (entry.score?.expectedStatuses ?? 0),
-    0,
+  const statusResults = scored.flatMap((entry) =>
+    (entry.score?.statusResults ?? []).map((result) => ({ caseId: entry.caseId, ...result }))
   );
-  const evaluatedMatched = scored.reduce(
-    (total, entry) => total + (entry.score?.matchedStatuses ?? 0),
-    0,
-  );
+  const evaluatedExpected = statusResults.length > 0
+    ? statusResults.length
+    : scored.reduce((total, entry) => total + (entry.score?.expectedStatuses ?? 0), 0);
+  const primaryStatusMatched = statusResults.length > 0
+    ? statusResults.filter((result) => result.primaryMatched ?? result.actual === result.expected?.[0]).length
+    : scored.reduce((total, entry) => total + (entry.score?.primaryMatchedStatuses ?? entry.score?.matchedStatuses ?? 0), 0);
+  const acceptedStatusMatched = statusResults.length > 0
+    ? statusResults.filter((result) => result.acceptedMatched ?? result.matched ?? (
+      result.actual === result.expected?.[0]
+      || (result.alternates ?? []).includes(result.actual)
+    )).length
+    : scored.reduce((total, entry) => total + (entry.score?.acceptedMatchedStatuses ?? entry.score?.matchedStatuses ?? 0), 0);
+  const alternateStatusMatches = statusResults.length > 0
+    ? statusResults.filter((result) => result.alternateMatched ?? (
+      result.actual !== result.expected?.[0]
+      && (result.alternates ?? []).includes(result.actual)
+    )).length
+    : scored.reduce((total, entry) => total + (entry.score?.alternateMatchedStatuses ?? 0), 0);
+  const primaryStatusMismatches = evaluatedExpected - primaryStatusMatched;
   const concepts = scored.flatMap((entry) => entry.score?.conceptResults ?? []);
   const elements = scored.flatMap((entry) => entry.score?.elementResults ?? []);
+  const forbiddenEvidenceAssertionFailures = scored.flatMap((entry) =>
+    (entry.score?.forbiddenResults ?? [])
+      .filter((result) => !result.matched)
+      .map((result) => ({
+        caseId: entry.caseId,
+        requirementId: result.requirementId ?? null,
+        assertion: "forbidden_evidence",
+      }))
+  );
   const expectedStatusTotals = {};
   const evaluatedExpectedStatusTotals = {};
   const actualStatusTotals = {};
@@ -483,35 +510,57 @@ export function summarizeEvaluationState(state) {
       expectedStatusTotals[status] = (expectedStatusTotals[status] ?? 0) + 1;
     }
   }
-  for (const result of scored.flatMap((entry) => entry.score?.statusResults ?? [])) {
+  for (const result of statusResults) {
     for (const expectedStatus of result.expected) {
       evaluatedExpectedStatusTotals[expectedStatus] = (evaluatedExpectedStatusTotals[expectedStatus] ?? 0) + 1;
     }
     if (result.actual) actualStatusTotals[result.actual] = (actualStatusTotals[result.actual] ?? 0) + 1;
   }
   const completedCases = entries.filter((entry) => entry.completed && entry.score).length;
-  const failedCases = entries.filter((entry) => Boolean(entry.error || entry.diagnosticCode)).length;
-  const notStartedCases = Math.max(0, entries.length - completedCases - failedCases);
+  const operationallyFailedCases = entries.filter((entry) => Boolean(entry.error || entry.diagnosticCode)).length;
+  const notStartedCases = Math.max(0, entries.length - completedCases - operationallyFailedCases);
   const totalExpectedStatuses = entries.reduce(
     (total, entry) => total + expectedStatusEntries(entry).length,
     0,
   );
+  const executionStatus = state.executionStatus
+    ?? (notStartedCases === 0 ? "completed" : "incomplete");
+  const evaluationStatus = state.evaluationStatus
+    ?? (state.status === "completed"
+      ? "passed"
+      : (operationallyFailedCases > 0 || forbiddenEvidenceAssertionFailures.length > 0 ? "failed" : "pending"));
 
   return {
+    // Legacy accepted-status aliases retained for existing results consumers.
     expected: evaluatedExpected,
-    matched: evaluatedMatched,
-    score: evaluatedExpected === 0 ? 1 : evaluatedMatched / evaluatedExpected,
+    matched: acceptedStatusMatched,
+    score: evaluatedExpected === 0 ? 1 : acceptedStatusMatched / evaluatedExpected,
     evaluatedStatusExpected: evaluatedExpected,
-    evaluatedStatusMatched: evaluatedMatched,
+    evaluatedStatusMatched: acceptedStatusMatched,
+    selectedStatuses: totalExpectedStatuses,
+    evaluatedStatuses: evaluatedExpected,
+    primaryStatusMatched,
+    primaryStatusExpected: evaluatedExpected,
+    primaryStatusScore: evaluatedExpected === 0 ? 1 : primaryStatusMatched / evaluatedExpected,
+    acceptedStatusMatched,
+    acceptedStatusExpected: evaluatedExpected,
+    acceptedStatusScore: evaluatedExpected === 0 ? 1 : acceptedStatusMatched / evaluatedExpected,
+    alternateStatusMatches,
+    primaryStatusMismatches,
     totalExpectedStatuses,
     completedCases,
-    failedCases,
+    failedCases: operationallyFailedCases,
+    operationallyFailedCases,
     notStartedCases,
-    allSelectedCasesCompleted: completedCases === entries.length && failedCases === 0,
+    allSelectedCasesCompleted: completedCases === entries.length && operationallyFailedCases === 0,
+    executionStatus,
+    evaluationStatus,
     conceptsExpected: concepts.length,
     conceptsMatched: concepts.filter((entry) => entry.matched).length,
     elementsExpected: elements.length,
     elementsMatched: elements.filter((entry) => entry.matched).length,
+    forbiddenEvidenceAssertionFailures,
+    forbiddenEvidenceAssertionFailureCount: forbiddenEvidenceAssertionFailures.length,
     unexpectedCovered: scored.flatMap((entry) => entry.score?.unexpectedCovered ?? []).length,
     expectedStatusTotals,
     evaluatedExpectedStatusTotals,
@@ -520,10 +569,7 @@ export function summarizeEvaluationState(state) {
 }
 
 export function formatEvaluationStatusAccuracy(summary) {
-  if (summary.allSelectedCasesCompleted) {
-    return `Expected status score: ${(summary.score * 100).toFixed(1)}% (${summary.matched}/${summary.expected})`;
-  }
-  return `Evaluated status accuracy: ${(summary.score * 100).toFixed(1)}% (${summary.evaluatedStatusMatched}/${summary.evaluatedStatusExpected})`;
+  return `Primary status accuracy: ${(summary.primaryStatusScore * 100).toFixed(1)}% (${summary.primaryStatusMatched}/${summary.primaryStatusExpected})`;
 }
 
 export function snapshotSetViolations(actualDocumentIds, expectedDocumentIds) {
@@ -629,12 +675,19 @@ export function scoreCaseFindings({
     const finding = findingsByRequirement.get(requirementId);
     const actualStatus = normalizedStatus(finding?.status);
     const alternates = caseDefinition.acceptableAlternateStatuses[requirementId] ?? [];
+    const primaryExpected = statuses[0] ?? null;
+    const primaryMatched = actualStatus === primaryExpected;
+    const alternateMatched = !primaryMatched && alternates.includes(actualStatus);
     statusResults.push({
       requirementId,
       expected: statuses,
+      primaryExpected,
       alternates,
       actual: actualStatus || null,
-      matched: statuses.includes(actualStatus) || alternates.includes(actualStatus),
+      primaryMatched,
+      alternateMatched,
+      acceptedMatched: primaryMatched || alternateMatched,
+      matched: primaryMatched || alternateMatched,
     });
   }
 
@@ -689,6 +742,10 @@ export function scoreCaseFindings({
     elementResults,
     forbiddenResults,
     unexpectedCovered,
+    primaryMatchedStatuses: statusResults.filter((result) => result.primaryMatched).length,
+    acceptedMatchedStatuses: statusResults.filter((result) => result.acceptedMatched).length,
+    alternateMatchedStatuses: statusResults.filter((result) => result.alternateMatched).length,
+    primaryMismatches: statusResults.filter((result) => !result.primaryMatched).length,
     matchedStatuses: statusResults.filter((result) => result.matched).length,
     expectedStatuses: statusResults.length,
   };

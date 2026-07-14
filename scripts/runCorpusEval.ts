@@ -87,8 +87,12 @@ type CaseScore = {
   statusResults: Array<{
     requirementId: string;
     expected: string[];
+    primaryExpected?: string | null;
     alternates: string[];
     actual: string | null;
+    primaryMatched?: boolean;
+    alternateMatched?: boolean;
+    acceptedMatched?: boolean;
     matched: boolean;
   }>;
   conceptResults: Array<{ matched: boolean }>;
@@ -100,25 +104,49 @@ type CaseScore = {
   }>;
   forbiddenResults: Array<{ matched: boolean }>;
   unexpectedCovered: string[];
+  primaryMatchedStatuses?: number;
+  acceptedMatchedStatuses?: number;
+  alternateMatchedStatuses?: number;
+  primaryMismatches?: number;
   matchedStatuses: number;
   expectedStatuses: number;
 };
 
 type RunSummary = {
+  // Legacy accepted-status aliases retained for results.json consumers.
   expected: number;
   matched: number;
   score: number;
   evaluatedStatusExpected: number;
   evaluatedStatusMatched: number;
+  selectedStatuses: number;
+  evaluatedStatuses: number;
+  primaryStatusMatched: number;
+  primaryStatusExpected: number;
+  primaryStatusScore: number;
+  acceptedStatusMatched: number;
+  acceptedStatusExpected: number;
+  acceptedStatusScore: number;
+  alternateStatusMatches: number;
+  primaryStatusMismatches: number;
   totalExpectedStatuses: number;
   completedCases: number;
   failedCases: number;
+  operationallyFailedCases: number;
   notStartedCases: number;
   allSelectedCasesCompleted: boolean;
+  executionStatus: "running" | "completed" | "incomplete";
+  evaluationStatus: "pending" | "passed" | "failed";
   conceptsExpected: number;
   conceptsMatched: number;
   elementsExpected: number;
   elementsMatched: number;
+  forbiddenEvidenceAssertionFailures: Array<{
+    caseId: string;
+    requirementId: string | null;
+    assertion: "forbidden_evidence";
+  }>;
+  forbiddenEvidenceAssertionFailureCount: number;
   unexpectedCovered: number;
   expectedStatusTotals: Record<string, number>;
   evaluatedExpectedStatusTotals: Record<string, number>;
@@ -157,6 +185,8 @@ type RunState = {
   corpusPath: string;
   mode: "isolated" | "combined";
   status: "incomplete" | "completed";
+  executionStatus: "running" | "completed" | "incomplete";
+  evaluationStatus: "pending" | "passed" | "failed";
   startedAt: string;
   completedAt?: string;
   actorUserId: string;
@@ -167,6 +197,11 @@ type RunState = {
   workspaces: Record<string, { key: string; name: string; id?: string }>;
   cases: Record<string, CaseState>;
   failures: Array<{ caseId: string | null; message: string; diagnosticCode?: string }>;
+  assertionFailures: Array<{
+    caseId: string;
+    requirementId: string | null;
+    assertion: "forbidden_evidence";
+  }>;
   summary?: RunSummary;
 };
 
@@ -180,7 +215,7 @@ Options:
   --corpus <corpus-id-or-directory>  Corpus directory or ID. Defaults to ${DEFAULT_CORPUS}.
   --mode isolated|combined     Evaluation mode. Defaults to isolated.
   --timeout-ms <number>        Polling deadline for jobs/runs. Defaults to ${DEFAULT_POLL_TIMEOUT_MS}.
-  --min-score <0..1>           Minimum expected-status score. Defaults to ${DEFAULT_MIN_SCORE}.
+  --min-score <0..1>           Minimum accepted-status score, including allowed alternates. Defaults to ${DEFAULT_MIN_SCORE}.
   --actor-user-id <uuid>       Evaluation workspace owner; overrides REGSPAN_EVAL_ACTOR_USER_ID.
   --workspace-prefix <prefix>  Explicit prefix beginning regspan-eval-; overrides REGSPAN_EVAL_WORKSPACE_PREFIX.
   --case <case-id>             Run one manifest case; repeat to select multiple cases.
@@ -460,10 +495,50 @@ function expectedStatusResults(entry: CaseState) {
     statuses.map((status) => ({
       requirementId,
       expected: [status],
+      primaryExpected: status,
       alternates: [],
       actual: null,
+      primaryMatched: false,
+      alternateMatched: false,
+      acceptedMatched: false,
       matched: false,
     }))
+  );
+}
+
+function statusMatchKind(result: CaseScore["statusResults"][number]) {
+  const primaryExpected = result.primaryExpected ?? result.expected[0] ?? null;
+  const primaryMatched = result.primaryMatched ?? result.actual === primaryExpected;
+  if (primaryMatched) return "primary";
+  const alternateMatched = result.alternateMatched ?? (
+    result.actual !== primaryExpected && (result.alternates ?? []).includes(result.actual ?? "")
+  );
+  return alternateMatched ? "accepted alternate" : "mismatch";
+}
+
+function caseStatusMetrics(entry: CaseState) {
+  const statusResults = expectedStatusResults(entry);
+  const kinds = statusResults.map(statusMatchKind);
+  return {
+    primaryMatched: kinds.filter((kind) => kind === "primary").length,
+    acceptedMatched: kinds.filter((kind) => kind !== "mismatch").length,
+    alternateMatched: kinds.filter((kind) => kind === "accepted alternate").length,
+    primaryMismatches: kinds.filter((kind) => kind !== "primary").length,
+    details: statusResults.map((result, index) => {
+      const primaryExpected = result.primaryExpected ?? result.expected[0] ?? "absent";
+      return `${result.requirementId}:${kinds[index]}:${primaryExpected}->${result.actual ?? "absent"}`;
+    }),
+  };
+}
+
+function alternateMatchDetails(state: RunState) {
+  return Object.values(state.cases).flatMap((entry) =>
+    expectedStatusResults(entry)
+      .filter((result) => statusMatchKind(result) === "accepted alternate")
+      .map((result) => {
+        const primaryExpected = result.primaryExpected ?? result.expected[0] ?? "absent";
+        return `${entry.caseId} / ${result.requirementId}: primary ${primaryExpected}; accepted alternate ${result.actual}; actual ${result.actual}`;
+      })
   );
 }
 
@@ -471,49 +546,69 @@ function markdown(state: RunState) {
   const summary = summarize(state);
   const rows = Object.values(state.cases).map((entry) => {
     const elementResults = entry.score?.elementResults ?? [];
-    const expectedElements = elementResults.flatMap((result) => result.elements).join(", ");
-    const matchedElements = elementResults.flatMap((result) => result.matchedElements).join(", ");
-    const missingElements = elementResults.flatMap((result) => result.missingElements).join(", ");
     const elementPass = elementResults.length === 0 ? "-" : elementResults.every((result) => result.matched) ? "pass" : "fail";
     const statusResults = expectedStatusResults(entry);
+    const statusMetrics = caseStatusMetrics(entry);
+    const assertionFailures = summary.forbiddenEvidenceAssertionFailures
+      .filter((failure) => failure.caseId === entry.caseId)
+      .map((failure) => failure.requirementId ?? "unknown requirement")
+      .join(", ");
     const expectedStatuses = statusResults.map((result) => `${result.requirementId}: ${result.expected.join(" or ")}`).join("; ");
     const actualStatuses = (entry.score?.statusResults ?? []).map((result) => `${result.requirementId}: ${result.actual ?? "absent"}`).join("; ");
-    return `| ${entry.caseId} | ${entry.tier} | ${entry.processingStatus ?? "not started"} | ${entry.processingStep ?? ""} | ${entry.processingError ?? ""} | ${entry.analysisStatus ?? "not started"} | ${entry.rateLimitWaitCount ?? 0} | ${entry.rateLimitWaitMs ?? 0} | ${entry.score ? `${entry.score.matchedStatuses}/${entry.score.expectedStatuses}` : "-"} | ${expectedStatuses} | ${actualStatuses} | ${expectedElements} | ${matchedElements} | ${missingElements} | ${elementPass} | ${entry.diagnosticCode ?? ""} | ${entry.error ?? ""} |`;
+    return `| ${entry.caseId} | ${entry.tier} | ${entry.processingStatus ?? "not started"} | ${entry.analysisStatus ?? "not started"} | ${statusMetrics.primaryMatched}/${statusResults.length} | ${statusMetrics.acceptedMatched}/${statusResults.length} | ${statusMetrics.alternateMatched} | ${statusMetrics.primaryMismatches} | ${statusMetrics.details.join("; ")} | ${expectedStatuses} | ${actualStatuses} | ${elementPass} | ${assertionFailures || "-"} | ${entry.diagnosticCode ?? ""} | ${entry.error ?? ""} |`;
   });
   const accuracyLine = formatEvaluationStatusAccuracy(summary);
   const progressLabel = state.filtered ? "Selected-corpus progress" : "Full-corpus progress";
+  const alternateDetails = alternateMatchDetails(state);
+  const assertionDetails = summary.forbiddenEvidenceAssertionFailures
+    .map((failure) => `${failure.caseId} / ${failure.requirementId ?? "unknown requirement"}`);
   return `# RegSpan Corpus Evaluation\n\nStatus: ${state.status}\n\nRun ID: ${state.runId}\n\nCorpus ID: ${state.corpusId}\n\nCorpus version: ${state.corpusVersion}\n\nCorpus path: ${state.corpusPath}\n\n`
     + `Selected cases: ${state.selectedCaseIds.join(", ")}\n\n`
     + `Selected case count: ${state.selectedCaseCount}; filtered run: ${state.filtered ? "yes" : "no"}\n\n`
-    + `Completed/analyzed cases: ${summary.completedCases}; failed cases: ${summary.failedCases}; not-started cases: ${summary.notStartedCases}\n\n`
+    + `Execution status: ${summary.executionStatus}\n\n`
+    + `Evaluation status: ${summary.evaluationStatus}\n\n`
+    + `Completed/analyzed cases: ${summary.completedCases}; operationally failed cases: ${summary.operationallyFailedCases}; not-started cases: ${summary.notStartedCases}\n\n`
     + `${accuracyLine}\n\n`
-    + `${progressLabel}: ${summary.evaluatedStatusExpected}/${summary.totalExpectedStatuses} expected statuses evaluated\n\n`
+    + `Accepted status accuracy: ${(summary.acceptedStatusScore * 100).toFixed(1)}% (${summary.acceptedStatusMatched}/${summary.acceptedStatusExpected})\n\n`
+    + `Alternate-status matches: ${summary.alternateStatusMatches}; primary mismatches: ${summary.primaryStatusMismatches}\n\n`
+    + `${progressLabel}: ${summary.evaluatedStatuses}/${summary.selectedStatuses} primary statuses evaluated\n\n`
     + `Expected status totals for selected cases: ${formatStatusTotals(summary.expectedStatusTotals)}\n\n`
     + `${summary.allSelectedCasesCompleted ? "" : `Evaluated expected status totals: ${formatStatusTotals(summary.evaluatedExpectedStatusTotals)}\n\n`}`
     + `Actual status totals: ${formatStatusTotals(summary.actualStatusTotals)}\n\n`
     + `Evidence concepts: ${summary.conceptsMatched}/${summary.conceptsExpected}; evidence elements: ${summary.elementsMatched}/${summary.elementsExpected}; unexpected covered/partial: ${summary.unexpectedCovered}\n\n`
-    + `| Case | Tier | Processing | Step | Processing error | Analysis | Rate-limit waits | Rate-limit wait ms | Status score | Expected statuses | Actual statuses | Expected elements | Matched elements | Missing elements | Element result | Diagnostic code | Error |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n${rows.join("\n")}\n`;
+    + `Forbidden-evidence assertion failures: ${summary.forbiddenEvidenceAssertionFailureCount}${assertionDetails.length > 0 ? ` (${assertionDetails.join("; ")})` : ""}\n\n`
+    + `${alternateDetails.length > 0 ? `Accepted alternate matches:\n${alternateDetails.map((detail) => `- ${detail}`).join("\n")}\n\n` : ""}`
+    + `| Case | Tier | Processing | Analysis | Primary | Accepted | Alternate matches | Primary mismatches | Status results | Expected statuses | Actual statuses | Element result | Assertion failures | Diagnostic code | Error |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n${rows.join("\n")}\n`;
 }
 
 function csv(state: RunState) {
   const quote = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
   const summary = summarize(state);
-  const rows = ["corpus_id,corpus_version,corpus_path,case_id,tier,selected_case_ids,selected_case_count,filtered_run,completed_case_count,failed_case_count,not_started_case_count,evaluated_status_matches,evaluated_status_expected,total_selected_status_expected,selected_corpus_progress,workspace_id,document_id,processing_job_id,analysis_run_id,processing_status,processing_step,processing_error,analysis_status,rate_limit_wait_count,rate_limit_wait_ms,status_matches,status_expected,expected_requirement_statuses,actual_requirement_statuses,expected_evidence_elements,matched_evidence_elements,missing_evidence_elements,evidence_elements_passed,diagnostic_code,error"];
+  const rows = ["corpus_id,corpus_version,corpus_path,execution_status,evaluation_status,legacy_status,case_id,tier,selected_case_ids,selected_case_count,filtered_run,completed_case_count,operationally_failed_case_count,not_started_case_count,selected_statuses,evaluated_statuses,primary_status_matches,primary_status_expected,primary_status_accuracy,accepted_status_matches,accepted_status_expected,accepted_status_accuracy,alternate_status_matches,primary_status_mismatches,forbidden_evidence_assertion_failure_count,workspace_id,document_id,processing_job_id,analysis_run_id,processing_status,processing_step,processing_error,analysis_status,rate_limit_wait_count,rate_limit_wait_ms,status_matches,status_expected,primary_case_status_matches,accepted_case_status_matches,alternate_case_status_matches,primary_case_status_mismatches,status_match_details,expected_requirement_statuses,actual_requirement_statuses,expected_evidence_elements,matched_evidence_elements,missing_evidence_elements,evidence_elements_passed,forbidden_evidence_assertion_failures,diagnostic_code,error"];
   for (const entry of Object.values(state.cases)) {
     const elementResults = entry.score?.elementResults ?? [];
     const statusResults = expectedStatusResults(entry);
+    const statusMetrics = caseStatusMetrics(entry);
+    const assertionFailures = summary.forbiddenEvidenceAssertionFailures
+      .filter((failure) => failure.caseId === entry.caseId)
+      .map((failure) => `${failure.assertion}:${failure.requirementId ?? "unknown_requirement"}`)
+      .join("|");
     rows.push([
-      state.corpusId, state.corpusVersion, state.corpusPath, entry.caseId, entry.tier, state.selectedCaseIds.join("|"), state.selectedCaseCount, state.filtered,
-      summary.completedCases, summary.failedCases, summary.notStartedCases, summary.evaluatedStatusMatched, summary.evaluatedStatusExpected, summary.totalExpectedStatuses, `${summary.evaluatedStatusExpected}/${summary.totalExpectedStatuses}`,
+      state.corpusId, state.corpusVersion, state.corpusPath, summary.executionStatus, summary.evaluationStatus, state.status, entry.caseId, entry.tier, state.selectedCaseIds.join("|"), state.selectedCaseCount, state.filtered,
+      summary.completedCases, summary.operationallyFailedCases, summary.notStartedCases, summary.selectedStatuses, summary.evaluatedStatuses,
+      summary.primaryStatusMatched, summary.primaryStatusExpected, summary.primaryStatusScore,
+      summary.acceptedStatusMatched, summary.acceptedStatusExpected, summary.acceptedStatusScore, summary.alternateStatusMatches, summary.primaryStatusMismatches, summary.forbiddenEvidenceAssertionFailureCount,
       state.workspaces[entry.workspaceKey]?.id, entry.documentId,
       entry.processingJobId, entry.analysisRunId, entry.processingStatus, entry.processingStep, entry.processingError, entry.analysisStatus, entry.rateLimitWaitCount, entry.rateLimitWaitMs,
       entry.score?.matchedStatuses, entry.score?.expectedStatuses,
+      statusMetrics.primaryMatched, statusMetrics.acceptedMatched, statusMetrics.alternateMatched, statusMetrics.primaryMismatches, statusMetrics.details.join("|"),
       statusResults.map((result) => `${result.requirementId}:${result.expected.join("|")}`).join(";"),
       (entry.score?.statusResults ?? []).map((result) => `${result.requirementId}:${result.actual ?? "absent"}`).join(";"),
       elementResults.flatMap((result) => result.elements).join("|"),
       elementResults.flatMap((result) => result.matchedElements).join("|"),
       elementResults.flatMap((result) => result.missingElements).join("|"),
       elementResults.length === 0 ? "" : String(elementResults.every((result) => result.matched)),
+      assertionFailures,
       entry.diagnosticCode, entry.error,
     ].map(quote).join(","));
   }
@@ -525,6 +620,50 @@ async function writeReports(outputDir: string, state: RunState) {
   await persistState(outputDir, state);
   await writeFile(join(outputDir, "summary.md"), markdown(state), "utf8");
   await writeFile(join(outputDir, "results.csv"), csv(state), "utf8");
+}
+
+function appendRunFailureOnce(
+  state: RunState,
+  failure: { caseId: string | null; message: string; diagnosticCode?: string },
+) {
+  const exists = state.failures.some((existing) =>
+    existing.caseId === failure.caseId
+    && existing.message === failure.message
+    && existing.diagnosticCode === failure.diagnosticCode
+  );
+  if (!exists) state.failures.push(failure);
+}
+
+function finalizeEvaluationOutcome(state: RunState, minScore: number) {
+  const initialSummary = summarize(state);
+  state.assertionFailures = initialSummary.forbiddenEvidenceAssertionFailures;
+  for (const failure of state.assertionFailures) {
+    appendRunFailureOnce(state, {
+      caseId: failure.caseId,
+      message: "forbidden_evidence_match",
+    });
+  }
+  if (initialSummary.acceptedStatusScore < minScore) {
+    appendRunFailureOnce(state, { caseId: null, message: "status_score_below_threshold" });
+  }
+
+  const summary = summarize(state);
+  const hasOperationalFailure = summary.operationallyFailedCases > 0
+    || state.failures.some((failure) =>
+      failure.message !== "forbidden_evidence_match"
+      && failure.message !== "status_score_below_threshold"
+    );
+  const statusGateFailed = summary.acceptedStatusScore < minScore;
+  state.executionStatus = summary.notStartedCases === 0 ? "completed" : "incomplete";
+  state.evaluationStatus = hasOperationalFailure
+    || summary.forbiddenEvidenceAssertionFailureCount > 0
+    || statusGateFailed
+    ? "failed"
+    : "passed";
+  // Preserve the legacy field: completed historically meant all configured gates passed.
+  state.status = state.evaluationStatus === "passed" ? "completed" : "incomplete";
+  state.summary = summarize(state);
+  return state.summary;
 }
 
 async function createWorkspace(state: RunState, workspaceKey: string, outputDir: string) {
@@ -799,14 +938,6 @@ async function main() {
         },
       });
     }
-    const summary = summarize(state);
-    for (const entry of Object.values(state.cases)) {
-      if (entry.score?.forbiddenResults.some((result) => !result.matched)) {
-        state.failures.push({ caseId: entry.caseId, message: "forbidden_evidence_match" });
-      }
-    }
-    if (summary.score < args.minScore) state.failures.push({ caseId: null, message: "status_score_below_threshold" });
-    if (state.failures.length === 0) state.status = "completed";
   } catch (error) {
     const message = error instanceof Error ? error.message : "Corpus evaluation failed.";
     recordEvaluationFailure(
@@ -816,9 +947,18 @@ async function main() {
       diagnosticCodeForError(error),
     );
   }
+  const finalSummary = finalizeEvaluationOutcome(state, args.minScore);
   state.completedAt = new Date().toISOString();
   await writeReports(outputDir, state);
-  console.log(`Evaluation run ${state.runId} ${state.status}. Results: ${outputDir}`);
+  console.log(`Evaluation run ${state.runId}: execution ${state.executionStatus}; evaluation ${state.evaluationStatus}.`);
+  console.log(
+    `Primary status accuracy: ${(finalSummary.primaryStatusScore * 100).toFixed(1)}% (${finalSummary.primaryStatusMatched}/${finalSummary.primaryStatusExpected}); `
+    + `accepted status accuracy: ${(finalSummary.acceptedStatusScore * 100).toFixed(1)}% (${finalSummary.acceptedStatusMatched}/${finalSummary.acceptedStatusExpected}); `
+    + `alternate matches: ${finalSummary.alternateStatusMatches}; `
+    + `operational failures: ${finalSummary.operationallyFailedCases}; `
+    + `forbidden-evidence assertion failures: ${finalSummary.forbiddenEvidenceAssertionFailureCount}.`,
+  );
+  console.log(`Results: ${outputDir}`);
   if (state.status !== "completed") process.exitCode = 1;
 }
 

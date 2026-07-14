@@ -133,9 +133,22 @@ covered/partial finding without primary evidence, an extra or missing snapshot
 document, non-client/regulatory evidence, or evidence from another case
 workspace. Isolated snapshots must contain exactly one planned case document;
 combined snapshots must exactly match the selected corpus document set.
-Expected status, concept, canonical-element, and forbidden-phrase assertions are scored;
-forbidden matches fail the run and `--min-score` controls the expected-status
-threshold.
+Status and evidence assertions are reported independently:
+
+- **Primary expected status** is the manifest's primary status for a requirement.
+- **Accepted alternate status** is an explicitly permitted fallback. It remains
+  accepted for legacy status gating, but is always shown as a primary mismatch.
+- **Primary status accuracy** counts only exact primary-status matches.
+- **Accepted status accuracy** counts primary matches plus accepted alternates.
+- **Operational failure** means processing, Analysis, or another execution step
+  failed for a case. It is distinct from an assertion failure.
+- **Assertion failure** currently includes a forbidden-evidence match. Evidence
+  concept and canonical-element results remain diagnostics unless a future
+  configuration explicitly makes them gates.
+
+Forbidden matches fail the evaluation and `--min-score` applies to accepted
+status accuracy for backward compatibility. The report always shows primary
+mismatches and accepted alternate matches separately.
 
 `expectedEvidenceElements` uses canonical IDs from the active Reg S-P
 requirement definitions. The runner validates IDs before creating workspaces
@@ -157,12 +170,18 @@ text, excerpts, request headers, or secrets.
 
 Artifacts are written under ignored `eval-results/corpus-*/`:
 
-- `summary.md`: aggregate and per-case status and element summary, including corpus ID, version, path, selected cases, and expected/actual status totals
-- `results.json`: run status, corpus and selected-case metadata, safe IDs, timings, aggregate status totals, and assertion results
-- `results.csv`: compact rows including corpus metadata, selected-case metadata, expected/actual requirement statuses, and expected, matched, and missing element IDs
+- `summary.md`: execution status, evaluation status, primary and accepted status
+  accuracy, alternate matches, assertion failures, and per-case status outcomes
+- `results.json`: legacy `status` plus explicit `executionStatus`,
+  `evaluationStatus`, `assertionFailures`, and aggregate primary/accepted metrics
+- `results.csv`: compact per-case rows with the same run-level metrics and each
+  case's primary, accepted-alternate, or mismatch outcome
 
-`results.json` starts with status `incomplete` and is replaced atomically at safe
-lifecycle boundaries. A hard interruption may leave the last safe partial
-report, still marked `incomplete`. Artifacts intentionally omit raw client
-source excerpts. Use the stored run and workspace IDs for authorized local
-debugging and manual cleanup.
+`results.json` starts with `executionStatus: running` and
+`evaluationStatus: pending`, and is replaced atomically at safe lifecycle
+boundaries. Final execution can be `completed` while evaluation is `failed` if
+an assertion fails; this does not represent an operational processing failure.
+The legacy `status` remains `completed` only when all existing gates pass, and
+otherwise remains `incomplete` for compatibility. Artifacts intentionally omit
+raw client source excerpts. Use the stored run and workspace IDs for authorized
+local debugging and manual cleanup.

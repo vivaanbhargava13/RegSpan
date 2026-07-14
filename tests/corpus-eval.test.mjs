@@ -635,7 +635,7 @@ test("incomplete reports separate evaluated accuracy from full-corpus progress",
     evaluatedStatusExpected: 22,
     totalExpectedStatuses: 132,
   });
-  assert.equal(formatEvaluationStatusAccuracy(summary), "Evaluated status accuracy: 100.0% (22/22)");
+  assert.equal(formatEvaluationStatusAccuracy(summary), "Primary status accuracy: 100.0% (22/22)");
   assert.equal(summary.allSelectedCasesCompleted, false);
 
   const completed = summarizeEvaluationState({
@@ -656,7 +656,7 @@ test("incomplete reports separate evaluated accuracy from full-corpus progress",
       },
     },
   });
-  assert.equal(formatEvaluationStatusAccuracy(completed), "Expected status score: 100.0% (1/1)");
+  assert.equal(formatEvaluationStatusAccuracy(completed), "Primary status accuracy: 100.0% (1/1)");
 });
 
 test("case scoring recognizes alternate statuses, concepts, and forbidden evidence", () => {
@@ -676,8 +676,200 @@ test("case scoring recognizes alternate statuses, concepts, and forbidden eviden
     }],
   });
   assert.equal(score.statusResults[0].matched, true);
+  assert.equal(score.statusResults[0].primaryMatched, false);
+  assert.equal(score.statusResults[0].alternateMatched, true);
+  assert.equal(score.statusResults[0].acceptedMatched, true);
+  assert.equal(score.primaryMatchedStatuses, 0);
+  assert.equal(score.acceptedMatchedStatuses, 1);
+  assert.equal(score.alternateMatchedStatuses, 1);
+  assert.equal(score.primaryMismatches, 1);
   assert.equal(score.conceptResults[0].matched, true);
   assert.equal(score.forbiddenResults[0].matched, false);
+});
+
+test("status scoring keeps primary, accepted alternate, and unaccepted outcomes distinct", () => {
+  const definition = {
+    expectedStatuses: { safeguards_customer_information: ["partial"] },
+    acceptableAlternateStatuses: { safeguards_customer_information: ["covered"] },
+    expectedEvidenceConcepts: {},
+    expectedEvidenceElements: {},
+    forbiddenMatches: {},
+  };
+  const scoreFor = (status) => scoreCaseFindings({
+    caseDefinition: definition,
+    findings: [{ id: `finding-${status}`, requirement_id: "safeguards_customer_information", status }],
+    evidenceRows: [],
+  }).statusResults[0];
+
+  const primary = scoreFor("partial");
+  assert.deepEqual(
+    { primary: primary.primaryMatched, accepted: primary.acceptedMatched, alternate: primary.alternateMatched, matched: primary.matched },
+    { primary: true, accepted: true, alternate: false, matched: true },
+  );
+
+  const alternate = scoreFor("covered");
+  assert.deepEqual(
+    { primary: alternate.primaryMatched, accepted: alternate.acceptedMatched, alternate: alternate.alternateMatched, matched: alternate.matched },
+    { primary: false, accepted: true, alternate: true, matched: true },
+  );
+
+  const mismatch = scoreFor("missing");
+  assert.deepEqual(
+    { primary: mismatch.primaryMatched, accepted: mismatch.acceptedMatched, alternate: mismatch.alternateMatched, matched: mismatch.matched },
+    { primary: false, accepted: false, alternate: false, matched: false },
+  );
+});
+
+test("summary reports primary and accepted accuracy without hiding alternate matches", () => {
+  const selectedCases = Array.from({ length: 12 }, (_, index) => manifestCase(`case-${index + 1}`));
+  const state = createOneShotEvaluationState({
+    runId: RUN_ID,
+    corpusId: "regspan-v1",
+    mode: "isolated",
+    actorUserId: ACTOR_ID,
+    workspacePrefix: "regspan-eval-",
+    selectedCases,
+    startedAt: "2026-07-12T00:00:00.000Z",
+  });
+  for (const [index, definition] of selectedCases.entries()) {
+    const entry = state.cases[definition.id];
+    entry.completed = true;
+    entry.score = scoreCaseFindings({
+      caseDefinition: {
+        ...definition,
+        expectedStatuses: { safeguards_customer_information: ["partial"] },
+        acceptableAlternateStatuses: { safeguards_customer_information: ["covered"] },
+      },
+      findings: [{
+        id: `finding-${definition.id}`,
+        requirement_id: "safeguards_customer_information",
+        status: index < 7 ? "partial" : "covered",
+      }],
+      evidenceRows: [],
+    });
+  }
+  state.executionStatus = "completed";
+  state.evaluationStatus = "passed";
+  state.status = "completed";
+
+  const summary = summarizeEvaluationState(state);
+  assert.deepEqual({
+    selectedStatuses: summary.selectedStatuses,
+    evaluatedStatuses: summary.evaluatedStatuses,
+    primaryStatusMatched: summary.primaryStatusMatched,
+    acceptedStatusMatched: summary.acceptedStatusMatched,
+    alternateStatusMatches: summary.alternateStatusMatches,
+    primaryStatusMismatches: summary.primaryStatusMismatches,
+  }, {
+    selectedStatuses: 12,
+    evaluatedStatuses: 12,
+    primaryStatusMatched: 7,
+    acceptedStatusMatched: 12,
+    alternateStatusMatches: 5,
+    primaryStatusMismatches: 5,
+  });
+  assert.equal(formatEvaluationStatusAccuracy(summary), "Primary status accuracy: 58.3% (7/12)");
+});
+
+test("forbidden evidence assertion failures do not masquerade as operational failures", () => {
+  const state = createOneShotEvaluationState({
+    runId: RUN_ID,
+    corpusId: "regspan-v1",
+    mode: "isolated",
+    actorUserId: ACTOR_ID,
+    workspacePrefix: "regspan-eval-",
+    selectedCases: [manifestCase("case-one")],
+    startedAt: "2026-07-12T00:00:00.000Z",
+  });
+  const entry = state.cases["case-one"];
+  entry.completed = true;
+  entry.score = {
+    expectedStatuses: 1,
+    matchedStatuses: 1,
+    statusResults: [{
+      requirementId: "safeguards_customer_information",
+      expected: ["partial"],
+      alternates: [],
+      actual: "partial",
+      primaryMatched: true,
+      acceptedMatched: true,
+      alternateMatched: false,
+      matched: true,
+    }],
+    conceptResults: [{ matched: false }],
+    elementResults: [{ matched: false }],
+    forbiddenResults: [{ requirementId: "safeguards_customer_information", matched: false }],
+    unexpectedCovered: [],
+  };
+  state.executionStatus = "completed";
+  state.evaluationStatus = "failed";
+  state.status = "incomplete";
+
+  const summary = summarizeEvaluationState(state);
+  assert.equal(summary.completedCases, 1);
+  assert.equal(summary.operationallyFailedCases, 0);
+  assert.equal(summary.notStartedCases, 0);
+  assert.equal(summary.forbiddenEvidenceAssertionFailureCount, 1);
+  assert.deepEqual(summary.forbiddenEvidenceAssertionFailures, [{
+    caseId: "case-one",
+    requirementId: "safeguards_customer_information",
+    assertion: "forbidden_evidence",
+  }]);
+  assert.equal(summary.evaluationStatus, "failed");
+  assert.equal(summary.conceptsMatched, 0);
+  assert.equal(summary.elementsMatched, 0);
+});
+
+test("perfect primary results retain accepted accuracy without alternates", () => {
+  const selectedCases = Array.from({ length: 12 }, (_, caseIndex) => ({
+    ...manifestCase(`case-${caseIndex + 1}`),
+    expectedStatuses: Object.fromEntries(Array.from({ length: 11 }, (_, requirementIndex) => [
+      `requirement-${requirementIndex + 1}`,
+      "covered",
+    ])),
+    acceptableAlternateStatuses: {},
+  }));
+  const state = createOneShotEvaluationState({
+    runId: RUN_ID,
+    corpusId: "regspan-v2",
+    mode: "isolated",
+    actorUserId: ACTOR_ID,
+    workspacePrefix: "regspan-eval-",
+    selectedCases,
+    startedAt: "2026-07-12T00:00:00.000Z",
+  });
+  for (const definition of selectedCases) {
+    const entry = state.cases[definition.id];
+    entry.completed = true;
+    entry.score = scoreCaseFindings({
+      caseDefinition: {
+        ...definition,
+        expectedStatuses: Object.fromEntries(Object.keys(definition.expectedStatuses).map((id) => [id, ["covered"]])),
+      },
+      findings: Object.keys(definition.expectedStatuses).map((requirement_id) => ({
+        id: `${definition.id}-${requirement_id}`,
+        requirement_id,
+        status: "covered",
+      })),
+      evidenceRows: [],
+    });
+  }
+  state.executionStatus = "completed";
+  state.evaluationStatus = "passed";
+  state.status = "completed";
+
+  const summary = summarizeEvaluationState(state);
+  assert.deepEqual({
+    primary: [summary.primaryStatusMatched, summary.primaryStatusExpected],
+    accepted: [summary.acceptedStatusMatched, summary.acceptedStatusExpected],
+    alternates: summary.alternateStatusMatches,
+    evaluationStatus: summary.evaluationStatus,
+  }, {
+    primary: [132, 132],
+    accepted: [132, 132],
+    alternates: 0,
+    evaluationStatus: "passed",
+  });
 });
 
 test("case scoring uses only positive evidence for concepts and forbidden phrases", () => {

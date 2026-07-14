@@ -91,11 +91,8 @@ export function runIsolatedCaseSequence<T>(input: {
 }): Promise<void>;
 export function summarizeEvaluationState(state: Record<string, unknown>): Record<string, unknown>;
 export function formatEvaluationStatusAccuracy(summary: {
-  allSelectedCasesCompleted: boolean;
-  score: number;
-  matched: number;
-  expected: number;
-  evaluatedStatusMatched: number;
-  evaluatedStatusExpected: number;
+  primaryStatusScore: number;
+  primaryStatusMatched: number;
+  primaryStatusExpected: number;
 }): string;
 export function snapshotSetViolations(actualDocumentIds: string[], expectedDocumentIds: string[]): string[];
