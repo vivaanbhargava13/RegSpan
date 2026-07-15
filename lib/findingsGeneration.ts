@@ -15,6 +15,10 @@ import {
   loadWorkspaceExternalAiProcessingPolicy,
 } from "@/lib/aiProcessingPolicy";
 import { createEmbeddingProvider } from "@/lib/embeddings";
+import {
+  createEvaluationProvenanceCollector,
+  type EvaluationProvenanceRun,
+} from "@/lib/evaluationProvenance";
 import { workspaceQuotaConfiguration } from "@/lib/rateLimit";
 import { loadRegSpRequirementsForFindings } from "@/lib/regulatoryControls";
 import { getServerSupabaseAdminClient } from "@/lib/supabase/server";
@@ -35,6 +39,7 @@ export class FindingsGenerationError extends Error {
 type GenerateFindingsInput = {
   workspaceId: string;
   actorUserId: string;
+  evaluationCaseId?: string | null;
   supabase?: SupabaseClient;
   topK?: number;
 };
@@ -63,8 +68,9 @@ export type FindingsGenerationResult =
     analysisRunId: string;
     requirementCount: number;
     findingCount: number;
-    reviewedDocumentCount: number;
-    findings: GeneratedRequirementFinding[];
+      reviewedDocumentCount: number;
+      findings: GeneratedRequirementFinding[];
+      evaluationProvenance?: EvaluationProvenanceRun;
   }
   | {
     state: "reused_active_run";
@@ -95,6 +101,7 @@ type StoredFindingResult = {
   requirementId: string;
   status: GeneratedRequirementFinding["status"];
   persistedEvidenceRows: number;
+  persistedChunkIds: string[];
 };
 
 function allGradedChunks(match: Awaited<ReturnType<typeof buildRequirementMatchResultWithClassifier>>) {
@@ -344,6 +351,9 @@ async function storeFinding({
     requirementId: finding.requirement_id,
     status: finding.status,
     persistedEvidenceRows,
+    persistedChunkIds: evidenceRows
+      .map((row) => row.chunk_id)
+      .filter((chunkId): chunkId is string => Boolean(chunkId)),
   };
 }
 
@@ -415,6 +425,7 @@ async function failAnalysisRun({
 export async function generateFindingsForWorkspace({
   workspaceId,
   actorUserId,
+  evaluationCaseId = null,
   supabase = getServerSupabaseAdminClient(),
   topK = FINDINGS_GENERATION_TOP_K,
 }: GenerateFindingsInput) {
@@ -453,6 +464,18 @@ export async function generateFindingsForWorkspace({
       fetch,
       workspaceAiPolicy,
     );
+    const provenance = createEvaluationProvenanceCollector({
+      caseId: evaluationCaseId,
+      embeddingProvider: embeddingProvider.provider,
+      embeddingModel: embeddingProvider.model,
+      classifierProvider: classifier.provider,
+      classifierModel: classifier.provider === "openai"
+        ? process.env.REQUIREMENT_CLASSIFIER_MODEL?.trim() || null
+        : null,
+      topK,
+      semanticPoolSize: 30,
+      keywordPoolSize: 40,
+    });
     const generatedFindings: GeneratedRequirementFinding[] = [];
     const storedFindings: StoredFindingResult[] = [];
     for (const requirement of requirements) {
@@ -463,7 +486,9 @@ export async function generateFindingsForWorkspace({
         supabase,
         provider: embeddingProvider,
         analysisRunId: analysisRun.id,
+        captureProvenance: provenance !== null,
       });
+      provenance?.recordRetrieved(requirement.id, candidates);
       const organizationCandidates = candidates.filter(
         (chunk) => chunk.evidence_role === "organization_evidence",
       );
@@ -472,16 +497,24 @@ export async function generateFindingsForWorkspace({
         organizationCandidates,
         classifier,
       );
+      const gradedCandidates = allGradedChunks(match) as GradedEvidenceChunk[];
+      provenance?.recordClassified(requirement.id, gradedCandidates);
       const finding = aggregateFindingForRequirement(
         requirement,
-        allGradedChunks(match) as GradedEvidenceChunk[],
+        gradedCandidates,
       );
+      provenance?.recordAggregated(requirement.id, finding, candidates);
       const storedFinding = await storeFinding({
         supabase,
         workspaceId,
         analysisRunId: analysisRun.id,
         finding,
       });
+      provenance?.recordPersistence(
+        requirement.id,
+        finding.evidence.map((evidence) => evidence.chunk_id),
+        storedFinding.persistedChunkIds,
+      );
       storedFindings.push(storedFinding);
       generatedFindings.push(finding);
     }
@@ -503,6 +536,7 @@ export async function generateFindingsForWorkspace({
       findingCount: generatedFindings.length,
       reviewedDocumentCount: runStart.reviewedDocumentCount,
       findings: generatedFindings,
+      ...(provenance ? { evaluationProvenance: provenance.snapshot() } : {}),
     } satisfies FindingsGenerationResult;
   } catch (error) {
     await failAnalysisRun({

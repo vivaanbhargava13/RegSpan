@@ -437,12 +437,14 @@ export async function runWorkspaceAnalysis({
   expectedDocumentIds,
   pollTimeoutMs,
   correlationId,
+  evaluationCaseId = null,
 }: {
   supabase: SupabaseClient;
   context: EvaluationWorkspaceContext;
   expectedDocumentIds: string[];
   pollTimeoutMs: number;
   correlationId: string;
+  evaluationCaseId?: string | null;
 }) {
   await verifyEvaluationWorkspace(supabase, context);
   await assertExactEligibleDocuments(supabase, context, expectedDocumentIds);
@@ -465,6 +467,7 @@ export async function runWorkspaceAnalysis({
     supabase,
     workspaceId: context.workspaceId,
     actorUserId: context.actorUserId,
+    evaluationCaseId,
   });
   if (result.state === "reused_active_run") {
     const recovered = await recoverWorkspaceAnalysis({

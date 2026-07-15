@@ -18,6 +18,10 @@ import { getServerSupabaseAdminClient } from "@/lib/supabase/server";
 export type RetrievedChunk = {
   chunk_id: string;
   rank?: number | null;
+  retrieval_origin?: "semantic" | "keyword" | "merged" | null;
+  retrieval_rank?: number | null;
+  semantic_score?: number | null;
+  keyword_score?: number | null;
   document_id: string;
   filename: string | null;
   page_start: number | null;

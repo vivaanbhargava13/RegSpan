@@ -7,6 +7,7 @@ export function validateBlindCorpusManifest(manifest: unknown): {
   cases: Array<Record<string, unknown>>;
 };
 export function quoteDigest(quote: unknown): string;
+export function toEvaluationProvenanceArtifact(input: Record<string, unknown>): Record<string, unknown>;
 export function toBlindExecutionArtifact(state: Record<string, unknown>): Record<string, unknown>;
 export function validateBlindExecutionArtifact(artifact: unknown): Record<string, unknown>;
 export function validateBlindAnswerKey(answerKey: unknown): Record<string, unknown>;

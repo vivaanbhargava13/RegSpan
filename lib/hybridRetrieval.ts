@@ -23,6 +23,7 @@ type RetrieveRequirementHybridChunksInput = {
   topK?: number;
   semanticPoolSize?: number;
   keywordPoolSize?: number;
+  captureProvenance?: boolean;
   analysisRunId?: string | null;
   supabase?: SupabaseClient;
   provider?: EmbeddingProvider;
@@ -247,6 +248,7 @@ export async function retrieveRequirementHybridChunks({
   topK = 15,
   semanticPoolSize = 30,
   keywordPoolSize = 40,
+  captureProvenance = false,
   supabase = getServerSupabaseAdminClient(),
   provider,
   analysisRunId = null,
@@ -286,6 +288,34 @@ export async function retrieveRequirementHybridChunks({
     documentIds: snapshotDocumentIds,
   });
   const mergedCandidates = mergeHybridCandidates(semanticCandidates, keywordCandidates);
+  if (!captureProvenance) {
+    return rerankRequirementCandidates(requirement, mergedCandidates, topK);
+  }
 
-  return rerankRequirementCandidates(requirement, mergedCandidates, topK);
+  const semanticByChunkId = new Map(semanticCandidates.map((candidate, index) => [
+    candidate.chunk_id,
+    { candidate, rank: candidate.rank ?? index + 1 },
+  ]));
+  const keywordByChunkId = new Map(keywordCandidates.map((candidate, index) => [
+    candidate.chunk_id,
+    { candidate, rank: candidate.rank ?? index + 1 },
+  ]));
+  const candidatesWithProvenance = mergedCandidates.map((candidate) => {
+    const semantic = semanticByChunkId.get(candidate.chunk_id);
+    const keyword = keywordByChunkId.get(candidate.chunk_id);
+    const retrievalOrigin: "semantic" | "keyword" | "merged" = semantic && keyword
+      ? "merged"
+      : semantic
+        ? "semantic"
+        : "keyword";
+    return {
+      ...candidate,
+      retrieval_origin: retrievalOrigin,
+      retrieval_rank: semantic?.rank ?? keyword?.rank ?? null,
+      semantic_score: semantic?.candidate.similarity ?? null,
+      keyword_score: null,
+    };
+  });
+
+  return rerankRequirementCandidates(requirement, candidatesWithProvenance, topK);
 }

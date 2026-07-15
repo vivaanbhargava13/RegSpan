@@ -228,6 +228,107 @@ function serializedEngineOutput(value) {
   };
 }
 
+function nullableString(value, { maxLength = 512 } = {}) {
+  return typeof value === "string" && value.length <= maxLength ? value : null;
+}
+
+function nullableFiniteNumber(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function nonNegativeIntegerOrNull(value) {
+  return Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+
+function stringArray(value) {
+  return Array.isArray(value)
+    ? [...new Set(value.filter((item) => typeof item === "string"))].sort((left, right) => left.localeCompare(right))
+    : [];
+}
+
+function serializedEvaluationProvenanceCandidate(value) {
+  return {
+    caseId: nullableString(value?.caseId),
+    requirementId: nullableString(value?.requirementId),
+    candidateId: nullableString(value?.candidateId),
+    retrievalOrigin: nullableString(value?.retrievalOrigin),
+    retrievalRank: nonNegativeIntegerOrNull(value?.retrievalRank),
+    finalRank: nonNegativeIntegerOrNull(value?.finalRank),
+    semanticScore: nullableFiniteNumber(value?.semanticScore),
+    keywordScore: nullableFiniteNumber(value?.keywordScore),
+    rerankScore: nullableFiniteNumber(value?.rerankScore),
+    pageStart: nonNegativeIntegerOrNull(value?.pageStart),
+    pageEnd: nonNegativeIntegerOrNull(value?.pageEnd),
+    sectionPath: nullableString(value?.sectionPath),
+    sourceType: nullableString(value?.sourceType),
+    evidenceRole: nullableString(value?.evidenceRole),
+    organizationEvidenceEligible: value?.organizationEvidenceEligible === true,
+    filteringOutcome: nullableString(value?.filteringOutcome),
+    filteringReason: nullableString(value?.filteringReason),
+    classifierProvider: nullableString(value?.classifierProvider),
+    classifierModel: nullableString(value?.classifierModel),
+    classifierRelationship: nullableString(value?.classifierRelationship),
+    supportedElementIds: stringArray(value?.supportedElementIds),
+    aggregationOutcome: nullableString(value?.aggregationOutcome),
+    aggregationReason: nullableString(value?.aggregationReason),
+    persistenceOutcome: nullableString(value?.persistenceOutcome),
+    persistenceReason: nullableString(value?.persistenceReason),
+    quoteHash: nullableString(value?.quoteHash, { maxLength: 64 }),
+  };
+}
+
+function serializedEvaluationProvenanceRunConfig(value) {
+  return {
+    embeddingProvider: nullableString(value?.embeddingProvider),
+    embeddingModel: nullableString(value?.embeddingModel),
+    classifierProvider: nullableString(value?.classifierProvider),
+    classifierModel: nullableString(value?.classifierModel),
+    retrieval: {
+      topK: nonNegativeIntegerOrNull(value?.retrieval?.topK),
+      semanticPoolSize: nonNegativeIntegerOrNull(value?.retrieval?.semanticPoolSize),
+      keywordPoolSize: nonNegativeIntegerOrNull(value?.retrieval?.keywordPoolSize),
+    },
+    featureFlags: {
+      enableEvalProvenance: value?.featureFlags?.enableEvalProvenance === true,
+      enableExternalAiProcessing: value?.featureFlags?.enableExternalAiProcessing === true,
+      enableExternalAiClassifier: value?.featureFlags?.enableExternalAiClassifier === true,
+    },
+  };
+}
+
+export function toEvaluationProvenanceArtifact({
+  runId,
+  corpusId,
+  corpusVersion,
+  mode,
+  selectedCaseIds,
+  runConfig,
+  cases,
+}) {
+  return {
+    artifactKind: "regspan_evaluation_provenance",
+    schemaVersion: 1,
+    runId: nonEmptyString(runId, "Evaluation provenance runId"),
+    corpusId: slug(corpusId, "Evaluation provenance corpusId"),
+    corpusVersion: Number(corpusVersion),
+    mode: nonEmptyString(mode, "Evaluation provenance mode"),
+    selectedCaseIds: stringArray(selectedCaseIds),
+    runConfig: serializedEvaluationProvenanceRunConfig(runConfig),
+    cases: Object.fromEntries(Object.entries(cases ?? {}).map(([caseId, value]) => [caseId, {
+      caseId: slug(caseId, "Evaluation provenance caseId"),
+      analysisRunId: nullableString(value?.analysisRunId),
+      requirements: (value?.requirements ?? []).map((requirement) => ({
+        caseId: nullableString(requirement?.caseId),
+        requirementId: nullableString(requirement?.requirementId),
+        finalStatus: nullableString(requirement?.finalStatus),
+        candidates: (requirement?.candidates ?? [])
+          .map(serializedEvaluationProvenanceCandidate)
+          .sort((left, right) => String(left.candidateId).localeCompare(String(right.candidateId))),
+      })).sort((left, right) => String(left.requirementId).localeCompare(String(right.requirementId))),
+    }])),
+  };
+}
+
 export function toBlindExecutionArtifact(state) {
   const cases = Object.fromEntries(Object.entries(state.cases ?? {}).map(([caseId, entry]) => [caseId, {
     caseId: entry.caseId,

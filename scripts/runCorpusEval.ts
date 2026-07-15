@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { assertExternalAiProcessingServerAvailable } from "@/lib/aiProcessingPolicy";
+import type { EvaluationProvenanceRun } from "@/lib/evaluationProvenance";
 import { canonicalElementIdsForFinalPositiveQuote } from "@/lib/findingsAggregation";
 import { RateLimitError } from "@/lib/rateLimit";
 import { canonicalControlKeyForRequirement } from "@/lib/regulatoryControlFramework";
@@ -43,6 +44,7 @@ import {
 } from "@/scripts/corpusEvalCore.mjs";
 import {
   quoteDigest,
+  toEvaluationProvenanceArtifact,
   toBlindExecutionArtifact,
   validateBlindCorpusManifest,
 } from "@/scripts/blindHoldoutCore.mjs";
@@ -223,6 +225,13 @@ type RunState = {
   }>;
   summary?: RunSummary;
   blindExecution?: boolean;
+  evaluationProvenance?: {
+    runConfig: EvaluationProvenanceRun["runConfig"];
+    cases: Record<string, {
+      analysisRunId: string | null;
+      requirements: EvaluationProvenanceRun["requirements"];
+    }>;
+  };
 };
 
 function usage() {
@@ -523,9 +532,11 @@ function assertExternalAiEvaluationSafety(args: RunnerArgs) {
 }
 
 async function persistState(outputDir: string, state: RunState) {
+  const persistedState = { ...state };
+  delete persistedState.evaluationProvenance;
   await writeJsonAtomically(
     join(outputDir, "results.json"),
-    state.blindExecution ? toBlindExecutionArtifact(state) : state,
+    state.blindExecution ? toBlindExecutionArtifact(state) : persistedState,
   );
 }
 
@@ -717,12 +728,30 @@ async function writeReports(outputDir: string, state: RunState) {
     await persistState(outputDir, state);
     await writeFile(join(outputDir, "summary.md"), blindMarkdown(state), "utf8");
     await writeFile(join(outputDir, "results.csv"), blindCsv(state), "utf8");
+    await writeEvaluationProvenanceArtifact(outputDir, state);
     return;
   }
   state.summary = summarize(state);
   await persistState(outputDir, state);
   await writeFile(join(outputDir, "summary.md"), markdown(state), "utf8");
   await writeFile(join(outputDir, "results.csv"), csv(state), "utf8");
+  await writeEvaluationProvenanceArtifact(outputDir, state);
+}
+
+async function writeEvaluationProvenanceArtifact(outputDir: string, state: RunState) {
+  if (!state.evaluationProvenance) return;
+  await writeJsonAtomically(
+    join(outputDir, "evaluation-provenance.json"),
+    toEvaluationProvenanceArtifact({
+      runId: state.runId,
+      corpusId: state.corpusId,
+      corpusVersion: state.corpusVersion,
+      mode: state.mode,
+      selectedCaseIds: state.selectedCaseIds,
+      runConfig: state.evaluationProvenance.runConfig,
+      cases: state.evaluationProvenance.cases,
+    }),
+  );
 }
 
 function appendRunFailureOnce(
@@ -879,6 +908,7 @@ async function analyzeAndScore({
       expectedDocumentIds: documentIds,
       pollTimeoutMs,
       correlationId: crypto.randomUUID(),
+      evaluationCaseId: definitions.length === 1 ? definitions[0].id : null,
     }),
     beforeRetry: () => recoverWorkspaceAnalysis({
       supabase: getServerSupabaseAdminClient(),
@@ -901,6 +931,18 @@ async function analyzeAndScore({
     },
   });
   const analysis = retry.value;
+  const evaluationProvenance = (analysis as { evaluationProvenance?: EvaluationProvenanceRun }).evaluationProvenance;
+  if (evaluationProvenance && definitions.length === 1) {
+    const definition = definitions[0];
+    state.evaluationProvenance ??= {
+      runConfig: evaluationProvenance.runConfig,
+      cases: {},
+    };
+    state.evaluationProvenance.cases[definition.id] = {
+      analysisRunId: analysis.analysisRunId,
+      requirements: evaluationProvenance.requirements,
+    };
+  }
   for (const entry of entries) {
     entry.analysisRunId = analysis.analysisRunId;
     entry.analysisStatus = analysis.analysisRun.status;
