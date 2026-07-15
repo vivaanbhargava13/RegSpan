@@ -136,6 +136,78 @@ test("evaluation provenance records observer metadata without mutating candidate
   assert.equal(trace.requirements[0].candidates[0].quoteHash, quoteDigest(candidate.content_preview));
 });
 
+test("evaluation provenance records filtering and classifier provenance without carrying an LLM model into heuristic rows", async () => {
+  const { createEvaluationProvenanceCollector } = await loadEvaluationProvenanceModule();
+  const organizationCandidate = {
+    chunk_id: "chunk-organization",
+    rank: 1,
+    retrieval_rank: 2,
+    retrieval_origin: "semantic",
+    similarity: 0.86,
+    keyword_score: 4,
+    page_start: 3,
+    page_end: 3,
+    section_path: "Incident Response\n  Program",
+    source_type: "client_policy",
+    evidence_role: "organization_evidence",
+  };
+  const regulatoryCandidate = {
+    chunk_id: "chunk-regulatory",
+    rank: 2,
+    retrieval_rank: 1,
+    retrieval_origin: "keyword",
+    similarity: 0.89,
+    page_start: 4,
+    page_end: 4,
+    section_path: "Reference Material",
+    source_type: "regulatory_guidance",
+    evidence_role: "requirement_reference",
+  };
+  const collector = createEvaluationProvenanceCollector({
+    caseId: "policy-a",
+    environment: { ENABLE_EVAL_PROVENANCE: "true" },
+    embeddingProvider: "openai",
+    embeddingModel: "text-embedding-3-small",
+    classifierProvider: "openai",
+    classifierModel: "gpt-4.1-mini",
+    topK: 25,
+    semanticPoolSize: 30,
+    keywordPoolSize: 40,
+  });
+  collector.recordRetrieved("written_incident_response_program", [organizationCandidate, regulatoryCandidate]);
+  collector.recordClassified("written_incident_response_program", [{
+    ...organizationCandidate,
+    classifier_provider: "heuristic",
+    evidence_relationship: "partially_supports",
+    covered_elements: ["response"],
+    supporting_quote: "The organization maintains a response process.",
+  }]);
+  collector.recordAggregated("written_incident_response_program", {
+    status: "partial",
+    evidence: [{
+      chunk_id: "chunk-organization",
+      quote: "The organization maintains a response process.",
+    }],
+  }, [organizationCandidate, regulatoryCandidate]);
+  collector.recordPersistence("written_incident_response_program", ["chunk-organization"], ["chunk-organization"]);
+
+  const candidates = collector.snapshot().requirements[0].candidates;
+  const organization = candidates.find((candidate) => candidate.candidateId === "chunk-organization");
+  const regulatory = candidates.find((candidate) => candidate.candidateId === "chunk-regulatory");
+  assert.equal(organization.classifierProvider, "heuristic");
+  assert.equal(organization.classifierModel, null);
+  assert.equal(organization.aggregationOutcome, "included");
+  assert.equal(organization.persistenceOutcome, "persisted");
+  assert.equal(organization.keywordScore, 4);
+  assert.equal(organization.sectionPath, "Incident Response Program");
+  assert.equal(regulatory.filteringOutcome, "filtered_out");
+  assert.equal(regulatory.filteringReason, "evidence_role_not_organization_evidence");
+  assert.equal(regulatory.classifierRelationship, null);
+  assert.equal(regulatory.aggregationOutcome, "excluded");
+  assert.equal(regulatory.aggregationReason, "filtered_before_classification");
+  assert.equal(regulatory.persistenceOutcome, "not_persisted");
+});
+
 test("provenance serializer writes an allowlist and never raw source text or secrets", () => {
   const rawSource = "RAW CLIENT SOURCE TEXT MUST NOT BE SERIALIZED";
   const artifact = toEvaluationProvenanceArtifact({

@@ -213,12 +213,14 @@ async function retrieveKeywordCandidates({
   requirement,
   keywordPoolSize,
   documentIds,
+  captureProvenance,
 }: {
   supabase: SupabaseClient;
   workspaceId: string;
   requirement: RegSpRequirement;
   keywordPoolSize: number;
   documentIds?: string[] | null;
+  captureProvenance: boolean;
 }) {
   const profile = buildRequirementKeywordProfile(requirement);
   const rows = await fetchKeywordRows({
@@ -236,10 +238,22 @@ async function retrieveKeywordCandidates({
     }))
     .filter((item) => item.matchCount > 0)
     .sort((left, right) => right.matchCount - left.matchCount)
-    .slice(0, keywordPoolSize)
-    .map((item) => item.row);
+    .slice(0, keywordPoolSize);
 
-  return hydrateKeywordCandidates({ supabase, workspaceId, rows: rankedRows });
+  const candidates = await hydrateKeywordCandidates({
+    supabase,
+    workspaceId,
+    rows: rankedRows.map((item) => item.row),
+  });
+  if (!captureProvenance) return candidates;
+
+  const keywordScoreByChunkId = new Map(
+    rankedRows.map((item) => [item.row.id, item.matchCount]),
+  );
+  return candidates.map((candidate) => ({
+    ...candidate,
+    keyword_score: keywordScoreByChunkId.get(candidate.chunk_id) ?? null,
+  }));
 }
 
 export async function retrieveRequirementHybridChunks({
@@ -286,6 +300,7 @@ export async function retrieveRequirementHybridChunks({
     requirement,
     keywordPoolSize,
     documentIds: snapshotDocumentIds,
+    captureProvenance,
   });
   const mergedCandidates = mergeHybridCandidates(semanticCandidates, keywordCandidates);
   if (!captureProvenance) {
@@ -313,7 +328,7 @@ export async function retrieveRequirementHybridChunks({
       retrieval_origin: retrievalOrigin,
       retrieval_rank: semantic?.rank ?? keyword?.rank ?? null,
       semantic_score: semantic?.candidate.similarity ?? null,
-      keyword_score: null,
+      keyword_score: keyword?.candidate.keyword_score ?? null,
     };
   });
 
