@@ -5,6 +5,11 @@ import { readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { assertExternalAiProcessingServerAvailable } from "@/lib/aiProcessingPolicy";
 import { canonicalElementIdsForFinalPositiveQuote } from "@/lib/findingsAggregation";
+import type {
+  RequirementEvidenceClassifierResolvedConfiguration,
+  RequirementEvidenceClassifierTelemetry,
+  RequirementEvidenceClassifierTelemetryPath,
+} from "@/lib/requirementEvidenceClassifier";
 import { RateLimitError } from "@/lib/rateLimit";
 import { canonicalControlKeyForRequirement } from "@/lib/regulatoryControlFramework";
 import { loadRegSpRequirementsForFindings } from "@/lib/regulatoryControls";
@@ -54,6 +59,14 @@ const DEFAULT_POLL_TIMEOUT_MS = 300_000;
 const DEFAULT_MIN_SCORE = 0.8;
 const DEFAULT_MAX_RATE_LIMIT_WAIT_MS = 3_600_000;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const CLASSIFIER_TELEMETRY_PATHS: RequirementEvidenceClassifierTelemetryPath[] = [
+  "openai_success",
+  "heuristic_disabled",
+  "heuristic_unconfigured",
+  "heuristic_negative_guardrail",
+  "fallback_provider_error",
+  "fallback_parse_error",
+];
 
 type RunnerArgs = {
   corpus: string;
@@ -224,6 +237,44 @@ type RunState = {
   summary?: RunSummary;
   blindExecution?: boolean;
 };
+
+type EvaluationClassifierTelemetry = {
+  telemetry: RequirementEvidenceClassifierTelemetry;
+  sidecar: (state: RunState) => {
+    schemaVersion: 1;
+    runId: string;
+    resolvedClassifier: RequirementEvidenceClassifierResolvedConfiguration | null;
+    counts: Record<RequirementEvidenceClassifierTelemetryPath, number>;
+  };
+};
+
+function createEvaluationClassifierTelemetry(): EvaluationClassifierTelemetry {
+  let resolvedClassifier: RequirementEvidenceClassifierResolvedConfiguration | null = null;
+  const counts = Object.fromEntries(CLASSIFIER_TELEMETRY_PATHS.map((path) => [path, 0])) as Record<
+    RequirementEvidenceClassifierTelemetryPath,
+    number
+  >;
+
+  return {
+    telemetry: {
+      recordResolvedClassifier(configuration) {
+        if (resolvedClassifier !== null) return;
+        resolvedClassifier = { ...configuration };
+      },
+      recordPath(path) {
+        counts[path] += 1;
+      },
+    },
+    sidecar(state) {
+      return {
+        schemaVersion: 1,
+        runId: state.runId,
+        resolvedClassifier,
+        counts: { ...counts },
+      };
+    },
+  };
+}
 
 function usage() {
   console.log(`RegSpan corpus evaluation
@@ -712,7 +763,17 @@ function blindCsv(state: RunState) {
   return `${rows.join("\n")}\n`;
 }
 
-async function writeReports(outputDir: string, state: RunState) {
+async function writeReports(
+  outputDir: string,
+  state: RunState,
+  classifierTelemetry?: EvaluationClassifierTelemetry,
+) {
+  if (classifierTelemetry) {
+    await writeJsonAtomically(
+      join(outputDir, "classifier-telemetry.json"),
+      classifierTelemetry.sidecar(state),
+    );
+  }
   if (state.blindExecution) {
     await persistState(outputDir, state);
     await writeFile(join(outputDir, "summary.md"), blindMarkdown(state), "utf8");
@@ -858,6 +919,7 @@ async function analyzeAndScore({
   waitOnRateLimit,
   maxRateLimitWaitMs,
   requirementsById,
+  classifierTelemetry,
 }: {
   definitions: CorpusCase[];
   state: RunState;
@@ -867,6 +929,7 @@ async function analyzeAndScore({
   waitOnRateLimit: boolean;
   maxRateLimitWaitMs: number;
   requirementsById: Map<string, RegSpRequirement>;
+  classifierTelemetry: RequirementEvidenceClassifierTelemetry;
 }) {
   const entries = definitions.map((definition) => state.cases[definition.id]);
   const documentIds = entries.map((entry) => entry.documentId).filter((id): id is string => Boolean(id));
@@ -879,6 +942,7 @@ async function analyzeAndScore({
       expectedDocumentIds: documentIds,
       pollTimeoutMs,
       correlationId: crypto.randomUUID(),
+      classifierTelemetry,
     }),
     beforeRetry: () => recoverWorkspaceAnalysis({
       supabase: getServerSupabaseAdminClient(),
@@ -1062,11 +1126,12 @@ async function main() {
     workspacePrefix,
     blind: args.blind,
   });
+  const classifierTelemetry = createEvaluationClassifierTelemetry();
   const outputDir = resolve(
     "eval-results",
     `${args.blind ? "blind-holdout" : "corpus"}-${manifest.id}-${args.mode}-${state.runId}`,
   );
-  await writeReports(outputDir, state);
+  await writeReports(outputDir, state, classifierTelemetry);
 
   let activeCaseId: string | null = null;
   try {
@@ -1076,7 +1141,7 @@ async function main() {
         activeCaseId = definition.id;
         await processCase({ definition, state, context, bytes: preparedFiles.get(definition.id)!, outputDir, pollTimeoutMs: args.pollTimeoutMs });
       }
-      await analyzeAndScore({ definitions: selectedCases, state, context, outputDir, pollTimeoutMs: args.pollTimeoutMs, waitOnRateLimit: args.waitOnRateLimit, maxRateLimitWaitMs: args.maxRateLimitWaitMs, requirementsById });
+      await analyzeAndScore({ definitions: selectedCases, state, context, outputDir, pollTimeoutMs: args.pollTimeoutMs, waitOnRateLimit: args.waitOnRateLimit, maxRateLimitWaitMs: args.maxRateLimitWaitMs, requirementsById, classifierTelemetry: classifierTelemetry.telemetry });
     } else {
       await runIsolatedCaseSequence({
         cases: selectedCases,
@@ -1084,11 +1149,11 @@ async function main() {
           activeCaseId = definition.id;
           const context = await createWorkspace(state, definition.id, outputDir);
           await processCase({ definition, state, context, bytes: preparedFiles.get(definition.id)!, outputDir, pollTimeoutMs: args.pollTimeoutMs });
-          await analyzeAndScore({ definitions: [definition], state, context, outputDir, pollTimeoutMs: args.pollTimeoutMs, waitOnRateLimit: args.waitOnRateLimit, maxRateLimitWaitMs: args.maxRateLimitWaitMs, requirementsById });
+          await analyzeAndScore({ definitions: [definition], state, context, outputDir, pollTimeoutMs: args.pollTimeoutMs, waitOnRateLimit: args.waitOnRateLimit, maxRateLimitWaitMs: args.maxRateLimitWaitMs, requirementsById, classifierTelemetry: classifierTelemetry.telemetry });
         },
         onCaseFailure: async (definition, error) => {
           recordEvaluationFailure(state, definition.id, error instanceof Error ? error.message : "Corpus evaluation failed.", diagnosticCodeForError(error));
-          await writeReports(outputDir, state);
+          await writeReports(outputDir, state, classifierTelemetry);
           console.error(`Case ${definition.id} failed. Continuing isolated evaluation.`);
         },
       });
@@ -1106,7 +1171,7 @@ async function main() {
     ? finalizeBlindExecutionOutcome(state)
     : finalizeEvaluationOutcome(state, args.minScore);
   state.completedAt = new Date().toISOString();
-  await writeReports(outputDir, state);
+  await writeReports(outputDir, state, classifierTelemetry);
   console.log(`Evaluation run ${state.runId}: execution ${state.executionStatus}; evaluation ${state.evaluationStatus}.`);
   if (args.blind) {
     const blindSummary = finalSummary as ReturnType<typeof blindExecutionSummary>;

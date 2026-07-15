@@ -10,7 +10,10 @@ import {
   buildRequirementMatchResultWithClassifier,
   type GradedEvidenceChunk,
 } from "@/lib/requirementMatching";
-import { createRequirementEvidenceClassifier } from "@/lib/requirementEvidenceClassifier";
+import {
+  createRequirementEvidenceClassifier,
+  type RequirementEvidenceClassifierTelemetry,
+} from "@/lib/requirementEvidenceClassifier";
 import {
   loadWorkspaceExternalAiProcessingPolicy,
 } from "@/lib/aiProcessingPolicy";
@@ -37,6 +40,7 @@ type GenerateFindingsInput = {
   actorUserId: string;
   supabase?: SupabaseClient;
   topK?: number;
+  classifierTelemetry?: RequirementEvidenceClassifierTelemetry;
 };
 
 type AnalysisRunRow = {
@@ -417,6 +421,7 @@ export async function generateFindingsForWorkspace({
   actorUserId,
   supabase = getServerSupabaseAdminClient(),
   topK = FINDINGS_GENERATION_TOP_K,
+  classifierTelemetry,
 }: GenerateFindingsInput) {
   await assertProcessedEvidenceExists(supabase, workspaceId);
   const requirements = await loadRegSpRequirementsForFindings({ supabase });
@@ -447,6 +452,7 @@ export async function generateFindingsForWorkspace({
       process.env,
       fetch,
       workspaceAiPolicy,
+      classifierTelemetry,
     );
     const embeddingProvider = createEmbeddingProvider(
       process.env,

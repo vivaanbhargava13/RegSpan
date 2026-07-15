@@ -93,6 +93,14 @@ never adopts earlier documents or jobs, and never resumes a prior invocation.
 Failed or interrupted workspaces are left untouched for later manual cleanup.
 A rerun always creates a new run ID and new workspace names.
 
+Each evaluation output directory also contains `classifier-telemetry.json`. It
+records the one resolved classifier provider/model for the run and aggregate
+path counts without changing findings, persistence, or the main result files.
+`heuristic_disabled` records an explicit heuristic provider selection, while
+`heuristic_unconfigured` records an unavailable requested LLM (policy, model,
+or API-key configuration). The remaining keys identify OpenAI success,
+negative-evidence guardrails, provider failures, and parse failures.
+
 `--timeout-ms` is a polling deadline for processing jobs and already-running
 Analysis runs. Findings generation currently executes synchronously in the
 application service and is not cancelled by this flag.

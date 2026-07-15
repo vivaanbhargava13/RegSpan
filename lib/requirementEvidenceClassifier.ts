@@ -22,6 +22,28 @@ export type RequirementEvidenceRelationship =
 export type RequirementEvidenceConfidence = "high" | "medium" | "low";
 export type RequirementEvidenceClassifierProvider = "heuristic" | "openai" | "fallback";
 
+export type RequirementEvidenceClassifierTelemetryPath =
+  | "openai_success"
+  | "heuristic_disabled"
+  | "heuristic_unconfigured"
+  | "heuristic_negative_guardrail"
+  | "fallback_provider_error"
+  | "fallback_parse_error";
+
+export type RequirementEvidenceClassifierResolvedConfiguration = {
+  provider: RequirementEvidenceClassifierProvider;
+  model: string | null;
+};
+
+/**
+ * Optional, caller-owned observation hooks. Production callers do not provide
+ * these hooks; the corpus runner injects them for its evaluation sidecar.
+ */
+export type RequirementEvidenceClassifierTelemetry = {
+  recordResolvedClassifier?: (configuration: RequirementEvidenceClassifierResolvedConfiguration) => void;
+  recordPath?: (path: RequirementEvidenceClassifierTelemetryPath) => void;
+};
+
 export type RequirementEvidenceClassifierInput = {
   requirement: RegSpRequirement;
   evaluationGuidance: string;
@@ -1407,15 +1429,18 @@ export function createRequirementEvidenceClassifier(
   environment: ClassifierEnvironment = process.env,
   fetchImplementation: typeof fetch = fetch,
   workspacePolicy?: WorkspaceExternalAiProcessingPolicy,
+  telemetry?: RequirementEvidenceClassifierTelemetry,
 ): RequirementEvidenceClassifier {
   const requestedProvider = (environment.REQUIREMENT_CLASSIFIER_PROVIDER ?? "heuristic")
     .trim()
     .toLowerCase();
 
   if (requestedProvider !== "openai") {
+    telemetry?.recordResolvedClassifier?.({ provider: "heuristic", model: null });
     return {
       provider: "heuristic",
       async classify(input) {
+        telemetry?.recordPath?.("heuristic_disabled");
         return classifyRequirementEvidenceHeuristically(input, "heuristic");
       },
     };
@@ -1427,9 +1452,11 @@ export function createRequirementEvidenceClassifier(
     environment,
   });
   if (!externalAiPolicy.externalAiClassifierEnabled) {
+    telemetry?.recordResolvedClassifier?.({ provider: "fallback", model: null });
     return {
       provider: "fallback",
       async classify(input) {
+        telemetry?.recordPath?.("heuristic_unconfigured");
         const fallback = classifyRequirementEvidenceHeuristically(input, "fallback");
         return {
           ...fallback,
@@ -1446,9 +1473,11 @@ export function createRequirementEvidenceClassifier(
     || environment.OPENAI_API_KEY?.trim();
 
   if (!model || !apiKey) {
+    telemetry?.recordResolvedClassifier?.({ provider: "fallback", model: null });
     return {
       provider: "fallback",
       async classify(input) {
+        telemetry?.recordPath?.("heuristic_unconfigured");
         const fallback = classifyRequirementEvidenceHeuristically(input, "fallback");
         return {
           ...fallback,
@@ -1460,11 +1489,13 @@ export function createRequirementEvidenceClassifier(
     };
   }
 
+  telemetry?.recordResolvedClassifier?.({ provider: "openai", model });
   return {
     provider: "openai",
     async classify(input) {
       const heuristicGuardrail = classifyRequirementEvidenceHeuristically(input, "heuristic");
       if (heuristicGuardrail.relationship === "negative_evidence") {
+        telemetry?.recordPath?.("heuristic_negative_guardrail");
         return {
           ...heuristicGuardrail,
           classifier_provider: "heuristic",
@@ -1496,18 +1527,34 @@ export function createRequirementEvidenceClassifier(
         });
 
         if (!response.ok) {
-          throw new Error(`Classifier provider returned status ${response.status}.`);
+          telemetry?.recordPath?.("fallback_provider_error");
+          return {
+            ...classifyRequirementEvidenceHeuristically(input, "fallback"),
+            reason:
+              "LLM classifier failed or returned invalid output; deterministic heuristic fallback was used.",
+          };
         }
 
-        const parsed = postProcessOpenAiClassification(
-          parseOpenAiClassification(await response.json(), input.requirement),
-          input,
-        );
-        return {
-          ...parsed,
-          classifier_provider: "openai",
-        };
+        try {
+          const parsed = postProcessOpenAiClassification(
+            parseOpenAiClassification(await response.json(), input.requirement),
+            input,
+          );
+          telemetry?.recordPath?.("openai_success");
+          return {
+            ...parsed,
+            classifier_provider: "openai",
+          };
+        } catch {
+          telemetry?.recordPath?.("fallback_parse_error");
+          return {
+            ...classifyRequirementEvidenceHeuristically(input, "fallback"),
+            reason:
+              "LLM classifier failed or returned invalid output; deterministic heuristic fallback was used.",
+          };
+        }
       } catch {
+        telemetry?.recordPath?.("fallback_provider_error");
         return {
           ...classifyRequirementEvidenceHeuristically(input, "fallback"),
           reason:

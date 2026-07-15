@@ -291,6 +291,166 @@ test("LLM classifier falls back to deterministic heuristic when requested but no
   assert.equal(classifier.provider, "fallback");
 });
 
+test("classifier telemetry capture preserves deterministic classifications across all paths", async () => {
+  const { createRequirementEvidenceClassifier } = await loadTsModule("lib/requirementEvidenceClassifier.ts");
+  const input = {
+    requirement: {
+      id: "customer_notification_unauthorized_access",
+      title: "Customer notification",
+      description: "Notify affected customers after unauthorized access.",
+      retrievalQuery: "customer notification unauthorized access",
+      directSignals: ["customer notification"],
+      actionSignals: ["notify"],
+      topicSignals: ["customer"],
+      partialSignals: [],
+      backgroundSignals: [],
+      coverageElements: [],
+      requiredElementsForCovered: [],
+      optionalElements: [],
+    },
+    evaluationGuidance: "Classify customer notification evidence.",
+    chunkContent: "The policy requires customer notification after unauthorized access.",
+    chunkMetadata: {
+      filename: "policy.pdf",
+      sectionPath: "Incident Response > Notification",
+      pageStart: 1,
+      pageEnd: 1,
+      chunkIndex: 0,
+      sourceType: "client_policy",
+      evidenceRole: "organization_evidence",
+      evidenceReason: "substantive policy evidence",
+    },
+  };
+  const openAiEnvironment = {
+    ENABLE_EXTERNAL_AI_PROCESSING: "true",
+    ENABLE_EXTERNAL_AI_CLASSIFIER: "true",
+    REQUIREMENT_CLASSIFIER_PROVIDER: "openai",
+    REQUIREMENT_CLASSIFIER_MODEL: "gpt-test",
+    REQUIREMENT_CLASSIFIER_API_KEY: "test-key",
+  };
+  const enabledPolicy = {
+    workspaceId: "workspace-1",
+    workspaceConsentEnabled: true,
+    externalAiProcessingEnabled: true,
+    externalAiClassifierEnabled: true,
+    denialReason: null,
+  };
+  const successResponse = async () => ({
+    ok: true,
+    async json() {
+      return {
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              relationship: "irrelevant",
+              confidence: "low",
+              requirement_supported: false,
+              control_absent_or_out_of_scope: false,
+              covered_elements: [],
+              missing_elements: [],
+              vague_elements: [],
+              reason: "The chunk is not relevant.",
+              supporting_quote: null,
+            }),
+          },
+        }],
+      };
+    },
+  });
+  const fixtures = [
+    {
+      name: "heuristic disabled",
+      environment: { REQUIREMENT_CLASSIFIER_PROVIDER: "heuristic" },
+      fetchImplementation: async () => { throw new Error("fetch should not run"); },
+      workspacePolicy: undefined,
+      expectedProvider: "heuristic",
+      expectedModel: null,
+      expectedPath: "heuristic_disabled",
+      fixtureInput: input,
+    },
+    {
+      name: "heuristic unconfigured",
+      environment: { ...openAiEnvironment, REQUIREMENT_CLASSIFIER_MODEL: "" },
+      fetchImplementation: async () => { throw new Error("fetch should not run"); },
+      workspacePolicy: enabledPolicy,
+      expectedProvider: "fallback",
+      expectedModel: null,
+      expectedPath: "heuristic_unconfigured",
+      fixtureInput: input,
+    },
+    {
+      name: "negative guardrail",
+      environment: openAiEnvironment,
+      fetchImplementation: async () => { throw new Error("fetch should not run"); },
+      workspacePolicy: enabledPolicy,
+      expectedProvider: "openai",
+      expectedModel: "gpt-test",
+      expectedPath: "heuristic_negative_guardrail",
+      fixtureInput: {
+        ...input,
+        chunkContent: "This procedure does not define customer notification after unauthorized access.",
+      },
+    },
+    {
+      name: "provider fallback",
+      environment: openAiEnvironment,
+      fetchImplementation: async () => ({ ok: false, status: 503 }),
+      workspacePolicy: enabledPolicy,
+      expectedProvider: "openai",
+      expectedModel: "gpt-test",
+      expectedPath: "fallback_provider_error",
+      fixtureInput: input,
+    },
+    {
+      name: "parse fallback",
+      environment: openAiEnvironment,
+      fetchImplementation: async () => ({ ok: true, async json() { return { choices: [] }; } }),
+      workspacePolicy: enabledPolicy,
+      expectedProvider: "openai",
+      expectedModel: "gpt-test",
+      expectedPath: "fallback_parse_error",
+      fixtureInput: input,
+    },
+    {
+      name: "OpenAI success",
+      environment: openAiEnvironment,
+      fetchImplementation: successResponse,
+      workspacePolicy: enabledPolicy,
+      expectedProvider: "openai",
+      expectedModel: "gpt-test",
+      expectedPath: "openai_success",
+      fixtureInput: input,
+    },
+  ];
+
+  for (const fixture of fixtures) {
+    const withoutCapture = createRequirementEvidenceClassifier(
+      fixture.environment,
+      fixture.fetchImplementation,
+      fixture.workspacePolicy,
+    );
+    const resolved = [];
+    const paths = [];
+    const withCapture = createRequirementEvidenceClassifier(
+      fixture.environment,
+      fixture.fetchImplementation,
+      fixture.workspacePolicy,
+      {
+        recordResolvedClassifier(configuration) { resolved.push(configuration); },
+        recordPath(path) { paths.push(path); },
+      },
+    );
+
+    assert.deepEqual(
+      await withCapture.classify(fixture.fixtureInput),
+      await withoutCapture.classify(fixture.fixtureInput),
+      fixture.name,
+    );
+    assert.deepEqual(resolved, [{ provider: fixture.expectedProvider, model: fixture.expectedModel }], fixture.name);
+    assert.deepEqual(paths, [fixture.expectedPath], fixture.name);
+  }
+});
+
 test("OpenAI classifier is blocked by server policy unless both AI flags are enabled", async () => {
   const { createRequirementEvidenceClassifier } = await loadTsModule("lib/requirementEvidenceClassifier.ts");
   let fetchCalled = false;

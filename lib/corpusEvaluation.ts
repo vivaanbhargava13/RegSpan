@@ -3,6 +3,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { uploadDocumentForWorkspace } from "@/lib/documentUpload";
 import { generateFindingsForWorkspace } from "@/lib/findingsGeneration";
+import type { RequirementEvidenceClassifierTelemetry } from "@/lib/requirementEvidenceClassifier";
 import { checkRateLimit, type RateLimitCategory } from "@/lib/rateLimit";
 import {
   CorpusEvaluationTimeoutError,
@@ -437,12 +438,14 @@ export async function runWorkspaceAnalysis({
   expectedDocumentIds,
   pollTimeoutMs,
   correlationId,
+  classifierTelemetry,
 }: {
   supabase: SupabaseClient;
   context: EvaluationWorkspaceContext;
   expectedDocumentIds: string[];
   pollTimeoutMs: number;
   correlationId: string;
+  classifierTelemetry?: RequirementEvidenceClassifierTelemetry;
 }) {
   await verifyEvaluationWorkspace(supabase, context);
   await assertExactEligibleDocuments(supabase, context, expectedDocumentIds);
@@ -465,6 +468,7 @@ export async function runWorkspaceAnalysis({
     supabase,
     workspaceId: context.workspaceId,
     actorUserId: context.actorUserId,
+    classifierTelemetry,
   });
   if (result.state === "reused_active_run") {
     const recovered = await recoverWorkspaceAnalysis({
