@@ -14,6 +14,11 @@ import {
   createRequirementEvidenceClassifier,
   type RequirementEvidenceClassifierTelemetry,
 } from "@/lib/requirementEvidenceClassifier";
+import {
+  createClassifierSourceTextCache,
+  hydrateSelectedCandidateSourceTextsWithCache,
+  type ClassifierSourceTextCache,
+} from "@/lib/classifierSourceHydration";
 import type { RetrievedChunk } from "@/lib/retrieval";
 import {
   loadWorkspaceExternalAiProcessingPolicy,
@@ -24,16 +29,6 @@ import { loadRegSpRequirementsForFindings } from "@/lib/regulatoryControls";
 import { getServerSupabaseAdminClient } from "@/lib/supabase/server";
 
 export const FINDINGS_GENERATION_TOP_K = 25;
-
-// These controls require exact operative passages that can occur after the
-// semantic RPC's preview boundary. This rehydrates only already-selected
-// candidates; it does not alter semantic/keyword retrieval, merging, ranking,
-// thresholds, or scoring.
-const REQUIREMENTS_REQUIRING_FULL_CLASSIFIER_SOURCE = new Set([
-  "disposal_consumer_customer_information",
-  "incident_evidence_log_preservation",
-  "written_compliance_records",
-]);
 
 export class FindingsGenerationError extends Error {
   constructor(
@@ -121,41 +116,40 @@ function allGradedChunks(match: Awaited<ReturnType<typeof buildRequirementMatchR
   ];
 }
 
-async function hydrateFullClassifierSourceForRequirement({
+async function hydrateSelectedClassifierCandidateSources({
   supabase,
   workspaceId,
-  requirementId,
   candidates,
+  sourceTextCache,
 }: {
   supabase: SupabaseClient;
   workspaceId: string;
-  requirementId: string;
   candidates: RetrievedChunk[];
+  sourceTextCache: ClassifierSourceTextCache;
 }) {
-  if (!REQUIREMENTS_REQUIRING_FULL_CLASSIFIER_SOURCE.has(requirementId) || candidates.length === 0) {
+  if (candidates.length === 0) {
     return candidates;
   }
 
-  const { data, error } = await supabase
-    .from("document_chunks")
-    .select("id, content")
-    .eq("workspace_id", workspaceId)
-    .in("id", candidates.map((candidate) => candidate.chunk_id));
-  if (error) {
-    throw new FindingsGenerationError(
-      "classifier_source_hydration_failed",
-      "Unable to load source evidence for analysis.",
-    );
-  }
-
-  const contentByChunkId = new Map((data ?? []).map((chunk) => [
-    chunk.id as string,
-    chunk.content as string,
-  ]));
-  return candidates.map((candidate) => ({
-    ...candidate,
-    content_preview: contentByChunkId.get(candidate.chunk_id) ?? candidate.content_preview,
-  }));
+  return hydrateSelectedCandidateSourceTextsWithCache({
+    workspaceId,
+    candidates,
+    sourceTextCache,
+    async loadSourceTextRows(chunkIds) {
+      const { data, error } = await supabase
+        .from("document_chunks")
+        .select("id, content")
+        .eq("workspace_id", workspaceId)
+        .in("id", chunkIds);
+      if (error) {
+        throw new FindingsGenerationError(
+          "classifier_source_hydration_failed",
+          "Unable to load source evidence for analysis.",
+        );
+      }
+      return data ?? [];
+    },
+  });
 }
 
 function sourceQuoteForEvidence(evidence: GeneratedRequirementFinding["evidence"][number]) {
@@ -509,6 +503,7 @@ export async function generateFindingsForWorkspace({
     );
     const generatedFindings: GeneratedRequirementFinding[] = [];
     const storedFindings: StoredFindingResult[] = [];
+    const classifierSourceTextCache = createClassifierSourceTextCache();
     for (const requirement of requirements) {
       const candidates = await retrieveRequirementHybridChunks({
         workspaceId,
@@ -521,11 +516,11 @@ export async function generateFindingsForWorkspace({
       const organizationCandidates = candidates.filter(
         (chunk) => chunk.evidence_role === "organization_evidence",
       );
-      const classifierCandidates = await hydrateFullClassifierSourceForRequirement({
+      const classifierCandidates = await hydrateSelectedClassifierCandidateSources({
         supabase,
         workspaceId,
-        requirementId: requirement.id,
         candidates: organizationCandidates,
+        sourceTextCache: classifierSourceTextCache,
       });
       const match = await buildRequirementMatchResultWithClassifier(
         requirement,

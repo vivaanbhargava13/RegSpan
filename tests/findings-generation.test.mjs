@@ -36,7 +36,12 @@ async function loadTsModule(sourcePath) {
   )
     .replaceAll('from "./aiProcessingPolicy"', 'from "./lib__aiProcessingPolicy.mjs"')
     .replaceAll('from "./negativeEvidence"', 'from "./lib__negativeEvidence.mjs"')
+    .replaceAll('from "./classifierSourceHydration"', 'from "./lib__classifierSourceHydration.mjs"')
     .replaceAll('from "./operativeEvidenceRules.mjs"', 'from "./lib__operativeEvidenceRules.mjs"');
+  const sourceHydrationOutput = transpile(
+    await readFile("lib/classifierSourceHydration.ts", "utf8"),
+    "lib/classifierSourceHydration.ts",
+  );
   if (sourcePath === "lib/requirementEvidenceClassifier.ts") {
     await Promise.all([
       writeFile(join(outDir, "lib__aiProcessingPolicy.mjs"), policyOutput, "utf8"),
@@ -54,6 +59,7 @@ async function loadTsModule(sourcePath) {
     writeFile(join(outDir, "lib__aiProcessingPolicy.mjs"), policyOutput, "utf8"),
     writeFile(join(outDir, "lib__negativeEvidence.mjs"), negativeOutput, "utf8"),
     writeFile(join(outDir, "lib__operativeEvidenceRules.mjs"), operativeEvidenceRules, "utf8"),
+    writeFile(join(outDir, "lib__classifierSourceHydration.mjs"), sourceHydrationOutput, "utf8"),
     writeFile(join(outDir, "lib__requirementEvidenceClassifier.mjs"), classifierOutput, "utf8"),
     writeFile(outPath, outputText, "utf8"),
   ]);
@@ -3425,6 +3431,23 @@ test("findings generation schema and routes preserve workspace/security boundari
   assert.match(generateRoute, /EmbeddingProcessingError/);
   assert.doesNotMatch(generateRoute, /workspace_id.*request/i);
   assert.doesNotMatch(generateRoute, /SUPABASE_SERVICE_ROLE_KEY/);
+});
+
+test("findings generation keeps classifier source hydration cache invocation-local", async () => {
+  const generator = await readFile("lib/findingsGeneration.ts", "utf8");
+  const hydrationBody = generator.slice(
+    generator.indexOf("async function hydrateSelectedClassifierCandidateSources"),
+    generator.indexOf("function sourceQuoteForEvidence"),
+  );
+  const generationBody = generator.slice(
+    generator.indexOf("export async function generateFindingsForWorkspace"),
+  );
+
+  assert.match(generator, /createClassifierSourceTextCache/);
+  assert.match(hydrationBody, /hydrateSelectedCandidateSourceTextsWithCache/);
+  assert.match(hydrationBody, /\.in\("id", chunkIds\)/);
+  assert.match(generationBody, /const classifierSourceTextCache = createClassifierSourceTextCache\(\)/);
+  assert.match(generationBody, /candidates: organizationCandidates,[\s\S]{0,100}sourceTextCache: classifierSourceTextCache/);
 });
 
 test("findings persistence stores primary evidence rows and guards completed runs", async () => {
