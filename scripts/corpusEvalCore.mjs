@@ -449,12 +449,18 @@ export function recordEvaluationFailure(state, caseId, message, diagnosticCode) 
   return state;
 }
 
-export async function runIsolatedCaseSequence({ cases, runCase, onCaseFailure }) {
+export async function runIsolatedCaseSequence({
+  cases,
+  runCase,
+  onCaseFailure,
+  shouldStopOnCaseFailure = () => false,
+}) {
   for (const definition of cases) {
     try {
       await runCase(definition);
     } catch (error) {
       await onCaseFailure(definition, error);
+      if (shouldStopOnCaseFailure(error, definition)) return;
     }
   }
 }

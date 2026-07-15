@@ -583,6 +583,26 @@ test("isolated evaluation continues after a failed case with independent workspa
   );
 });
 
+test("isolated evaluation can stop after a designated technical failure", async () => {
+  const definitions = [manifestCase("case-one"), manifestCase("case-two"), manifestCase("case-three")];
+  const attempted = [];
+  const failures = [];
+  await runIsolatedCaseSequence({
+    cases: definitions,
+    runCase: async (definition) => {
+      attempted.push(definition.id);
+      if (definition.id === "case-two") throw new Error("classifier_provider_failure");
+    },
+    onCaseFailure: async (definition, error) => {
+      failures.push([definition.id, error.message]);
+    },
+    shouldStopOnCaseFailure: (error) => error instanceof Error
+      && error.message === "classifier_provider_failure",
+  });
+  assert.deepEqual(attempted, ["case-one", "case-two"]);
+  assert.deepEqual(failures, [["case-two", "classifier_provider_failure"]]);
+});
+
 test("incomplete reports separate evaluated accuracy from full-corpus progress", () => {
   const selectedCases = Array.from({ length: 12 }, (_, index) => ({
     ...manifestCase(`case-${index + 1}`),
@@ -1206,6 +1226,8 @@ test("corpus runner is one-shot and contains no resume, adoption, or cleanup pat
   assert.match(runner, /sourceType: definition\.sourceType/);
   assert.match(runner, /runWorkspaceAnalysis/);
   assert.match(runner, /--allow-external-ai/);
+  assert.match(runner, /--strict-classifier-provider-errors/);
+  assert.match(runner, /classifier_provider_failure/);
   assert.match(runner, /assertExternalAiProcessingServerAvailable/);
   assert.match(runner, /error instanceof RateLimitError/);
   assert.match(runner, /findings_generate_eval/);

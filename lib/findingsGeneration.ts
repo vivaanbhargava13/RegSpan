@@ -47,6 +47,7 @@ type GenerateFindingsInput = {
   supabase?: SupabaseClient;
   topK?: number;
   classifierTelemetry?: RequirementEvidenceClassifierTelemetry;
+  evaluationCaseIdByDocumentId?: ReadonlyMap<string, string>;
 };
 
 type AnalysisRunRow = {
@@ -464,6 +465,7 @@ export async function generateFindingsForWorkspace({
   supabase = getServerSupabaseAdminClient(),
   topK = FINDINGS_GENERATION_TOP_K,
   classifierTelemetry,
+  evaluationCaseIdByDocumentId,
 }: GenerateFindingsInput) {
   await assertProcessedEvidenceExists(supabase, workspaceId);
   const requirements = await loadRegSpRequirementsForFindings({ supabase });
@@ -526,6 +528,7 @@ export async function generateFindingsForWorkspace({
         requirement,
         classifierCandidates,
         classifier,
+        evaluationCaseIdByDocumentId,
       );
       const finding = aggregateFindingForRequirement(
         requirement,

@@ -30,6 +30,37 @@ export type RequirementEvidenceClassifierTelemetryPath =
   | "fallback_provider_error"
   | "fallback_parse_error";
 
+export type RequirementEvidenceClassifierProviderFailureCategory =
+  | "rate_limit"
+  | "timeout"
+  | "network"
+  | "http_4xx"
+  | "http_5xx"
+  | "unknown";
+
+/**
+ * Deliberately source-free provider-failure metadata for evaluation telemetry.
+ * Do not add prompts, source text, response bodies, credentials, or headers
+ * other than Retry-After to this shape.
+ */
+export type RequirementEvidenceClassifierProviderFailureEvent = {
+  caseId: string | null;
+  requirementId: string;
+  candidateChunkId: string | null;
+  httpStatus: number | null;
+  errorCategory: RequirementEvidenceClassifierProviderFailureCategory;
+  elapsedMs: number;
+  requestAttempt: number;
+  promptCharacters: number;
+  model: string;
+  retryAfter: string | null;
+};
+
+/** A sanitized retry observation. It intentionally contains no request or source content. */
+export type RequirementEvidenceClassifierProviderRetryEvent = RequirementEvidenceClassifierProviderFailureEvent & {
+  retryDelayMs: number;
+};
+
 export type RequirementEvidenceClassifierResolvedConfiguration = {
   provider: RequirementEvidenceClassifierProvider;
   model: string | null;
@@ -42,12 +73,18 @@ export type RequirementEvidenceClassifierResolvedConfiguration = {
 export type RequirementEvidenceClassifierTelemetry = {
   recordResolvedClassifier?: (configuration: RequirementEvidenceClassifierResolvedConfiguration) => void;
   recordPath?: (path: RequirementEvidenceClassifierTelemetryPath) => void;
+  recordProviderFailure?: (event: RequirementEvidenceClassifierProviderFailureEvent) => void;
+  recordProviderRetry?: (event: RequirementEvidenceClassifierProviderRetryEvent) => void;
+  /** Evaluation-only: fail the analysis after recording a provider failure. */
+  strictProviderFailures?: boolean;
 };
 
 export type RequirementEvidenceClassifierInput = {
   requirement: RegSpRequirement;
   evaluationGuidance: string;
   chunkContent: string;
+  candidateChunkId?: string | null;
+  evaluationCaseId?: string | null;
   chunkMetadata: {
     filename: string | null;
     sectionPath: string | null;
@@ -59,6 +96,13 @@ export type RequirementEvidenceClassifierInput = {
     evidenceReason: string | null;
   };
 };
+
+export class RequirementEvidenceClassifierProviderFailureError extends Error {
+  constructor(public readonly event: RequirementEvidenceClassifierProviderFailureEvent) {
+    super(`Classifier provider failure: ${event.errorCategory}.`);
+    this.name = "RequirementEvidenceClassifierProviderFailureError";
+  }
+}
 
 export type RequirementEvidenceClassification = {
   relationship: RequirementEvidenceRelationship;
@@ -81,6 +125,11 @@ export type RequirementEvidenceClassifier = {
 };
 
 type ClassifierEnvironment = Record<string, string | undefined>;
+export type RequirementEvidenceClassifierRuntime = {
+  sleep?: (milliseconds: number) => Promise<void>;
+  random?: () => number;
+  now?: () => number;
+};
 type SentenceScopedNegativeEvidence = ReturnType<typeof detectNegativeEvidence> & {
   sentence: string | null;
   elementIds: string[];
@@ -88,6 +137,9 @@ type SentenceScopedNegativeEvidence = ReturnType<typeof detectNegativeEvidence> 
 
 const OPENAI_CHAT_COMPLETIONS_URL = "https://api.openai.com/v1/chat/completions";
 const CLASSIFIER_TIMEOUT_MS = 30_000;
+const CLASSIFIER_MAX_ATTEMPTS = 3;
+const CLASSIFIER_RETRY_BACKOFF_BASE_MS = 250;
+const CLASSIFIER_RETRY_BACKOFF_CAP_MS = 2_000;
 const SILENCE_BASED_NEGATIVE_REASON_PATTERNS = [
   /\bdoes not\s+(?:explicitly\s+)?(?:mention|reference|discuss|describe|state|include|address|contain)\b/i,
   /\bdoesn['’]?t\s+(?:explicitly\s+)?(?:mention|reference|discuss|describe|state|include|address|contain)\b/i,
@@ -111,6 +163,83 @@ function normalize(value: string | null | undefined) {
     .replace(/[^a-z0-9\s-]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function httpStatusForFailure(response: { status?: unknown }) {
+  const status = response.status;
+  return typeof status === "number" && Number.isInteger(status) && status >= 100 && status <= 599
+    ? status
+    : null;
+}
+
+function retryAfterForFailure(response: { headers?: { get?: (name: string) => string | null } }) {
+  const value = response.headers?.get?.("retry-after");
+  const sanitized = typeof value === "string" ? value.trim().slice(0, 128) : "";
+  return sanitized || null;
+}
+
+function providerFailureCategoryForHttpStatus(
+  status: number | null,
+): RequirementEvidenceClassifierProviderFailureCategory {
+  if (status === 429) return "rate_limit";
+  if (status !== null && status >= 400 && status < 500) return "http_4xx";
+  if (status !== null && status >= 500 && status < 600) return "http_5xx";
+  return "unknown";
+}
+
+function providerFailureCategoryForThrownError(
+  error: unknown,
+): RequirementEvidenceClassifierProviderFailureCategory {
+  const name = error && typeof error === "object" && "name" in error
+    ? String(error.name)
+    : "";
+  if (name === "AbortError" || name === "TimeoutError") return "timeout";
+  if (error instanceof TypeError || name === "TypeError") return "network";
+  return "unknown";
+}
+
+function isRetryableProviderFailure({
+  httpStatus,
+  errorCategory,
+}: {
+  httpStatus: number | null;
+  errorCategory: RequirementEvidenceClassifierProviderFailureCategory;
+}) {
+  return httpStatus === 429
+    || httpStatus === 500
+    || httpStatus === 502
+    || httpStatus === 503
+    || httpStatus === 504
+    || errorCategory === "network";
+}
+
+function retryAfterDelayMs(retryAfter: string | null, now: () => number) {
+  if (!retryAfter) return null;
+  const seconds = Number(retryAfter);
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.ceil(seconds * 1_000);
+  const date = Date.parse(retryAfter);
+  return Number.isFinite(date) ? Math.max(0, date - now()) : null;
+}
+
+function retryDelayMs({
+  attempt,
+  retryAfter,
+  now,
+  random,
+}: {
+  attempt: number;
+  retryAfter: string | null;
+  now: () => number;
+  random: () => number;
+}) {
+  const retryAfterDelay = retryAfterDelayMs(retryAfter, now);
+  if (retryAfterDelay !== null) return retryAfterDelay;
+  const boundedBase = Math.min(
+    CLASSIFIER_RETRY_BACKOFF_CAP_MS,
+    CLASSIFIER_RETRY_BACKOFF_BASE_MS * (2 ** Math.max(0, attempt - 1)),
+  );
+  const jitter = 0.5 + Math.min(1, Math.max(0, random()));
+  return Math.round(boundedBase * jitter);
 }
 
 function countSignalMatches(text: string, signals: string[]) {
@@ -1600,6 +1729,7 @@ export function createRequirementEvidenceClassifier(
   fetchImplementation: typeof fetch = fetch,
   workspacePolicy?: WorkspaceExternalAiProcessingPolicy,
   telemetry?: RequirementEvidenceClassifierTelemetry,
+  runtime: RequirementEvidenceClassifierRuntime = {},
 ): RequirementEvidenceClassifier {
   const requestedProvider = (environment.REQUIREMENT_CLASSIFIER_PROVIDER ?? "heuristic")
     .trim()
@@ -1674,65 +1804,144 @@ export function createRequirementEvidenceClassifier(
       }
 
       const prompt = buildRequirementEvidenceClassifierPrompt(input);
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), CLASSIFIER_TIMEOUT_MS);
-
-      try {
-        const response = await fetchImplementation(OPENAI_CHAT_COMPLETIONS_URL, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model,
-            temperature: 0,
-            response_format: { type: "json_object" },
-            messages: [
-              { role: "system", content: prompt.system },
-              { role: "user", content: prompt.user },
-            ],
-          }),
-          signal: controller.signal,
-        });
-
-        if (!response.ok) {
-          telemetry?.recordPath?.("fallback_provider_error");
-          return {
-            ...classifyRequirementEvidenceHeuristically(input, "fallback"),
-            reason:
-              "LLM classifier failed or returned invalid output; deterministic heuristic fallback was used.",
-          };
-        }
-
-        try {
-          const parsed = postProcessOpenAiClassification(
-            parseOpenAiClassification(await response.json(), input.requirement),
-            input,
-          );
-          telemetry?.recordPath?.("openai_success");
-          return {
-            ...parsed,
-            classifier_provider: "openai",
-          };
-        } catch {
-          telemetry?.recordPath?.("fallback_parse_error");
-          return {
-            ...classifyRequirementEvidenceHeuristically(input, "fallback"),
-            reason:
-              "LLM classifier failed or returned invalid output; deterministic heuristic fallback was used.",
-          };
-        }
-      } catch {
+      const now = runtime.now ?? (() => Date.now());
+      const sleep = runtime.sleep ?? ((milliseconds) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds)));
+      const random = runtime.random ?? Math.random;
+      const requestStartedAt = now();
+      const promptCharacters = prompt.system.length + prompt.user.length;
+      const providerFailure = ({
+        httpStatus,
+        errorCategory,
+        retryAfter,
+        requestAttempt,
+      }: {
+        httpStatus: number | null;
+        errorCategory: RequirementEvidenceClassifierProviderFailureCategory;
+        retryAfter: string | null;
+        requestAttempt: number;
+      }) => {
+        const event: RequirementEvidenceClassifierProviderFailureEvent = {
+          caseId: input.evaluationCaseId ?? null,
+          requirementId: input.requirement.id,
+          candidateChunkId: input.candidateChunkId ?? null,
+          httpStatus,
+          errorCategory,
+          elapsedMs: Math.max(0, now() - requestStartedAt),
+          requestAttempt,
+          promptCharacters,
+          model: model.slice(0, 128),
+          retryAfter,
+        };
         telemetry?.recordPath?.("fallback_provider_error");
+        telemetry?.recordProviderFailure?.(event);
+        if (telemetry?.strictProviderFailures) {
+          throw new RequirementEvidenceClassifierProviderFailureError(event);
+        }
         return {
           ...classifyRequirementEvidenceHeuristically(input, "fallback"),
           reason:
             "LLM classifier failed or returned invalid output; deterministic heuristic fallback was used.",
         };
-      } finally {
-        clearTimeout(timeout);
+      };
+
+      const retryProviderRequest = async ({
+        httpStatus,
+        errorCategory,
+        retryAfter,
+        requestAttempt,
+      }: {
+        httpStatus: number | null;
+        errorCategory: RequirementEvidenceClassifierProviderFailureCategory;
+        retryAfter: string | null;
+        requestAttempt: number;
+      }) => {
+        if (!isRetryableProviderFailure({ httpStatus, errorCategory }) || requestAttempt >= CLASSIFIER_MAX_ATTEMPTS) {
+          return false;
+        }
+        const retryDelay = retryDelayMs({ attempt: requestAttempt, retryAfter, now, random });
+        telemetry?.recordProviderRetry?.({
+          caseId: input.evaluationCaseId ?? null,
+          requirementId: input.requirement.id,
+          candidateChunkId: input.candidateChunkId ?? null,
+          httpStatus,
+          errorCategory,
+          elapsedMs: Math.max(0, now() - requestStartedAt),
+          requestAttempt,
+          promptCharacters,
+          model: model.slice(0, 128),
+          retryAfter,
+          retryDelayMs: retryDelay,
+        });
+        await sleep(retryDelay);
+        return true;
+      };
+
+      for (let requestAttempt = 1; requestAttempt <= CLASSIFIER_MAX_ATTEMPTS; requestAttempt += 1) {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), CLASSIFIER_TIMEOUT_MS);
+        try {
+          const response = await fetchImplementation(OPENAI_CHAT_COMPLETIONS_URL, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model,
+              temperature: 0,
+              response_format: { type: "json_object" },
+              messages: [
+                { role: "system", content: prompt.system },
+                { role: "user", content: prompt.user },
+              ],
+            }),
+            signal: controller.signal,
+          });
+
+          if (!response.ok) {
+            const httpStatus = httpStatusForFailure(response);
+            const errorCategory = providerFailureCategoryForHttpStatus(httpStatus);
+            const retryAfter = retryAfterForFailure(response);
+            if (await retryProviderRequest({ httpStatus, errorCategory, retryAfter, requestAttempt })) continue;
+            return providerFailure({ httpStatus, errorCategory, retryAfter, requestAttempt });
+          }
+
+          try {
+            const parsed = postProcessOpenAiClassification(
+              parseOpenAiClassification(await response.json(), input.requirement),
+              input,
+            );
+            telemetry?.recordPath?.("openai_success");
+            return {
+              ...parsed,
+              classifier_provider: "openai",
+            };
+          } catch {
+            telemetry?.recordPath?.("fallback_parse_error");
+            return {
+              ...classifyRequirementEvidenceHeuristically(input, "fallback"),
+              reason:
+                "LLM classifier failed or returned invalid output; deterministic heuristic fallback was used.",
+            };
+          }
+        } catch (error) {
+          if (error instanceof RequirementEvidenceClassifierProviderFailureError) throw error;
+          const httpStatus = null;
+          const errorCategory = providerFailureCategoryForThrownError(error);
+          const retryAfter = null;
+          if (await retryProviderRequest({ httpStatus, errorCategory, retryAfter, requestAttempt })) continue;
+          return providerFailure({ httpStatus, errorCategory, retryAfter, requestAttempt });
+        } finally {
+          clearTimeout(timeout);
+        }
       }
+
+      return providerFailure({
+        httpStatus: null,
+        errorCategory: "unknown",
+        retryAfter: null,
+        requestAttempt: CLASSIFIER_MAX_ATTEMPTS,
+      });
     },
   };
 }
@@ -1740,11 +1949,14 @@ export function createRequirementEvidenceClassifier(
 export function classifierInputForChunk(
   requirement: RegSpRequirement,
   chunk: RetrievedChunk,
+  telemetryContext: { caseId?: string | null } = {},
 ): RequirementEvidenceClassifierInput {
   return {
     requirement,
     evaluationGuidance: buildRequirementEvaluationGuidance(requirement),
     chunkContent: chunk.content_preview ?? "",
+    candidateChunkId: chunk.chunk_id,
+    evaluationCaseId: telemetryContext.caseId ?? null,
     chunkMetadata: {
       filename: chunk.filename ?? null,
       sectionPath: chunk.section_path ?? null,

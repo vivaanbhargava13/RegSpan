@@ -88,6 +88,7 @@ export function runIsolatedCaseSequence<T>(input: {
   cases: T[];
   runCase: (definition: T) => Promise<void>;
   onCaseFailure: (definition: T, error: unknown) => Promise<void>;
+  shouldStopOnCaseFailure?: (error: unknown, definition: T) => boolean;
 }): Promise<void>;
 export function summarizeEvaluationState(state: Record<string, unknown>): Record<string, unknown>;
 export function formatEvaluationStatusAccuracy(summary: {

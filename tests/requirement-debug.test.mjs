@@ -624,6 +624,282 @@ test("classifier telemetry capture preserves deterministic classifications acros
   }
 });
 
+test("provider failures emit sanitized evaluation telemetry and strict mode stops after recording", async () => {
+  const {
+    createRequirementEvidenceClassifier,
+    RequirementEvidenceClassifierProviderFailureError,
+  } = await loadTsModule("lib/requirementEvidenceClassifier.ts");
+  const input = {
+    requirement: {
+      id: "customer_notification_unauthorized_access",
+      title: "Customer notification",
+      description: "Notify affected customers after unauthorized access.",
+      retrievalQuery: "customer notification unauthorized access",
+      directSignals: ["customer notification"],
+      actionSignals: ["notify"],
+      topicSignals: ["customer"],
+      partialSignals: [],
+      backgroundSignals: [],
+      coverageElements: [],
+      requiredElementsForCovered: [],
+      optionalElements: [],
+    },
+    evaluationGuidance: "TOP_SECRET_GUIDANCE must never be emitted.",
+    chunkContent: "TOP_SECRET_SOURCE_TEXT customer notification is required.",
+    candidateChunkId: "candidate-chunk-123",
+    evaluationCaseId: "bh36-test",
+    chunkMetadata: {
+      filename: "TOP_SECRET_FILENAME.pdf",
+      sectionPath: "TOP_SECRET_SECTION",
+      pageStart: 1,
+      pageEnd: 1,
+      chunkIndex: 0,
+      sourceType: "client_policy",
+      evidenceRole: "organization_evidence",
+      evidenceReason: "TOP_SECRET_REASON",
+    },
+  };
+  const environment = {
+    ENABLE_EXTERNAL_AI_PROCESSING: "true",
+    ENABLE_EXTERNAL_AI_CLASSIFIER: "true",
+    REQUIREMENT_CLASSIFIER_PROVIDER: "openai",
+    REQUIREMENT_CLASSIFIER_MODEL: "gpt-test",
+    REQUIREMENT_CLASSIFIER_API_KEY: "sk-test-never-record",
+  };
+  const policy = {
+    workspaceId: "workspace-1",
+    workspaceConsentEnabled: true,
+    externalAiProcessingEnabled: true,
+    externalAiClassifierEnabled: true,
+    denialReason: null,
+  };
+  const classifyWithFailure = async ({ response, error, strict = false }) => {
+    const events = [];
+    const retries = [];
+    const delays = [];
+    const classifier = createRequirementEvidenceClassifier(
+      environment,
+      async () => {
+        if (error) throw error;
+        return response;
+      },
+      policy,
+      {
+        strictProviderFailures: strict,
+        recordProviderFailure(event) { events.push(event); },
+        recordProviderRetry(event) { retries.push(event); },
+      },
+      {
+        sleep: async (milliseconds) => { delays.push(milliseconds); },
+        random: () => 0.5,
+      },
+    );
+    return { classifier, events, retries, delays };
+  };
+
+  for (const fixture of [
+    { status: 429, category: "rate_limit", retryAfter: "17" },
+    { status: 404, category: "http_4xx", retryAfter: null },
+    { status: 503, category: "http_5xx", retryAfter: null },
+  ]) {
+    const { classifier, events, retries, delays } = await classifyWithFailure({
+      response: {
+        ok: false,
+        status: fixture.status,
+        headers: { get: (name) => name.toLowerCase() === "retry-after" ? fixture.retryAfter : null },
+      },
+    });
+    const result = await classifier.classify(input);
+    assert.equal(result.classifier_provider, "fallback");
+    const expectedAttempt = fixture.status === 404 ? 1 : 3;
+    assert.equal(events.length, 1);
+    assert.deepEqual({
+      caseId: events[0].caseId,
+      requirementId: events[0].requirementId,
+      candidateChunkId: events[0].candidateChunkId,
+      httpStatus: events[0].httpStatus,
+      errorCategory: events[0].errorCategory,
+      requestAttempt: events[0].requestAttempt,
+      promptCharacters: events[0].promptCharacters > 0,
+      model: events[0].model,
+      retryAfter: events[0].retryAfter,
+    }, {
+      caseId: "bh36-test",
+      requirementId: "customer_notification_unauthorized_access",
+      candidateChunkId: "candidate-chunk-123",
+      httpStatus: fixture.status,
+      errorCategory: fixture.category,
+      requestAttempt: expectedAttempt,
+      promptCharacters: true,
+      model: "gpt-test",
+      retryAfter: fixture.retryAfter,
+    });
+    assert.ok(events[0].elapsedMs >= 0);
+    assert.equal(retries.length, expectedAttempt - 1);
+    assert.deepEqual(retries.map((event) => event.requestAttempt), expectedAttempt === 1 ? [] : [1, 2]);
+    assert.deepEqual(delays, fixture.status === 429 ? [17_000, 17_000]
+      : fixture.status === 503 ? [250, 500]
+        : []);
+    const serialized = JSON.stringify(events[0]);
+    assert.doesNotMatch(serialized, /TOP_SECRET|sk-test-never-record/i);
+  }
+
+  const abortError = new Error("aborted");
+  abortError.name = "AbortError";
+  const timeout = await classifyWithFailure({ error: abortError });
+  await timeout.classifier.classify(input);
+  assert.deepEqual(timeout.events.map((event) => ({
+    httpStatus: event.httpStatus,
+    errorCategory: event.errorCategory,
+    retryAfter: event.retryAfter,
+  })), [{ httpStatus: null, errorCategory: "timeout", retryAfter: null }]);
+
+  const network = await classifyWithFailure({ error: new TypeError("network unavailable") });
+  await network.classifier.classify(input);
+  assert.equal(network.events[0].errorCategory, "network");
+  assert.equal(network.events[0].requestAttempt, 3);
+  assert.equal(network.retries.length, 2);
+
+  const strict = await classifyWithFailure({
+    strict: true,
+    response: { ok: false, status: 503, headers: { get: () => null } },
+  });
+  await assert.rejects(
+    () => strict.classifier.classify(input),
+    (error) => error instanceof RequirementEvidenceClassifierProviderFailureError
+      && error.event.errorCategory === "http_5xx"
+      && error.event.httpStatus === 503,
+  );
+  assert.equal(strict.events.length, 1);
+  assert.equal(strict.events[0].requestAttempt, 3);
+  assert.equal(strict.retries.length, 2);
+});
+
+test("classifier retries transient provider failures and preserves first-attempt success", async () => {
+  const { createRequirementEvidenceClassifier } = await loadTsModule("lib/requirementEvidenceClassifier.ts");
+  const input = {
+    requirement: {
+      id: "customer_notification_unauthorized_access",
+      title: "Customer notification",
+      description: "Notify affected customers after unauthorized access.",
+      retrievalQuery: "customer notification unauthorized access",
+      directSignals: ["customer notification"],
+      actionSignals: ["notify"],
+      topicSignals: ["customer"],
+      partialSignals: [],
+      backgroundSignals: [],
+      coverageElements: [],
+      requiredElementsForCovered: [],
+      optionalElements: [],
+    },
+    evaluationGuidance: "Classify the evidence.",
+    chunkContent: "The policy requires customer notification after unauthorized access.",
+    candidateChunkId: "candidate-chunk-456",
+    evaluationCaseId: "bh36-test",
+    chunkMetadata: {
+      filename: "policy.pdf",
+      sectionPath: "Notification",
+      pageStart: 1,
+      pageEnd: 1,
+      chunkIndex: 0,
+      sourceType: "client_policy",
+      evidenceRole: "organization_evidence",
+      evidenceReason: "substantive policy evidence",
+    },
+  };
+  const environment = {
+    ENABLE_EXTERNAL_AI_PROCESSING: "true",
+    ENABLE_EXTERNAL_AI_CLASSIFIER: "true",
+    REQUIREMENT_CLASSIFIER_PROVIDER: "openai",
+    REQUIREMENT_CLASSIFIER_MODEL: "gpt-test",
+    REQUIREMENT_CLASSIFIER_API_KEY: "test-key",
+  };
+  const policy = {
+    workspaceId: "workspace-1",
+    workspaceConsentEnabled: true,
+    externalAiProcessingEnabled: true,
+    externalAiClassifierEnabled: true,
+    denialReason: null,
+  };
+  const success = {
+    ok: true,
+    async json() {
+      return {
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              relationship: "irrelevant",
+              confidence: "low",
+              requirement_supported: false,
+              control_absent_or_out_of_scope: false,
+              covered_elements: [],
+              missing_elements: [],
+              vague_elements: [],
+              reason: "No requirement-specific evidence.",
+              supporting_quote: null,
+            }),
+          },
+        }],
+      };
+    },
+  };
+  for (const fixture of [
+    {
+      failure: { ok: false, status: 429, headers: { get: (name) => name === "retry-after" ? "1" : null } },
+      category: "rate_limit",
+      delay: 1_000,
+    },
+    {
+      failure: { ok: false, status: 503, headers: { get: () => null } },
+      category: "http_5xx",
+      delay: 250,
+    },
+    {
+      failure: new TypeError("network unavailable"),
+      category: "network",
+      delay: 250,
+    },
+  ]) {
+    let attempts = 0;
+    const retries = [];
+    const delays = [];
+    const classifier = createRequirementEvidenceClassifier(
+      environment,
+      async () => {
+        attempts += 1;
+        if (attempts === 1) {
+          if (fixture.failure instanceof Error) throw fixture.failure;
+          return fixture.failure;
+        }
+        return success;
+      },
+      policy,
+      { recordProviderRetry(event) { retries.push(event); } },
+      { sleep: async (milliseconds) => { delays.push(milliseconds); }, random: () => 0.5 },
+    );
+    const result = await classifier.classify(input);
+    assert.equal(result.classifier_provider, "openai");
+    assert.equal(attempts, 2);
+    assert.deepEqual(retries.map((event) => ({
+      category: event.errorCategory,
+      attempt: event.requestAttempt,
+    })), [{ category: fixture.category, attempt: 1 }]);
+    assert.deepEqual(delays, [fixture.delay]);
+  }
+
+  let firstAttemptCalls = 0;
+  const firstAttempt = createRequirementEvidenceClassifier(
+    environment,
+    async () => { firstAttemptCalls += 1; return success; },
+    policy,
+    { recordProviderRetry() { throw new Error("first-attempt success must not retry"); } },
+    { sleep: async () => { throw new Error("first-attempt success must not sleep"); } },
+  );
+  const firstAttemptResult = await firstAttempt.classify(input);
+  assert.equal(firstAttemptResult.classifier_provider, "openai");
+  assert.equal(firstAttemptCalls, 1);
+});
+
 test("OpenAI classifier is blocked by server policy unless both AI flags are enabled", async () => {
   const { createRequirementEvidenceClassifier } = await loadTsModule("lib/requirementEvidenceClassifier.ts");
   let fetchCalled = false;

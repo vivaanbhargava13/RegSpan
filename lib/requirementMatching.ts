@@ -47,6 +47,30 @@ const gradeRank: Record<EvidenceGrade, number> = {
   irrelevant: 3,
 };
 
+export const CLASSIFIER_CANDIDATE_CONCURRENCY = 5;
+
+export async function mapWithClassifierConcurrency<T, R>(
+  values: readonly T[],
+  worker: (value: T, index: number) => Promise<R>,
+  concurrency = CLASSIFIER_CANDIDATE_CONCURRENCY,
+): Promise<R[]> {
+  if (!Number.isInteger(concurrency) || concurrency < 1) {
+    throw new Error("Classifier concurrency must be a positive integer.");
+  }
+  const results = new Array<R>(values.length);
+  let nextIndex = 0;
+  const runWorker = async () => {
+    while (true) {
+      const index = nextIndex;
+      nextIndex += 1;
+      if (index >= values.length) return;
+      results[index] = await worker(values[index], index);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, values.length) }, runWorker));
+  return results;
+}
+
 function gradeFromRelationship(relationship: RequirementEvidenceRelationship): EvidenceGrade {
   switch (relationship) {
     case "supports":
@@ -184,11 +208,14 @@ export async function buildRequirementMatchResultWithClassifier(
   requirement: RegSpRequirement,
   chunks: RetrievedChunk[],
   classifier: RequirementEvidenceClassifier = createRequirementEvidenceClassifier(),
+  evaluationCaseIdByDocumentId?: ReadonlyMap<string, string>,
 ): Promise<RequirementMatchResult> {
-  const graded = (await Promise.all(chunks.map(async (chunk) => {
-    const classification = await classifier.classify(classifierInputForChunk(requirement, chunk));
+  const graded = (await mapWithClassifierConcurrency(chunks, async (chunk) => {
+    const classification = await classifier.classify(classifierInputForChunk(requirement, chunk, {
+      caseId: evaluationCaseIdByDocumentId?.get(chunk.document_id) ?? null,
+    }));
     return chunkWithClassification(chunk, classification);
-  }))).sort((left, right) => {
+  })).sort((left, right) => {
     const gradeDelta = gradeRank[left.grade] - gradeRank[right.grade];
     if (gradeDelta !== 0) return gradeDelta;
     const leftRerank = left.rerank_score ?? 0;

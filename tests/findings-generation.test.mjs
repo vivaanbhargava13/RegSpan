@@ -206,6 +206,30 @@ async function productionPathFinding(testRequirement, retrievedChunks, classific
   ]);
 }
 
+test("classifier candidate concurrency never exceeds five and preserves all candidates", async () => {
+  const { buildRequirementMatchResultWithClassifier } = await loadTsModule("lib/requirementMatching.ts");
+  let active = 0;
+  let maximumActive = 0;
+  const classifier = {
+    provider: "openai",
+    async classify() {
+      active += 1;
+      maximumActive = Math.max(maximumActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      active -= 1;
+      return classifierClassification();
+    },
+  };
+  const chunks = Array.from({ length: 12 }, (_, index) => chunk({
+    chunk_id: `11111111-1111-4111-8111-${String(index + 1).padStart(12, "0")}`,
+    chunk_index: index,
+  }));
+  const match = await buildRequirementMatchResultWithClassifier(requirement, chunks, classifier);
+  assert.equal(maximumActive, 5);
+  assert.equal(match.direct.length, 12);
+  assert.deepEqual(match.direct.map((entry) => entry.chunk_id), chunks.map((entry) => entry.chunk_id));
+});
+
 test("post-processing and final aggregation downgrade incomplete notice content from covered to partial", async () => {
   const noticeRequirement = {
     ...requirement,

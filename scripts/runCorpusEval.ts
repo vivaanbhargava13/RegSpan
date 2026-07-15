@@ -6,10 +6,13 @@ import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { assertExternalAiProcessingServerAvailable } from "@/lib/aiProcessingPolicy";
 import { canonicalElementIdsForFinalPositiveQuote } from "@/lib/findingsAggregation";
 import type {
+  RequirementEvidenceClassifierProviderFailureEvent,
+  RequirementEvidenceClassifierProviderRetryEvent,
   RequirementEvidenceClassifierResolvedConfiguration,
   RequirementEvidenceClassifierTelemetry,
   RequirementEvidenceClassifierTelemetryPath,
 } from "@/lib/requirementEvidenceClassifier";
+import { RequirementEvidenceClassifierProviderFailureError } from "@/lib/requirementEvidenceClassifier";
 import { RateLimitError } from "@/lib/rateLimit";
 import { canonicalControlKeyForRequirement } from "@/lib/regulatoryControlFramework";
 import { loadRegSpRequirementsForFindings } from "@/lib/regulatoryControls";
@@ -79,6 +82,7 @@ type RunnerArgs = {
   caseIds: string[];
   waitOnRateLimit: boolean;
   maxRateLimitWaitMs: number;
+  strictClassifierProviderErrors: boolean;
   blind: boolean;
   help: boolean;
 };
@@ -245,15 +249,23 @@ type EvaluationClassifierTelemetry = {
     runId: string;
     resolvedClassifier: RequirementEvidenceClassifierResolvedConfiguration | null;
     counts: Record<RequirementEvidenceClassifierTelemetryPath, number>;
+    providerFailures: RequirementEvidenceClassifierProviderFailureEvent[];
+    providerRetries: RequirementEvidenceClassifierProviderRetryEvent[];
   };
 };
 
-function createEvaluationClassifierTelemetry(): EvaluationClassifierTelemetry {
+function createEvaluationClassifierTelemetry({
+  strictProviderFailures = false,
+}: {
+  strictProviderFailures?: boolean;
+} = {}): EvaluationClassifierTelemetry {
   let resolvedClassifier: RequirementEvidenceClassifierResolvedConfiguration | null = null;
   const counts = Object.fromEntries(CLASSIFIER_TELEMETRY_PATHS.map((path) => [path, 0])) as Record<
     RequirementEvidenceClassifierTelemetryPath,
     number
   >;
+  const providerFailures: RequirementEvidenceClassifierProviderFailureEvent[] = [];
+  const providerRetries: RequirementEvidenceClassifierProviderRetryEvent[] = [];
 
   return {
     telemetry: {
@@ -264,6 +276,36 @@ function createEvaluationClassifierTelemetry(): EvaluationClassifierTelemetry {
       recordPath(path) {
         counts[path] += 1;
       },
+      recordProviderFailure(event) {
+        providerFailures.push({
+          caseId: event.caseId,
+          requirementId: event.requirementId,
+          candidateChunkId: event.candidateChunkId,
+          httpStatus: event.httpStatus,
+          errorCategory: event.errorCategory,
+          elapsedMs: event.elapsedMs,
+          requestAttempt: event.requestAttempt,
+          promptCharacters: event.promptCharacters,
+          model: event.model,
+          retryAfter: event.retryAfter,
+        });
+      },
+      recordProviderRetry(event) {
+        providerRetries.push({
+          caseId: event.caseId,
+          requirementId: event.requirementId,
+          candidateChunkId: event.candidateChunkId,
+          httpStatus: event.httpStatus,
+          errorCategory: event.errorCategory,
+          elapsedMs: event.elapsedMs,
+          requestAttempt: event.requestAttempt,
+          promptCharacters: event.promptCharacters,
+          model: event.model,
+          retryAfter: event.retryAfter,
+          retryDelayMs: event.retryDelayMs,
+        });
+      },
+      strictProviderFailures,
     },
     sidecar(state) {
       return {
@@ -271,6 +313,8 @@ function createEvaluationClassifierTelemetry(): EvaluationClassifierTelemetry {
         runId: state.runId,
         resolvedClassifier,
         counts: { ...counts },
+        providerFailures: providerFailures.map((event) => ({ ...event })),
+        providerRetries: providerRetries.map((event) => ({ ...event })),
       };
     },
   };
@@ -291,6 +335,7 @@ Options:
   --workspace-prefix <prefix>  Explicit prefix beginning regspan-eval-; overrides REGSPAN_EVAL_WORKSPACE_PREFIX.
   --case <case-id>             Run one manifest case; repeat to select multiple cases.
   --allow-external-ai          Allow external AI for newly created evaluation workspaces.
+  --strict-classifier-provider-errors  Evaluation-only: record and fail a case on the first classifier provider error.
   --wait-on-rate-limit         Wait and retry Analysis rate limits (default).
   --no-wait-on-rate-limit      Fail immediately when Analysis is rate limited.
   --max-rate-limit-wait-ms <n> Maximum total wait for Analysis rate limits. Defaults to ${DEFAULT_MAX_RATE_LIMIT_WAIT_MS}.
@@ -314,6 +359,7 @@ function parseArgs(argv: string[]): RunnerArgs {
     caseIds: [],
     waitOnRateLimit: true,
     maxRateLimitWaitMs: DEFAULT_MAX_RATE_LIMIT_WAIT_MS,
+    strictClassifierProviderErrors: false,
     blind: false,
     help: false,
   };
@@ -333,6 +379,7 @@ function parseArgs(argv: string[]): RunnerArgs {
       index += 1;
     }
     else if (arg === "--allow-external-ai") args.allowExternalAi = true;
+    else if (arg === "--strict-classifier-provider-errors") args.strictClassifierProviderErrors = true;
     else if (arg === "--wait-on-rate-limit") args.waitOnRateLimit = true;
     else if (arg === "--no-wait-on-rate-limit") args.waitOnRateLimit = false;
     else if (arg === "--max-rate-limit-wait-ms") { args.maxRateLimitWaitMs = Number(next); index += 1; }
@@ -929,12 +976,15 @@ async function analyzeAndScore({
   waitOnRateLimit: boolean;
   maxRateLimitWaitMs: number;
   requirementsById: Map<string, RegSpRequirement>;
-  classifierTelemetry: RequirementEvidenceClassifierTelemetry;
+  classifierTelemetry: EvaluationClassifierTelemetry;
 }) {
   const entries = definitions.map((definition) => state.cases[definition.id]);
   const documentIds = entries.map((entry) => entry.documentId).filter((id): id is string => Boolean(id));
   if (documentIds.length !== definitions.length) throw new CorpusEvaluationError("Evaluation document set is incomplete.");
   const startedAt = Date.now();
+  const evaluationCaseIdByDocumentId = new Map(
+    definitions.map((definition) => [state.cases[definition.id].documentId!, definition.id]),
+  );
   const retry = await retryRateLimitedOperation({
     operation: () => runWorkspaceAnalysis({
       supabase: getServerSupabaseAdminClient(),
@@ -942,7 +992,8 @@ async function analyzeAndScore({
       expectedDocumentIds: documentIds,
       pollTimeoutMs,
       correlationId: crypto.randomUUID(),
-      classifierTelemetry,
+      classifierTelemetry: classifierTelemetry.telemetry,
+      evaluationCaseIdByDocumentId,
     }),
     beforeRetry: () => recoverWorkspaceAnalysis({
       supabase: getServerSupabaseAdminClient(),
@@ -1086,6 +1137,7 @@ function createState({
 }
 
 function diagnosticCodeForError(error: unknown) {
+  if (error instanceof RequirementEvidenceClassifierProviderFailureError) return "classifier_provider_failure";
   if (error instanceof CorpusEvaluationError) return error.diagnosticCode;
   if (error instanceof CorpusEvaluationRateLimitWaitExceededError) return "analysis_rate_limit_wait_exceeded";
   return "corpus_evaluation_failed";
@@ -1126,7 +1178,9 @@ async function main() {
     workspacePrefix,
     blind: args.blind,
   });
-  const classifierTelemetry = createEvaluationClassifierTelemetry();
+  const classifierTelemetry = createEvaluationClassifierTelemetry({
+    strictProviderFailures: args.strictClassifierProviderErrors,
+  });
   const outputDir = resolve(
     "eval-results",
     `${args.blind ? "blind-holdout" : "corpus"}-${manifest.id}-${args.mode}-${state.runId}`,
@@ -1141,7 +1195,7 @@ async function main() {
         activeCaseId = definition.id;
         await processCase({ definition, state, context, bytes: preparedFiles.get(definition.id)!, outputDir, pollTimeoutMs: args.pollTimeoutMs });
       }
-      await analyzeAndScore({ definitions: selectedCases, state, context, outputDir, pollTimeoutMs: args.pollTimeoutMs, waitOnRateLimit: args.waitOnRateLimit, maxRateLimitWaitMs: args.maxRateLimitWaitMs, requirementsById, classifierTelemetry: classifierTelemetry.telemetry });
+      await analyzeAndScore({ definitions: selectedCases, state, context, outputDir, pollTimeoutMs: args.pollTimeoutMs, waitOnRateLimit: args.waitOnRateLimit, maxRateLimitWaitMs: args.maxRateLimitWaitMs, requirementsById, classifierTelemetry });
     } else {
       await runIsolatedCaseSequence({
         cases: selectedCases,
@@ -1149,13 +1203,15 @@ async function main() {
           activeCaseId = definition.id;
           const context = await createWorkspace(state, definition.id, outputDir);
           await processCase({ definition, state, context, bytes: preparedFiles.get(definition.id)!, outputDir, pollTimeoutMs: args.pollTimeoutMs });
-          await analyzeAndScore({ definitions: [definition], state, context, outputDir, pollTimeoutMs: args.pollTimeoutMs, waitOnRateLimit: args.waitOnRateLimit, maxRateLimitWaitMs: args.maxRateLimitWaitMs, requirementsById, classifierTelemetry: classifierTelemetry.telemetry });
+          await analyzeAndScore({ definitions: [definition], state, context, outputDir, pollTimeoutMs: args.pollTimeoutMs, waitOnRateLimit: args.waitOnRateLimit, maxRateLimitWaitMs: args.maxRateLimitWaitMs, requirementsById, classifierTelemetry });
         },
         onCaseFailure: async (definition, error) => {
           recordEvaluationFailure(state, definition.id, error instanceof Error ? error.message : "Corpus evaluation failed.", diagnosticCodeForError(error));
           await writeReports(outputDir, state, classifierTelemetry);
-          console.error(`Case ${definition.id} failed. Continuing isolated evaluation.`);
+          console.error(`Case ${definition.id} failed.${args.strictClassifierProviderErrors ? " Stopping strict isolated evaluation." : " Continuing isolated evaluation."}`);
         },
+        shouldStopOnCaseFailure: (error) => args.strictClassifierProviderErrors
+          && error instanceof RequirementEvidenceClassifierProviderFailureError,
       });
     }
   } catch (error) {
