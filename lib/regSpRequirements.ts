@@ -548,7 +548,7 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
     coverageElements: [
       {
         id: "disposal_scope",
-        label: "Applies to consumer information or customer information",
+        label: "Applies the disposal scope to consumer, customer, or securityholder-linked information",
         requiredForCovered: true,
         signals: ["consumer information", "customer information", "customer records", "consumer report information"],
       },
@@ -598,7 +598,7 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
     coverageElements: [
       {
         id: "compliance_record_scope",
-        label: "Requires written records documenting Reg S-P compliance",
+        label: "Maintains a compliance archive or record inventory documenting Reg S-P compliance",
         requiredForCovered: true,
         signals: [
           "written records documenting compliance",
@@ -611,7 +611,7 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
       },
       {
         id: "notice_determination_records",
-        label: "Documents incident or notification determinations and notices",
+        label: "Documents incident, security-message, or notification determinations and notices",
         requiredForCovered: true,
         signals: ["determination made", "notice transmitted", "copy of any notice", "customer-notice determinations", "incident-response determinations"],
       },
@@ -662,7 +662,7 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
     coverageElements: [
       {
         id: "incident_materials",
-        label: "Preserves logs, evidence, or investigation records",
+        label: "Preserves or captures relevant logs, communications, evidence, or investigation records",
         requiredForCovered: true,
         signals: [
           "preserve logs",
@@ -687,7 +687,7 @@ export const REG_SP_REQUIREMENTS: RegSpRequirement[] = [
       },
       {
         id: "preservation_process",
-        label: "Defines a process for preserving relevant logs or evidence",
+        label: "Defines an owner-directed or controlled-storage process for preserving relevant logs or evidence",
         requiredForCovered: true,
         signals: ["procedure requires preserving", "preservation process", "preserve relevant logs", "retain logs for investigation", "evidence retention requirements", "chain of custody"],
       },

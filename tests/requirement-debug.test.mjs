@@ -214,6 +214,142 @@ test("post-processing expands a scoped records quote through its final retention
   assert.ok(((result.supporting_quote ?? "").match(/[^.!?]+[.!?]+/g) ?? []).length <= 8);
 });
 
+test("Old Mill operative fixtures recover requirement-specific elements without accepting close topical context", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { classifyRequirementEvidenceHeuristically, postProcessOpenAiClassification }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementEvidenceClassifier.ts"),
+  ]);
+  const byId = new Map(REG_SP_REQUIREMENTS.map((item) => [item.id, item]));
+  const disposal = byId.get("disposal_consumer_customer_information");
+  const records = byId.get("written_compliance_records");
+  const preservationBase = byId.get("evidence_log_preservation");
+  assert.ok(disposal);
+  assert.ok(records);
+  assert.ok(preservationBase);
+  const preservation = {
+    ...preservationBase,
+    id: "incident_evidence_log_preservation",
+  };
+
+  const inputFor = (requirement, chunkContent) => ({
+    requirement,
+    evaluationGuidance: "Test guidance.",
+    chunkContent,
+    chunkMetadata: {
+      filename: "Client procedure.pdf",
+      sectionPath: "Policy procedure",
+      pageStart: 1,
+      pageEnd: 1,
+      chunkIndex: 0,
+      sourceType: "client_policy",
+      evidenceRole: "organization_evidence",
+      evidenceReason: "substantive policy evidence",
+    },
+  });
+  const backgroundResponse = (requirement) => ({
+    relationship: "background_context",
+    confidence: "medium",
+    requirement_supported: false,
+    control_absent_or_out_of_scope: false,
+    covered_elements: [],
+    missing_elements: requirement.requiredElementsForCovered,
+    vague_elements: [],
+    reason: "The model treated the related policy text as background context.",
+    supporting_quote: null,
+  });
+  const unrelatedNegativeResponse = (requirement) => ({
+    ...backgroundResponse(requirement),
+    relationship: "negative_evidence",
+    control_absent_or_out_of_scope: true,
+    reason: "The model incorrectly treated adjacent-control language as absence.",
+  });
+
+  const positives = [
+    {
+      requirement: disposal,
+      text: "Copies, extracts, reports, screenshots, recordings, backups, and hosted platform operator-held replicas remain within scope when they can be linked to a securityholder or consumer.",
+      relationship: "supports",
+      elements: ["disposal_scope"],
+    },
+    {
+      requirement: preservation,
+      text: "At Old Mill Securities Transfer, corporate Counsel requests preservation of logs and communications believed to be relevant.",
+      relationship: "supports",
+      elements: ["incident_materials", "preservation_process"],
+    },
+    {
+      requirement: preservation,
+      text: [
+        "Save available logs from OldMillLedger.",
+        "Attach relevant correspondence to OldMill technical program archive set Register.",
+        "Limit the case folder to assigned personnel.",
+      ].join(" "),
+      relationship: "supports",
+      elements: ["incident_materials", "integrity_or_chain_of_custody", "preservation_process"],
+    },
+    {
+      requirement: records,
+      text: [
+        "Old Mill Securities Transfer preserves current and superseded procedures together with program archives showing how those procedures were carried out.",
+        "The program archive set is retained for three years, in an easily accessible place.",
+        "In the Remote Processing Hub operating route, it includes safeguards versions; detected security episodes and response and restoration sequence actions; investigation results, customer-security message determinations, and copies or samples of security messages; materials supporting any government-requested delay; hosted platform operator oversight procedures, diligence, monitoring, and agreements; and written program archive destruction procedures.",
+      ].join(" "),
+      relationship: "supports",
+      elements: ["compliance_record_scope", "notice_determination_records", "retention_accessibility"],
+    },
+  ];
+
+  for (const fixture of positives) {
+    const result = postProcessOpenAiClassification(
+      backgroundResponse(fixture.requirement),
+      inputFor(fixture.requirement, fixture.text),
+    );
+    assert.equal(result.relationship, fixture.relationship, fixture.requirement.id);
+    assert.deepEqual(result.covered_elements, fixture.elements);
+    assert.equal(fixture.text.includes(result.supporting_quote ?? ""), true);
+  }
+
+  const fallbackResult = classifyRequirementEvidenceHeuristically(
+    inputFor(disposal, positives[0].text),
+    "fallback",
+  );
+  assert.equal(fallbackResult.relationship, "supports");
+  assert.equal(fallbackResult.requirement_supported, true);
+  assert.deepEqual(fallbackResult.covered_elements, ["disposal_scope"]);
+
+  const recoveredAfterUnrelatedNegative = postProcessOpenAiClassification(
+    unrelatedNegativeResponse(records),
+    inputFor(records, positives[3].text + " No written procedure establishes required vendor safeguards."),
+  );
+  assert.equal(recoveredAfterUnrelatedNegative.relationship, "supports");
+  assert.deepEqual(recoveredAfterUnrelatedNegative.covered_elements, positives[3].elements);
+
+  const negatives = [
+    {
+      requirement: disposal,
+      text: "The reference index lists copies, extracts, backups, and replicas associated with securityholders for reference.",
+    },
+    {
+      requirement: preservation,
+      text: "The incident briefing may discuss logs and communications, and a shared folder can be used by personnel.",
+    },
+    {
+      requirement: records,
+      text: "The archive may contain superseded procedures and examples of security messages; staff can consult retention guidance.",
+    },
+  ];
+
+  for (const fixture of negatives) {
+    const result = postProcessOpenAiClassification(
+      backgroundResponse(fixture.requirement),
+      inputFor(fixture.requirement, fixture.text),
+    );
+    assert.equal(result.relationship, "background_context");
+    assert.deepEqual(result.covered_elements, []);
+    assert.equal(result.supporting_quote, null);
+  }
+});
+
 test("post-processing preserves an incident-specific Legal delay procedure as partial evidence", async () => {
   const [{ REG_SP_REQUIREMENTS }, { postProcessOpenAiClassification }] = await Promise.all([
     loadTsModule("lib/regSpRequirements.ts"),
