@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 import ts from "typescript";
+import { hydrateSelectedCandidateSourceTexts } from "../lib/classifierSourceHydration.ts";
 
 async function loadTsModule(sourcePath) {
   const source = await readFile(sourcePath, "utf8");
@@ -22,10 +23,27 @@ async function loadTsModule(sourcePath) {
     .replaceAll('from "./aiProcessingPolicy"', 'from "./lib__aiProcessingPolicy.mjs"')
     .replaceAll('from "./negativeEvidence"', 'from "./lib__negativeEvidence.mjs"')
     .replaceAll('from "./requirementEvidenceClassifier"', 'from "./lib__requirementEvidenceClassifier.mjs"')
+    .replaceAll('from "./classifierSourceHydration"', 'from "./lib__classifierSourceHydration.mjs"')
     .replaceAll('from "./operativeEvidenceRules.mjs"', 'from "./lib__operativeEvidenceRules.mjs"');
   await writeFile(
     join(outDir, "lib__operativeEvidenceRules.mjs"),
     await readFile("lib/operativeEvidenceRules.mjs", "utf8"),
+    "utf8",
+  );
+  const sourceHydrationTranspiled = ts.transpileModule(
+    await readFile("lib/classifierSourceHydration.ts", "utf8"),
+    {
+      compilerOptions: {
+        module: ts.ModuleKind.ES2022,
+        target: ts.ScriptTarget.ES2022,
+        verbatimModuleSyntax: false,
+      },
+      fileName: "lib/classifierSourceHydration.ts",
+    },
+  );
+  await writeFile(
+    join(outDir, "lib__classifierSourceHydration.mjs"),
+    sourceHydrationTranspiled.outputText,
     "utf8",
   );
   if (sourcePath !== "lib/aiProcessingPolicy.ts") {
@@ -348,6 +366,25 @@ test("Old Mill operative fixtures recover requirement-specific elements without 
     assert.deepEqual(result.covered_elements, []);
     assert.equal(result.supporting_quote, null);
   }
+
+  const longTopicalContext = [
+    "General operations context. ".repeat(70),
+    "A reference index may list logs, communications, evidence, and records for training discussion.",
+  ].join("");
+  const longNegativeCandidate = {
+    ...organizationChunk(longTopicalContext.slice(0, 1_200)),
+    chunk_id: "55555555-5555-4555-8555-555555555555",
+  };
+  const [hydratedLongNegative] = hydrateSelectedCandidateSourceTexts(
+    [longNegativeCandidate],
+    new Map([[longNegativeCandidate.chunk_id, longTopicalContext]]),
+  );
+  const longNegativeResult = postProcessOpenAiClassification(
+    backgroundResponse(preservation),
+    inputFor(preservation, hydratedLongNegative.content_preview),
+  );
+  assert.equal(longNegativeResult.relationship, "background_context");
+  assert.deepEqual(longNegativeResult.covered_elements, []);
 });
 
 test("post-processing preserves an incident-specific Legal delay procedure as partial evidence", async () => {
@@ -740,6 +777,83 @@ test("OpenAI classifier preserves explicit absence and out-of-scope negative evi
   assert.equal(vendorResult.relationship, "negative_evidence");
   assert.equal(vendorResult.control_absent_or_out_of_scope, true);
   assert.equal(vendorResult.supporting_quote, vendorText);
+});
+
+test("customer notification negative guardrail requires a notification-specific limitation", async () => {
+  const [{ REG_SP_REQUIREMENTS }, {
+    classifierInputForChunk,
+    classifyRequirementEvidenceHeuristically,
+    createRequirementEvidenceClassifier,
+  }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementEvidenceClassifier.ts"),
+  ]);
+  const requirement = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "customer_notification_unauthorized_access",
+  );
+  const oldMillProgramLimitation = [
+    "A future policy revision may consolidate privacy and cyber response.",
+    "Until that work is approved, this governance document does not establish an end-to-end program designed around detection, response, and restoration sequence for unauthorized access to or use of securityholder information.",
+  ].join(" ");
+  const nearNegativeIncidentLimitation =
+    "This procedure does not establish an end-to-end incident response program for unauthorized access to customer information.";
+  const trueNotificationNegatives = [
+    "This procedure does not define customer notification after unauthorized access.",
+    "This policy does not establish a customer notice timing requirement for unauthorized access.",
+  ];
+
+  for (const text of [oldMillProgramLimitation, nearNegativeIncidentLimitation]) {
+    const result = classifyRequirementEvidenceHeuristically(
+      classifierInputForChunk(requirement, organizationChunk(text)),
+    );
+    assert.ok(["background_context", "irrelevant"].includes(result.relationship));
+    assert.equal(result.control_absent_or_out_of_scope, false);
+  }
+
+  for (const text of trueNotificationNegatives) {
+    const result = classifyRequirementEvidenceHeuristically(
+      classifierInputForChunk(requirement, organizationChunk(text)),
+    );
+    assert.equal(result.relationship, "negative_evidence");
+    assert.equal(result.control_absent_or_out_of_scope, true);
+  }
+
+  const telemetryPaths = [];
+  let fetchCalls = 0;
+  const classifier = createRequirementEvidenceClassifier(
+    {
+      ENABLE_EXTERNAL_AI_PROCESSING: "true",
+      ENABLE_EXTERNAL_AI_CLASSIFIER: "true",
+      REQUIREMENT_CLASSIFIER_PROVIDER: "openai",
+      REQUIREMENT_CLASSIFIER_MODEL: "gpt-test",
+      REQUIREMENT_CLASSIFIER_API_KEY: "test-key",
+    },
+    async () => {
+      fetchCalls += 1;
+      throw new Error("The notification-specific guardrail should return before an OpenAI request.");
+    },
+    {
+      workspaceId: "workspace-1",
+      workspaceConsentEnabled: true,
+      externalAiProcessingEnabled: true,
+      externalAiClassifierEnabled: true,
+      denialReason: null,
+    },
+    {
+      recordPath(path) {
+        telemetryPaths.push(path);
+      },
+    },
+  );
+  const guarded = await classifier.classify(classifierInputForChunk(
+    requirement,
+    organizationChunk(trueNotificationNegatives[0]),
+  ));
+
+  assert.equal(guarded.relationship, "negative_evidence");
+  assert.equal(guarded.classifier_provider, "heuristic");
+  assert.equal(fetchCalls, 0);
+  assert.deepEqual(telemetryPaths, ["heuristic_negative_guardrail"]);
 });
 
 test("OpenAI classifier downgrades adjacent-control absence that is not about the requirement", async () => {

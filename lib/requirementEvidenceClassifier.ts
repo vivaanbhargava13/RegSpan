@@ -281,6 +281,42 @@ function negativeScopeSignals(requirement: RegSpRequirement) {
   return uniqueStrings(baseSignals);
 }
 
+function hasExplicitCustomerNotificationNegativeScope(
+  sentence: string,
+  matchedPhrase: string | null,
+) {
+  const normalizedSentence = normalizeForNegativePosition(sentence);
+  const normalizedPhrase = normalizeForNegativePosition(matchedPhrase);
+  const phraseIndex = normalizedPhrase
+    ? normalizedSentence.indexOf(normalizedPhrase)
+    : -1;
+  const notificationScope = [
+    /\b(?:customer|consumer|individual|affected customer|affected individual|affected consumer)\s+(?:notification|notice)\b/,
+    /\b(?:notification|notice)\s+(?:to|for)\s+(?:affected\s+)?(?:customers?|individuals?|consumers?)\b/,
+    /\bnotify\s+(?:affected\s+)?(?:customers?|individuals?|consumers?)\b/,
+    /\b(?:customer|consumer|individual)\s+breach\s+notices?\b/,
+    /\b(?:notification|notice)\s+(?:duty|obligation|requirement|trigger|determination|timing)\b/,
+  ];
+
+  return notificationScope.some((pattern) => {
+    const match = pattern.exec(normalizedSentence);
+    if (!match) return false;
+    if (phraseIndex < 0) return true;
+    return Math.abs(match.index - phraseIndex) <= 240;
+  });
+}
+
+function negativeEvidenceIsRequirementScoped(
+  requirement: RegSpRequirement,
+  sentence: string,
+  matchedPhrase: string | null,
+) {
+  if (requirement.id !== "customer_notification_unauthorized_access") {
+    return true;
+  }
+  return hasExplicitCustomerNotificationNegativeScope(sentence, matchedPhrase);
+}
+
 function detectSentenceScopedNegativeEvidence(
   input: RequirementEvidenceClassifierInput,
 ): SentenceScopedNegativeEvidence {
@@ -295,7 +331,10 @@ function detectSentenceScopedNegativeEvidence(
     const matches: SentenceScopedNegativeEvidence[] = [];
     for (const element of elementSignals) {
       const match = detectNegativeEvidence(sentence, element.signals);
-      if (match.isNegativeEvidence) {
+      if (
+        match.isNegativeEvidence
+        && negativeEvidenceIsRequirementScoped(input.requirement, sentence, match.matchedPhrase)
+      ) {
         matches.push({ ...match, sentence, elementIds: [element.id] });
       }
     }
@@ -309,6 +348,11 @@ function detectSentenceScopedNegativeEvidence(
     const directSignalMatch = detectNegativeEvidence(sentence, directSignals);
     if (
       directSignalMatch.isNegativeEvidence
+      && negativeEvidenceIsRequirementScoped(
+        input.requirement,
+        sentence,
+        directSignalMatch.matchedPhrase,
+      )
       && (
         negativeSignalAppearsAfterPhrase(
           sentence,
@@ -325,7 +369,14 @@ function detectSentenceScopedNegativeEvidence(
       };
     }
     const scopedDirectAbsence = directSignalAbsenceAfterPhrase(sentence, directSignals);
-    if (scopedDirectAbsence) {
+    if (
+      scopedDirectAbsence
+      && negativeEvidenceIsRequirementScoped(
+        input.requirement,
+        sentence,
+        scopedDirectAbsence.matchedPhrase,
+      )
+    ) {
       return {
         ...scopedDirectAbsence,
         sentence,
