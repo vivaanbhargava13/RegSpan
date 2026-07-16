@@ -9,6 +9,7 @@ import type {
   OpenAiClassifierSchedulerSnapshot,
   RequirementEvidenceClassifierProviderFailureEvent,
   RequirementEvidenceClassifierProviderRetryEvent,
+  RequirementEvidenceClassifierProgressEvent,
   RequirementEvidenceClassifierResolvedConfiguration,
   RequirementEvidenceClassifierTelemetry,
   RequirementEvidenceClassifierTelemetryPath,
@@ -199,6 +200,7 @@ type CaseState = {
   analysisDurationMs?: number;
   rateLimitWaitCount?: number;
   rateLimitWaitMs?: number;
+  classifierProgress?: RequirementEvidenceClassifierProgressEvent;
   expectedStatuses: Record<string, string[]>;
   engineOutput?: {
     findings: Array<{ findingId: string; requirementId: string; status: string }>;
@@ -252,13 +254,15 @@ type RunState = {
 
 type EvaluationClassifierTelemetry = {
   telemetry: RequirementEvidenceClassifierTelemetry;
+  setProgressHandler: (handler: (event: RequirementEvidenceClassifierProgressEvent) => void) => void;
   sidecar: (state: RunState) => {
-    schemaVersion: 2;
+    schemaVersion: 3;
     runId: string;
     resolvedClassifier: RequirementEvidenceClassifierResolvedConfiguration | null;
     counts: Record<RequirementEvidenceClassifierTelemetryPath, number>;
     providerFailures: RequirementEvidenceClassifierProviderFailureEvent[];
     providerRetries: RequirementEvidenceClassifierProviderRetryEvent[];
+    progressEvents: RequirementEvidenceClassifierProgressEvent[];
     scheduler: OpenAiClassifierSchedulerSnapshot;
   };
 };
@@ -277,11 +281,32 @@ function createEvaluationClassifierTelemetry({
   >;
   const providerFailures: RequirementEvidenceClassifierProviderFailureEvent[] = [];
   const providerRetries: RequirementEvidenceClassifierProviderRetryEvent[] = [];
+  const progressEvents: RequirementEvidenceClassifierProgressEvent[] = [];
+  let progressHandler: ((event: RequirementEvidenceClassifierProgressEvent) => void) | null = null;
+  const recordProgress = (event: RequirementEvidenceClassifierProgressEvent) => {
+    const sanitized = {
+      caseId: event.caseId,
+      requirementId: event.requirementId,
+      phase: event.phase,
+      ...(typeof event.queueDepth === "number" ? { queueDepth: event.queueDepth } : {}),
+      ...(typeof event.inFlight === "number" ? { inFlight: event.inFlight } : {}),
+      ...(event.cooldownReason !== undefined ? { cooldownReason: event.cooldownReason } : {}),
+      ...(event.expectedResumeAt !== undefined ? { expectedResumeAt: event.expectedResumeAt } : {}),
+      timestamp: event.timestamp,
+    } satisfies RequirementEvidenceClassifierProgressEvent;
+    progressEvents.push(sanitized);
+    if (progressEvents.length > 500) progressEvents.shift();
+    progressHandler?.(sanitized);
+  };
   const scheduler = createOpenAiClassifierProviderScheduler({
     maxConcurrency: classifierConcurrency ?? 5,
+    onProgress: recordProgress,
   });
 
   return {
+    setProgressHandler(handler) {
+      progressHandler = handler;
+    },
     telemetry: {
       recordResolvedClassifier(configuration) {
         if (resolvedClassifier !== null) return;
@@ -319,18 +344,20 @@ function createEvaluationClassifierTelemetry({
           retryDelayMs: event.retryDelayMs,
         });
       },
+      recordProgress,
       providerScheduler: scheduler,
       candidateConcurrencyOverride: classifierConcurrency ?? undefined,
       strictProviderFailures,
     },
     sidecar(state) {
       return {
-        schemaVersion: 2,
+        schemaVersion: 3,
         runId: state.runId,
         resolvedClassifier,
         counts: { ...counts },
         providerFailures: providerFailures.map((event) => ({ ...event })),
         providerRetries: providerRetries.map((event) => ({ ...event })),
+        progressEvents: progressEvents.map((event) => ({ ...event })),
         scheduler: scheduler.snapshot(),
       };
     },
@@ -863,6 +890,28 @@ async function writeReports(
   await writeFile(join(outputDir, "results.csv"), csv(state), "utf8");
 }
 
+function createLiveReportFlusher(flush: () => Promise<void>) {
+  let pending = false;
+  let running: Promise<void> | null = null;
+  const drain = async () => {
+    do {
+      pending = false;
+      await flush();
+    } while (pending);
+  };
+  const request = () => {
+    pending = true;
+    if (!running) {
+      running = drain().finally(() => {
+        running = null;
+        if (pending) void request();
+      });
+    }
+    return running;
+  };
+  return { request };
+}
+
 function appendRunFailureOnce(
   state: RunState,
   failure: { caseId: string | null; message: string; diagnosticCode?: string },
@@ -1220,14 +1269,25 @@ async function main() {
     blind: args.blind,
   });
   state.appLimitBypass = bypassAppLimits;
-  const classifierTelemetry = createEvaluationClassifierTelemetry({
-    strictProviderFailures: args.strictClassifierProviderErrors,
-    classifierConcurrency: args.classifierConcurrency,
-  });
   const outputDir = resolve(
     "eval-results",
     `${args.blind ? "blind-holdout" : "corpus"}-${manifest.id}-${args.mode}-${state.runId}`,
   );
+  const classifierTelemetry = createEvaluationClassifierTelemetry({
+    strictProviderFailures: args.strictClassifierProviderErrors,
+    classifierConcurrency: args.classifierConcurrency,
+  });
+  const liveReportFlusher = createLiveReportFlusher(async () => {
+    await writeReports(outputDir, state, classifierTelemetry);
+  });
+  classifierTelemetry.setProgressHandler((event) => {
+      if (event.caseId && state.cases[event.caseId]) {
+        state.cases[event.caseId].classifierProgress = { ...event };
+      }
+      void liveReportFlusher.request().catch((error) => {
+        console.error("Unable to persist classifier liveness telemetry", error);
+      });
+  });
   await writeReports(outputDir, state, classifierTelemetry);
 
   let activeCaseId: string | null = null;
@@ -1249,6 +1309,11 @@ async function main() {
           await analyzeAndScore({ definitions: [definition], state, context, outputDir, pollTimeoutMs: args.pollTimeoutMs, waitOnRateLimit: args.waitOnRateLimit, maxRateLimitWaitMs: args.maxRateLimitWaitMs, requirementsById, classifierTelemetry });
         },
         onCaseFailure: async (definition, error) => {
+          if (args.strictClassifierProviderErrors) {
+            classifierTelemetry.telemetry.providerScheduler?.abortQueued(
+              new Error("Classifier scheduler queue aborted after strict evaluation case failure."),
+            );
+          }
           recordEvaluationFailure(state, definition.id, error instanceof Error ? error.message : "Corpus evaluation failed.", diagnosticCodeForError(error));
           await writeReports(outputDir, state, classifierTelemetry);
           console.error(`Case ${definition.id} failed.${args.strictClassifierProviderErrors ? " Stopping strict isolated evaluation." : " Continuing isolated evaluation."}`);
@@ -1258,6 +1323,9 @@ async function main() {
       });
     }
   } catch (error) {
+    classifierTelemetry.telemetry.providerScheduler?.abortQueued(
+      new Error("Classifier scheduler queue aborted after evaluation failure."),
+    );
     const message = error instanceof Error ? error.message : "Corpus evaluation failed.";
     recordEvaluationFailure(
       state,
@@ -1266,6 +1334,7 @@ async function main() {
       diagnosticCodeForError(error),
     );
   }
+  await liveReportFlusher.request();
   const finalSummary = args.blind
     ? finalizeBlindExecutionOutcome(state)
     : finalizeEvaluationOutcome(state, args.minScore);

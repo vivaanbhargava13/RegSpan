@@ -27,9 +27,14 @@ import { createEmbeddingProvider } from "@/lib/embeddings";
 import { workspaceQuotaConfiguration } from "@/lib/rateLimit";
 import { loadRegSpRequirementsForFindings } from "@/lib/regulatoryControls";
 import { getServerSupabaseAdminClient } from "@/lib/supabase/server";
+import {
+  RequirementProcessingWatchdogTimeoutError,
+  runWithRequirementProcessingWatchdog,
+} from "@/lib/requirementProcessingWatchdog";
 
 export const FINDINGS_GENERATION_TOP_K = 25;
 const EVALUATION_UNRESTRICTED_CONCURRENCY = 2_147_483_647;
+const REQUIREMENT_PROCESSING_WATCHDOG_MS = 10 * 60_000;
 
 export class FindingsGenerationError extends Error {
   constructor(
@@ -110,6 +115,14 @@ type StoredFindingResult = {
   status: GeneratedRequirementFinding["status"];
   persistedEvidenceRows: number;
 };
+
+function evaluationCaseIdForProgress(
+  evaluationCaseIdByDocumentId: ReadonlyMap<string, string> | undefined,
+) {
+  if (!evaluationCaseIdByDocumentId) return null;
+  const caseIds = [...new Set(evaluationCaseIdByDocumentId.values())];
+  return caseIds.length === 1 ? caseIds[0] : null;
+}
 
 function allGradedChunks(match: Awaited<ReturnType<typeof buildRequirementMatchResultWithClassifier>>) {
   return [
@@ -515,41 +528,102 @@ export async function generateFindingsForWorkspace({
     const generatedFindings: GeneratedRequirementFinding[] = [];
     const storedFindings: StoredFindingResult[] = [];
     const classifierSourceTextCache = createClassifierSourceTextCache();
+    const evaluationCaseId = evaluationCaseIdForProgress(evaluationCaseIdByDocumentId);
     for (const requirement of requirements) {
-      const candidates = await retrieveRequirementHybridChunks({
-        workspaceId,
-        requirement,
-        topK,
-        supabase,
-        provider: embeddingProvider,
-        analysisRunId: analysisRun.id,
+      classifierTelemetry?.recordProgress?.({
+        caseId: evaluationCaseId,
+        requirementId: requirement.id,
+        phase: "requirement_started",
+        timestamp: new Date().toISOString(),
       });
-      const organizationCandidates = candidates.filter(
-        (chunk) => chunk.evidence_role === "organization_evidence",
-      );
-      const classifierCandidates = await hydrateSelectedClassifierCandidateSources({
-        supabase,
-        workspaceId,
-        candidates: organizationCandidates,
-        sourceTextCache: classifierSourceTextCache,
-      });
-      const match = await buildRequirementMatchResultWithClassifier(
-        requirement,
-        classifierCandidates,
-        classifier,
-        evaluationCaseIdByDocumentId,
-        classifierTelemetry,
-      );
-      const finding = aggregateFindingForRequirement(
-        requirement,
-        allGradedChunks(match) as GradedEvidenceChunk[],
-      );
-      const storedFinding = await storeFinding({
-        supabase,
-        workspaceId,
-        analysisRunId: analysisRun.id,
-        finding,
-      });
+      let requirementResult: { finding: GeneratedRequirementFinding; storedFinding: StoredFindingResult };
+      try {
+        requirementResult = await runWithRequirementProcessingWatchdog({
+          requirementId: requirement.id,
+          timeoutMs: classifierTelemetry?.requirementWatchdogMs ?? REQUIREMENT_PROCESSING_WATCHDOG_MS,
+          onTimeout: () => {
+            classifierTelemetry?.recordProgress?.({
+              caseId: evaluationCaseId,
+              requirementId: requirement.id,
+              phase: "watchdog_timeout",
+              timestamp: new Date().toISOString(),
+            });
+            classifierTelemetry?.providerScheduler?.abortQueued(
+              new Error(`Classifier scheduler aborted after requirement watchdog for ${requirement.id}.`),
+            );
+          },
+          operation: async () => {
+            const candidates = await retrieveRequirementHybridChunks({
+              workspaceId,
+              requirement,
+              topK,
+              supabase,
+              provider: embeddingProvider,
+              analysisRunId: analysisRun.id,
+            });
+            classifierTelemetry?.recordProgress?.({
+              caseId: evaluationCaseId,
+              requirementId: requirement.id,
+              phase: "retrieval_complete",
+              timestamp: new Date().toISOString(),
+            });
+            const organizationCandidates = candidates.filter(
+              (chunk) => chunk.evidence_role === "organization_evidence",
+            );
+            const classifierCandidates = await hydrateSelectedClassifierCandidateSources({
+              supabase,
+              workspaceId,
+              candidates: organizationCandidates,
+              sourceTextCache: classifierSourceTextCache,
+            });
+            classifierTelemetry?.recordProgress?.({
+              caseId: evaluationCaseId,
+              requirementId: requirement.id,
+              phase: "hydration_complete",
+              timestamp: new Date().toISOString(),
+            });
+            const match = await buildRequirementMatchResultWithClassifier(
+              requirement,
+              classifierCandidates,
+              classifier,
+              evaluationCaseIdByDocumentId,
+              classifierTelemetry,
+            );
+            classifierTelemetry?.recordProgress?.({
+              caseId: evaluationCaseId,
+              requirementId: requirement.id,
+              phase: "classification_complete",
+              timestamp: new Date().toISOString(),
+            });
+            const finding = aggregateFindingForRequirement(
+              requirement,
+              allGradedChunks(match) as GradedEvidenceChunk[],
+            );
+            const storedFinding = await storeFinding({
+              supabase,
+              workspaceId,
+              analysisRunId: analysisRun.id,
+              finding,
+            });
+            classifierTelemetry?.recordProgress?.({
+              caseId: evaluationCaseId,
+              requirementId: requirement.id,
+              phase: "finding_persisted",
+              timestamp: new Date().toISOString(),
+            });
+            return { finding, storedFinding };
+          },
+        });
+      } catch (error) {
+        if (error instanceof RequirementProcessingWatchdogTimeoutError) {
+          throw new FindingsGenerationError(
+            "requirement_processing_watchdog",
+            `Analysis timed out while processing requirement ${error.requirementId}.`,
+          );
+        }
+        throw error;
+      }
+      const { finding, storedFinding } = requirementResult;
       storedFindings.push(storedFinding);
       generatedFindings.push(finding);
     }

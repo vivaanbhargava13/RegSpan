@@ -380,7 +380,13 @@ async function waitForCompletedAnalysisRun({
       return data;
     },
   });
-  if (run.status !== "completed") throw new CorpusEvaluationError("Analysis failed or did not complete.");
+  if (run.status !== "completed") {
+    const watchdog = /^Analysis timed out while processing requirement [a-z0-9_]+\.$/.test(run.error_message ?? "");
+    throw new CorpusEvaluationError(
+      watchdog ? run.error_message! : "Analysis failed or did not complete.",
+      watchdog ? "analysis_requirement_watchdog" : "analysis_run_failed",
+    );
+  }
   return run;
 }
 

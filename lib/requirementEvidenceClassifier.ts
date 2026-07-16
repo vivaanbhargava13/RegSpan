@@ -76,12 +76,16 @@ export type RequirementEvidenceClassifierTelemetry = {
   recordPath?: (path: RequirementEvidenceClassifierTelemetryPath) => void;
   recordProviderFailure?: (event: RequirementEvidenceClassifierProviderFailureEvent) => void;
   recordProviderRetry?: (event: RequirementEvidenceClassifierProviderRetryEvent) => void;
+  /** Source-free liveness observations used only by the evaluation runner. */
+  recordProgress?: (event: RequirementEvidenceClassifierProgressEvent) => void;
   /** Evaluation-only, runner-owned scheduler. Never module-global. */
   providerScheduler?: RequirementEvidenceClassifierProviderScheduler;
   /** Evaluation-only diagnostic override; absent keeps the normal cap. */
   candidateConcurrencyOverride?: number;
   /** Evaluation-only: fail the analysis after recording a provider failure. */
   strictProviderFailures?: boolean;
+  /** Evaluation-only upper bound for one requirement's end-to-end work. */
+  requirementWatchdogMs?: number;
 };
 
 export type RequirementEvidenceClassifierInput = {
@@ -138,11 +142,25 @@ export type RequirementEvidenceClassifierRuntime = {
 
 type HeaderReader = { get?: (name: string) => string | null };
 
+export type RequirementEvidenceClassifierProgressEvent = {
+  caseId: string | null;
+  requirementId: string | null;
+  phase: "requirement_started" | "retrieval_complete" | "hydration_complete" | "classification_complete" | "finding_persisted" | "queued" | "acquired" | "released" | "pacing_wait" | "shared_cooldown" | "retry_wait" | "heartbeat" | "queue_aborted" | "watchdog_timeout";
+  queueDepth?: number;
+  inFlight?: number;
+  cooldownReason?: "rate_limit" | "header_pacing" | "retry" | null;
+  expectedResumeAt?: number | null;
+  timestamp: string;
+};
+
 export type OpenAiClassifierSchedulerSnapshot = {
   mode: "adaptive";
   configuredConcurrency: number;
   currentConcurrency: number;
   inFlight: number;
+  queuedRequests: number;
+  cooldownReason: "rate_limit" | "header_pacing" | "retry" | null;
+  expectedResumeAt: number | null;
   requestStarts: number;
   successfulResponses: number;
   retryWaits: number;
@@ -154,14 +172,18 @@ export type OpenAiClassifierSchedulerSnapshot = {
 };
 
 export type RequirementEvidenceClassifierProviderScheduler = {
-  acquire(input?: { promptCharacters?: number }): Promise<() => void>;
+  acquire(input?: { promptCharacters?: number; caseId?: string | null; requirementId?: string | null }): Promise<() => void>;
   observeResponseHeaders(headers: HeaderReader, promptCharacters: number): void;
   recordSuccess(): void;
   waitForRetry(input: {
     httpStatus: number | null;
     retryAfter: string | null;
     fallbackDelayMs: number;
+    caseId?: string | null;
+    requirementId?: string | null;
   }): Promise<number>;
+  /** Rejects unstarted work when its owning analysis invocation has failed. */
+  abortQueued(reason?: Error): void;
   snapshot(): OpenAiClassifierSchedulerSnapshot;
 };
 
@@ -169,6 +191,8 @@ export type OpenAiClassifierSchedulerOptions = {
   maxConcurrency?: number;
   now?: () => number;
   sleep?: (milliseconds: number) => Promise<void>;
+  heartbeatIntervalMs?: number;
+  onProgress?: (event: RequirementEvidenceClassifierProgressEvent) => void;
 };
 type SentenceScopedNegativeEvidence = ReturnType<typeof detectNegativeEvidence> & {
   sentence: string | null;
@@ -181,6 +205,8 @@ const CLASSIFIER_MAX_ATTEMPTS = 3;
 const CLASSIFIER_RETRY_BACKOFF_BASE_MS = 250;
 const CLASSIFIER_RETRY_BACKOFF_CAP_MS = 2_000;
 const SCHEDULER_MINIMUM_STAGGER_MS = 25;
+const SCHEDULER_HEARTBEAT_INTERVAL_MS = 30_000;
+const MAX_RATE_LIMIT_RESET_MS = 120_000;
 const SILENCE_BASED_NEGATIVE_REASON_PATTERNS = [
   /\bdoes not\s+(?:explicitly\s+)?(?:mention|reference|discuss|describe|state|include|address|contain)\b/i,
   /\bdoesn['’]?t\s+(?:explicitly\s+)?(?:mention|reference|discuss|describe|state|include|address|contain)\b/i,
@@ -258,9 +284,14 @@ function isRetryableProviderFailure({
 function retryAfterDelayMs(retryAfter: string | null, now: () => number) {
   if (!retryAfter) return null;
   const seconds = Number(retryAfter);
-  if (Number.isFinite(seconds) && seconds >= 0) return Math.ceil(seconds * 1_000);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    const milliseconds = Math.ceil(seconds * 1_000);
+    return milliseconds <= MAX_RATE_LIMIT_RESET_MS ? milliseconds : null;
+  }
   const date = Date.parse(retryAfter);
-  return Number.isFinite(date) ? Math.max(0, date - now()) : null;
+  if (!Number.isFinite(date)) return null;
+  const milliseconds = Math.max(0, date - now());
+  return milliseconds <= MAX_RATE_LIMIT_RESET_MS ? milliseconds : null;
 }
 
 function retryDelayMs({
@@ -293,19 +324,27 @@ function openAiRateLimitNumber(headers: HeaderReader, name: string) {
 function openAiRateLimitResetMs(headers: HeaderReader, name: string) {
   const value = headers.get?.(name)?.trim().toLowerCase() ?? "";
   if (!value) return null;
-  const numeric = Number(value);
-  if (Number.isFinite(numeric) && numeric >= 0) return Math.ceil(numeric * 1_000);
+  if (/^\d+(?:\.\d+)?$/.test(value)) {
+    const milliseconds = Math.ceil(Number(value) * 1_000);
+    return Number.isFinite(milliseconds) && milliseconds <= MAX_RATE_LIMIT_RESET_MS ? milliseconds : null;
+  }
 
-  let matched = false;
+  const compact = value.replace(/\s+/g, "");
+  const parts = [...value.matchAll(/(\d+(?:\.\d+)?)\s*(ms|s|m|h)/g)];
+  if (parts.length === 0 || parts.map((part) => part[0].replace(/\s+/g, "")).join("") !== compact) {
+    return null;
+  }
   let milliseconds = 0;
-  for (const part of value.matchAll(/(\d+(?:\.\d+)?)\s*(ms|s|m|h)/g)) {
-    matched = true;
+  for (const part of parts) {
     const amount = Number(part[1]);
     const unit = part[2];
     const multiplier = unit === "h" ? 3_600_000 : unit === "m" ? 60_000 : unit === "s" ? 1_000 : 1;
     milliseconds += amount * multiplier;
   }
-  return matched && Number.isFinite(milliseconds) ? Math.ceil(milliseconds) : null;
+  if (!Number.isFinite(milliseconds) || milliseconds < 0 || milliseconds > MAX_RATE_LIMIT_RESET_MS) {
+    return null;
+  }
+  return Math.ceil(milliseconds);
 }
 
 /**
@@ -317,10 +356,13 @@ export class OpenAiClassifierProviderScheduler implements RequirementEvidenceCla
   private readonly configuredConcurrency: number;
   private readonly now: () => number;
   private readonly sleep: (milliseconds: number) => Promise<void>;
+  private readonly heartbeatIntervalMs: number;
+  private readonly onProgress: ((event: RequirementEvidenceClassifierProgressEvent) => void) | null;
   private currentConcurrency: number;
   private inFlight = 0;
   private nextStartAt = 0;
   private cooldownUntil = 0;
+  private retryUntil = 0;
   private successStreak = 0;
   private requestStarts = 0;
   private successfulResponses = 0;
@@ -330,12 +372,26 @@ export class OpenAiClassifierProviderScheduler implements RequirementEvidenceCla
   private concurrencyReductions = 0;
   private concurrencyRecoveries = 0;
   private headerPacingEvents = 0;
-  private availabilityWaiters: Array<() => void> = [];
+  private queued: Array<{
+    resolve: (release: () => void) => void;
+    reject: (error: Error) => void;
+    caseId: string | null;
+    requirementId: string | null;
+  }> = [];
+  private wakeGeneration = 0;
+  private pumpScheduled = false;
+  private abortedError: Error | null = null;
+  private cooldownReason: "rate_limit" | "header_pacing" | "retry" | null = null;
+  private heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
+  private heartbeatContext: { caseId?: string | null; requirementId?: string | null } = {};
+  private retryWaiters = 0;
 
   constructor({
     maxConcurrency = 5,
     now = () => Date.now(),
     sleep = (milliseconds) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds)),
+    heartbeatIntervalMs = SCHEDULER_HEARTBEAT_INTERVAL_MS,
+    onProgress,
   }: OpenAiClassifierSchedulerOptions = {}) {
     if (!Number.isInteger(maxConcurrency) || maxConcurrency < 1 || maxConcurrency > 25) {
       throw new Error("OpenAI classifier concurrency must be an integer from 1 through 25.");
@@ -344,45 +400,125 @@ export class OpenAiClassifierProviderScheduler implements RequirementEvidenceCla
     this.currentConcurrency = maxConcurrency;
     this.now = now;
     this.sleep = sleep;
-  }
-
-  private notifyAvailability() {
-    const waiters = this.availabilityWaiters;
-    this.availabilityWaiters = [];
-    for (const resolve of waiters) resolve();
-  }
-
-  private waitForAvailability() {
-    return new Promise<void>((resolve) => this.availabilityWaiters.push(resolve));
-  }
-
-  async acquire(_input: { promptCharacters?: number } = {}) {
-    // Prompt size is consumed from response headers for pacing; retain it here
-    // so the scheduler interface can evolve without changing call ordering.
-    void _input.promptCharacters;
-    while (true) {
-      const now = this.now();
-      const notBefore = Math.max(this.nextStartAt, this.cooldownUntil);
-      if (this.inFlight < this.currentConcurrency && now >= notBefore) {
-        this.inFlight += 1;
-        this.requestStarts += 1;
-        // A fixed small stagger prevents a shared cooldown from releasing a herd.
-        this.nextStartAt = now + SCHEDULER_MINIMUM_STAGGER_MS;
-        let released = false;
-        return () => {
-          if (released) return;
-          released = true;
-          this.inFlight = Math.max(0, this.inFlight - 1);
-          this.notifyAvailability();
-        };
-      }
-
-      if (this.inFlight >= this.currentConcurrency) {
-        await this.waitForAvailability();
-      } else {
-        await this.sleep(Math.max(1, notBefore - now));
-      }
+    if (!Number.isInteger(heartbeatIntervalMs) || heartbeatIntervalMs < 1) {
+      throw new Error("OpenAI classifier scheduler heartbeat interval must be a positive integer.");
     }
+    this.heartbeatIntervalMs = heartbeatIntervalMs;
+    this.onProgress = onProgress ?? null;
+  }
+
+  private schedulingNotBefore() {
+    return Math.max(this.nextStartAt, this.cooldownUntil);
+  }
+
+  private resumeAt() {
+    const resumeAt = Math.max(this.schedulingNotBefore(), this.retryUntil);
+    return resumeAt > this.now() ? resumeAt : null;
+  }
+
+  private emit(
+    phase: RequirementEvidenceClassifierProgressEvent["phase"],
+    context: { caseId?: string | null; requirementId?: string | null } = {},
+  ) {
+    this.onProgress?.({
+      caseId: context.caseId ?? null,
+      requirementId: context.requirementId ?? null,
+      phase,
+      queueDepth: this.queued.length,
+      inFlight: this.inFlight,
+      cooldownReason: this.cooldownReason,
+      expectedResumeAt: this.resumeAt(),
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  private schedulePump(delayMs: number, context: { caseId?: string | null; requirementId?: string | null }) {
+    if (this.pumpScheduled || this.abortedError) return;
+    this.pumpScheduled = true;
+    const generation = ++this.wakeGeneration;
+    this.emit(delayMs > 0 ? "pacing_wait" : "queued", context);
+    if (delayMs >= this.heartbeatIntervalMs) this.startHeartbeat(context);
+    void this.sleep(Math.max(1, delayMs)).then(
+      () => {
+        if (generation !== this.wakeGeneration) return;
+        this.pumpScheduled = false;
+        this.pump();
+      },
+      () => {
+        if (generation !== this.wakeGeneration) return;
+        this.pumpScheduled = false;
+        this.abortQueued(new Error("Classifier scheduler wait failed."));
+      },
+    );
+  }
+
+  private startHeartbeat(context: { caseId?: string | null; requirementId?: string | null }) {
+    if (this.abortedError || this.heartbeatTimer || (this.queued.length === 0 && this.retryWaiters === 0)) return;
+    this.heartbeatContext = context;
+    this.heartbeatTimer = setTimeout(() => {
+      this.heartbeatTimer = null;
+      if (this.abortedError || (this.queued.length === 0 && this.retryWaiters === 0)) return;
+      this.emit("heartbeat", this.heartbeatContext);
+      this.startHeartbeat(this.heartbeatContext);
+    }, this.heartbeatIntervalMs);
+  }
+
+  private clearHeartbeatIfIdle() {
+    if (this.queued.length > 0 || this.retryWaiters > 0 || !this.heartbeatTimer) return;
+    clearTimeout(this.heartbeatTimer);
+    this.heartbeatTimer = null;
+  }
+
+  private pump() {
+    if (this.abortedError) return;
+    while (this.queued.length > 0 && this.inFlight < this.currentConcurrency) {
+      const now = this.now();
+      const notBefore = this.schedulingNotBefore();
+      if (now < notBefore) {
+        const queued = this.queued[0];
+        this.schedulePump(notBefore - now, queued);
+        return;
+      }
+      if (this.cooldownReason && now >= this.cooldownUntil && now >= this.nextStartAt) {
+        this.cooldownReason = null;
+      }
+      const queued = this.queued.shift()!;
+      this.inFlight += 1;
+      this.requestStarts += 1;
+      this.nextStartAt = now + SCHEDULER_MINIMUM_STAGGER_MS;
+      let released = false;
+      queued.resolve(() => {
+        if (released) return;
+        released = true;
+        this.inFlight = Math.max(0, this.inFlight - 1);
+        this.emit("released", queued);
+        this.pump();
+      });
+      this.emit("acquired", queued);
+    }
+    if (this.queued.length > 0) {
+      const queued = this.queued[0];
+      this.emit("queued", queued);
+      this.startHeartbeat(queued);
+    } else {
+      this.clearHeartbeatIfIdle();
+    }
+  }
+
+  acquire(input: { promptCharacters?: number; caseId?: string | null; requirementId?: string | null } = {}) {
+    void input.promptCharacters;
+    if (this.abortedError) return Promise.reject(this.abortedError);
+    return new Promise<() => void>((resolve, reject) => {
+      const queued = {
+        resolve,
+        reject,
+        caseId: input.caseId ?? null,
+        requirementId: input.requirementId ?? null,
+      };
+      this.queued.push(queued);
+      this.emit("queued", queued);
+      this.pump();
+    });
   }
 
   observeResponseHeaders(headers: HeaderReader, promptCharacters: number) {
@@ -406,7 +542,9 @@ export class OpenAiClassifierProviderScheduler implements RequirementEvidenceCla
     const pacingMs = Math.max(0, ...pacingIntervals);
     if (pacingMs > SCHEDULER_MINIMUM_STAGGER_MS) {
       this.nextStartAt = Math.max(this.nextStartAt, this.now() + pacingMs);
+      this.cooldownReason = "header_pacing";
       this.headerPacingEvents += 1;
+      this.pump();
     }
   }
 
@@ -418,19 +556,24 @@ export class OpenAiClassifierProviderScheduler implements RequirementEvidenceCla
       this.currentConcurrency += 1;
       this.successStreak = 0;
       this.concurrencyRecoveries += 1;
-      this.notifyAvailability();
     }
+    this.pump();
   }
 
   async waitForRetry({
     httpStatus,
     retryAfter,
     fallbackDelayMs,
+    caseId,
+    requirementId,
   }: {
     httpStatus: number | null;
     retryAfter: string | null;
     fallbackDelayMs: number;
+    caseId?: string | null;
+    requirementId?: string | null;
   }) {
+    const context = { caseId, requirementId };
     const now = this.now();
     const retryAfterMs = retryAfterDelayMs(retryAfter, this.now);
     const delayMs = Math.max(0, retryAfterMs ?? fallbackDelayMs);
@@ -450,12 +593,48 @@ export class OpenAiClassifierProviderScheduler implements RequirementEvidenceCla
         }
       }
       this.successStreak = 0;
-      this.notifyAvailability();
+      this.cooldownReason = "rate_limit";
+      this.emit("shared_cooldown", context);
+      this.pump();
     }
     const waitMs = Math.max(0, Math.max(now + delayMs, this.cooldownUntil) - now);
     this.retryWaits += 1;
-    if (waitMs > 0) await this.sleep(waitMs);
+    if (waitMs > 0) {
+      const retryDeadline = now + waitMs;
+      this.retryUntil = Math.max(this.retryUntil, retryDeadline);
+      this.cooldownReason = httpStatus === 429 ? "rate_limit" : "retry";
+      this.emit("retry_wait", context);
+      if (waitMs >= this.heartbeatIntervalMs) {
+        this.retryWaiters += 1;
+        this.startHeartbeat(context);
+      }
+      try {
+        await this.sleep(waitMs);
+      } finally {
+        if (this.retryUntil <= retryDeadline) this.retryUntil = 0;
+        if (waitMs >= this.heartbeatIntervalMs) {
+          this.retryWaiters = Math.max(0, this.retryWaiters - 1);
+          this.clearHeartbeatIfIdle();
+        }
+      }
+    }
     return waitMs;
+  }
+
+  abortQueued(reason = new Error("Classifier scheduler queue aborted.")) {
+    if (this.abortedError) return;
+    this.abortedError = reason;
+    this.wakeGeneration += 1;
+    if (this.heartbeatTimer) {
+      clearTimeout(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
+    const queued = this.queued;
+    this.queued = [];
+    for (const waiter of queued) {
+      waiter.reject(reason);
+      this.emit("queue_aborted", waiter);
+    }
   }
 
   snapshot(): OpenAiClassifierSchedulerSnapshot {
@@ -464,6 +643,9 @@ export class OpenAiClassifierProviderScheduler implements RequirementEvidenceCla
       configuredConcurrency: this.configuredConcurrency,
       currentConcurrency: this.currentConcurrency,
       inFlight: this.inFlight,
+      queuedRequests: this.queued.length,
+      cooldownReason: this.cooldownReason,
+      expectedResumeAt: this.resumeAt(),
       requestStarts: this.requestStarts,
       successfulResponses: this.successfulResponses,
       retryWaits: this.retryWaits,
@@ -2094,6 +2276,8 @@ export function createRequirementEvidenceClassifier(
             httpStatus,
             retryAfter,
             fallbackDelayMs: fallbackRetryDelay,
+            caseId: input.evaluationCaseId ?? null,
+            requirementId: input.requirement.id,
           })
           : fallbackRetryDelay;
         telemetry?.recordProviderRetry?.({
@@ -2115,7 +2299,11 @@ export function createRequirementEvidenceClassifier(
 
       for (let requestAttempt = 1; requestAttempt <= CLASSIFIER_MAX_ATTEMPTS; requestAttempt += 1) {
         const releaseProviderPermit = providerScheduler
-          ? await providerScheduler.acquire({ promptCharacters })
+          ? await providerScheduler.acquire({
+            promptCharacters,
+            caseId: input.evaluationCaseId ?? null,
+            requirementId: input.requirement.id,
+          })
           : null;
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), CLASSIFIER_TIMEOUT_MS);
