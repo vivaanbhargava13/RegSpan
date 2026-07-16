@@ -211,6 +211,7 @@ function isRetryableProviderFailure({
     || httpStatus === 502
     || httpStatus === 503
     || httpStatus === 504
+    || errorCategory === "timeout"
     || errorCategory === "network";
 }
 

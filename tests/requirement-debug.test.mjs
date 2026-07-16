@@ -630,6 +630,53 @@ test("operative element rules require a non-discretionary action tied to the req
   ), true);
 });
 
+test("disposal scope requires an affirmative disposal workflow for covered information", () => {
+  const scope = (text) => requirementSpecificElementMatch(
+    "disposal_consumer_customer_information",
+    "disposal_scope",
+    text,
+  );
+  const method = (text) => requirementSpecificElementMatch(
+    "disposal_consumer_customer_information",
+    "secure_disposal_method",
+    text,
+  );
+
+  // Definitions, optional capabilities, and document/platform scope do not
+  // direct any disposal action for the covered information.
+  assert.equal(scope(
+    "The information system is used to collect, store, and dispose of customer data.",
+  ), false);
+  assert.equal(scope(
+    "The platform may dispose of consumer records after an administrator review.",
+  ), false);
+  assert.equal(scope(
+    "Customer files and backup images are within the scope of the data platform.",
+  ), false);
+
+  // Independent policy and procedure language remains operative, including a
+  // mandatory condition and a procedure-to-scope bridge for separate methods.
+  const conditional =
+    "When customer records reach the retention date, the records officer must shred paper files and sanitize backup media before retirement.";
+  assert.equal(scope(conditional), true);
+  assert.equal(method(conditional), true);
+  assert.equal(scope(
+    "The media-retirement procedure applies to consumer data and client account files.",
+  ), true);
+  assert.equal(scope(
+    "The archive custodian destroys former client files using an approved disposal vendor.",
+  ), true);
+  assert.equal(scope(
+    "Personnel may not place customer files in ordinary trash containers.",
+  ), true);
+  assert.equal(method(
+    "The technology team wipes retired devices before they are reassigned.",
+  ), true);
+  assert.equal(scope(
+    "The technology team wipes retired devices before they are reassigned.",
+  ), false);
+});
+
 test("post-processing preserves an incident-specific Legal delay procedure as partial evidence", async () => {
   const [{ REG_SP_REQUIREMENTS }, { postProcessOpenAiClassification }] = await Promise.all([
     loadTsModule("lib/regSpRequirements.ts"),
@@ -995,7 +1042,10 @@ test("provider failures emit sanitized evaluation telemetry and strict mode stop
     httpStatus: event.httpStatus,
     errorCategory: event.errorCategory,
     retryAfter: event.retryAfter,
-  })), [{ httpStatus: null, errorCategory: "timeout", retryAfter: null }]);
+    requestAttempt: event.requestAttempt,
+  })), [{ httpStatus: null, errorCategory: "timeout", retryAfter: null, requestAttempt: 3 }]);
+  assert.deepEqual(timeout.retries.map((event) => event.requestAttempt), [1, 2]);
+  assert.deepEqual(timeout.delays, [250, 500]);
 
   const network = await classifyWithFailure({ error: new TypeError("network unavailable") });
   await network.classifier.classify(input);
@@ -1016,6 +1066,16 @@ test("provider failures emit sanitized evaluation telemetry and strict mode stop
   assert.equal(strict.events.length, 1);
   assert.equal(strict.events[0].requestAttempt, 3);
   assert.equal(strict.retries.length, 2);
+
+  const strictTimeout = await classifyWithFailure({ strict: true, error: abortError });
+  await assert.rejects(
+    () => strictTimeout.classifier.classify(input),
+    (error) => error instanceof RequirementEvidenceClassifierProviderFailureError
+      && error.event.errorCategory === "timeout"
+      && error.event.requestAttempt === 3,
+  );
+  assert.equal(strictTimeout.events.length, 1);
+  assert.equal(strictTimeout.retries.length, 2);
 });
 
 test("classifier retries transient provider failures and preserves first-attempt success", async () => {
@@ -1100,6 +1160,11 @@ test("classifier retries transient provider failures and preserves first-attempt
     {
       failure: new TypeError("network unavailable"),
       category: "network",
+      delay: 250,
+    },
+    {
+      failure: Object.assign(new Error("aborted"), { name: "AbortError" }),
+      category: "timeout",
       delay: 250,
     },
   ]) {
