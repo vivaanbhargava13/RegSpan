@@ -83,20 +83,20 @@ test("assessment coverage requires direct assessment, affected-system, and conta
     requirement_supported: true,
   })]).status, "covered");
   assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(definition, incomplete)]).status, "partial");
-  assert.equal(requirementSpecificElementMatch(definition.id, "containment_control", westbridge), true);
+  assert.equal(requirementSpecificElementMatch(definition.id, "containment_control", westbridge), false);
   assert.equal(requirementSpecificElementMatch(definition.id, "assesses_scope", westbridge), false);
   const westbridgeFinding = aggregateFindingForRequirement(definition, [gradedChunk(definition, westbridge)]);
-  assert.equal(westbridgeFinding.status, "partial");
-  assert.match(westbridgeFinding.rationale, /partial support for containment or control steps/i);
+  assert.equal(westbridgeFinding.status, "missing");
   assert.match(westbridgeFinding.remediation, /assesses the nature and scope/i);
-  assert.doesNotMatch(westbridgeFinding.remediation, /required containment or control steps/i);
+  assert.match(westbridgeFinding.remediation, /containment or control steps/i);
   assert.equal(requirementSpecificElementMatch(definition.id, "assesses_scope", stonehaven), true);
   assert.equal(requirementSpecificElementMatch(definition.id, "customer_information_systems", stonehaven), false);
-  assert.equal(requirementSpecificElementMatch(definition.id, "containment_control", stonehaven), true);
+  assert.equal(requirementSpecificElementMatch(definition.id, "containment_control", stonehaven), false);
   const stonehavenFinding = aggregateFindingForRequirement(definition, [gradedChunk(definition, stonehaven)]);
   assert.equal(stonehavenFinding.status, "partial");
-  assert.match(stonehavenFinding.rationale, /partial support for incident assessment and containment or control steps/i);
+  assert.match(stonehavenFinding.rationale, /partial support for incident assessment/i);
   assert.match(stonehavenFinding.remediation, /affected customer information systems or information types/i);
+  assert.match(stonehavenFinding.remediation, /containment or control steps/i);
   assert.equal(aggregateFindingForRequirement(definition, [gradedChunk(definition, generic)]).status, "missing");
 });
 

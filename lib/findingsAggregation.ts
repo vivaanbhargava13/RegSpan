@@ -958,7 +958,11 @@ function isSourceGroundedPartialSupport(requirement: RegSpRequirement, chunk: Gr
 
 function isSourceGroundedNegativeEvidence(requirement: RegSpRequirement, chunk: GradedEvidenceChunk) {
   return isExplicitNegativeEvidence(chunk)
-    && hasSubstantiveExactSourceQuote(requirement, chunk);
+    && (
+      hasSubstantiveExactSourceQuote(requirement, chunk)
+      || (referencesUnavailablePolicy(chunk)
+        && hasDistinctiveRequirementSubject(requirement, groundedSourceQuoteText(chunk)))
+    );
 }
 
 function normalize(value: string | null | undefined) {
@@ -969,23 +973,29 @@ function normalize(value: string | null | undefined) {
     .trim();
 }
 
-function chunkInterpretationText(chunk: GradedEvidenceChunk) {
-  return normalize([
-    chunk.supporting_quote,
-    chunk.negative_evidence_reason,
-    chunk.grade_reason,
-    chunk.content_preview,
-    chunk.section_path,
-    chunk.filename,
-  ].filter(Boolean).join(" "));
+function groundedSourceQuoteText(chunk: GradedEvidenceChunk) {
+  const quote = normalize(chunk.supporting_quote);
+  const source = normalize(chunk.content_preview);
+  if (quoteWordCount(quote) < 4 || !source || !source.includes(quote)) return "";
+  return quote;
+}
+
+function hasDistinctiveRequirementSubject(requirement: RegSpRequirement, text: string) {
+  const signals = [
+    requirement.title,
+    ...(requirement.directSignals ?? []),
+    ...(requirement.topicSignals ?? []),
+  ]
+    .map(normalize)
+    .filter((signal) => signal.split(" ").length >= 2);
+  return signals.some((signal) => text.includes(signal));
 }
 
 export function classifyNegativeEvidenceScope(
   chunk: GradedEvidenceChunk,
 ): NegativeEvidenceScope {
-  const text = chunkInterpretationText(chunk);
-  const filename = normalize(chunk.filename);
-  const sectionPath = normalize(chunk.section_path);
+  const text = groundedSourceQuoteText(chunk);
+  if (!text) return "organization_level_negative";
   const documentScopePatterns = [
     /\bthis\s+(policy|procedure|document|standard|addendum|guide|checklist|section|runbook)\b.{0,120}\b(does not|doesn t|do not|does not fully|does not establish|does not define|does not address|does not authorize|does not require|does not replace|is not intended|not intended)\b/,
     /\b(outside|out of)\s+the\s+scope\s+of\s+this\s+(policy|procedure|document|standard|addendum|guide|checklist|section|runbook)\b/,
@@ -1009,10 +1019,7 @@ export function classifyNegativeEvidenceScope(
   }
 
   if (
-    documentScopePatterns.some((pattern) => pattern.test(text)) ||
-    (filename.includes("acceptable use") && text.includes("does not")) ||
-    (filename.includes("procedure") && (text.includes("does not define") || text.includes("does not establish"))) ||
-    (sectionPath.includes("scope") && text.includes("does not"))
+    documentScopePatterns.some((pattern) => pattern.test(text))
   ) {
     return "document_scope_limitation";
   }
@@ -1021,7 +1028,8 @@ export function classifyNegativeEvidenceScope(
 }
 
 function referencesUnavailablePolicy(chunk: GradedEvidenceChunk) {
-  const text = chunkInterpretationText(chunk);
+  const text = groundedSourceQuoteText(chunk);
+  if (!text) return false;
   const referencedDocumentPattern =
     /\b(?:handled|covered|defined|established|addressed|documented|specified|maintained|reserved|set\s+forth|described)\s+(?:in|by|under|within|for)\s+(?:a\s+|an\s+|the\s+|another\s+|separate\s+|other\s+)?[a-z0-9\s-]{0,80}\b(?:policy|procedure|standard|program|plan|manual|playbook|runbook|matrix|governance\s+document)\b/;
   const explicitReferencePattern =
@@ -1035,14 +1043,12 @@ function referencesUnavailablePolicy(chunk: GradedEvidenceChunk) {
 }
 
 function hasUnclearApplicability(chunk: GradedEvidenceChunk) {
-  const text = chunkInterpretationText(chunk);
+  const text = groundedSourceQuoteText(chunk);
+  if (!text) return false;
   const applicabilityPatterns = [
-    /\bunclear\s+(?:whether|if|when|how)\b/,
-    /\b(?:if|where|when)\s+applicable\b/,
-    /\bas\s+applicable\b/,
-    /\b(?:applicability|scope)\s+(?:matrix|review|determination|assessment)\b/,
-    /\b(?:applies|applicable)\s+only\s+(?:if|when|where|to)\b/,
-    /\bdepends\s+on\s+(?:applicability|business\s+unit|entity|account|customer|client|product|service)\b/,
+    /\b(?:unclear|undetermined|unresolved|pending)\s+(?:whether|if)\b[^.!?]{0,160}\bappl(?:y|ies|icable)\b/,
+    /\b(?:determin(?:e|es|ed|ing)|assess(?:es|ed|ing|ment)?|review(?:s|ed|ing)?|confirm(?:s|ed|ing)?|resolv(?:e|es|ed|ing))\b[^.!?]{0,100}\b(?:whether|if)\b[^.!?]{0,120}\bappl(?:y|ies|icable)\b/,
+    /\b(?:applicability|scope)\b[^.!?]{0,100}\b(?:is|remains)\b[^.!?]{0,80}\b(?:unclear|undetermined|unresolved|pending)\b/,
   ];
 
   return applicabilityPatterns.some((pattern) => pattern.test(text));

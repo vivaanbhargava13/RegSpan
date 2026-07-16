@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import test from "node:test";
 import ts from "typescript";
 import { hydrateSelectedCandidateSourceTexts } from "../lib/classifierSourceHydration.ts";
+import { requirementSpecificElementMatch } from "../lib/operativeEvidenceRules.mjs";
 
 async function loadTsModule(sourcePath) {
   const source = await readFile(sourcePath, "utf8");
@@ -232,21 +233,27 @@ test("post-processing expands a scoped records quote through its final retention
   assert.ok(((result.supporting_quote ?? "").match(/[^.!?]+[.!?]+/g) ?? []).length <= 8);
 });
 
-test("Old Mill operative fixtures recover requirement-specific elements without accepting close topical context", async () => {
-  const [{ REG_SP_REQUIREMENTS }, { classifyRequirementEvidenceHeuristically, postProcessOpenAiClassification }] = await Promise.all([
+test("audited operative fixtures recover elements without accepting topical context", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { postProcessOpenAiClassification }] = await Promise.all([
     loadTsModule("lib/regSpRequirements.ts"),
     loadTsModule("lib/requirementEvidenceClassifier.ts"),
   ]);
   const byId = new Map(REG_SP_REQUIREMENTS.map((item) => [item.id, item]));
   const disposal = byId.get("disposal_consumer_customer_information");
   const records = byId.get("written_compliance_records");
+  const assessmentBase = byId.get("unauthorized_access_detection_escalation");
   const preservationBase = byId.get("evidence_log_preservation");
   assert.ok(disposal);
   assert.ok(records);
+  assert.ok(assessmentBase);
   assert.ok(preservationBase);
   const preservation = {
     ...preservationBase,
     id: "incident_evidence_log_preservation",
+  };
+  const assessment = {
+    ...assessmentBase,
+    id: "incident_assessment_containment_control",
   };
 
   const inputFor = (requirement, chunkContent) => ({
@@ -283,12 +290,6 @@ test("Old Mill operative fixtures recover requirement-specific elements without 
   });
 
   const positives = [
-    {
-      requirement: disposal,
-      text: "Copies, extracts, reports, screenshots, recordings, backups, and hosted platform operator-held replicas remain within scope when they can be linked to a securityholder or consumer.",
-      relationship: "supports",
-      elements: ["disposal_scope"],
-    },
     {
       requirement: preservation,
       text: "At Old Mill Securities Transfer, corporate Counsel requests preservation of logs and communications believed to be relevant.",
@@ -327,20 +328,12 @@ test("Old Mill operative fixtures recover requirement-specific elements without 
     assert.equal(fixture.text.includes(result.supporting_quote ?? ""), true);
   }
 
-  const fallbackResult = classifyRequirementEvidenceHeuristically(
-    inputFor(disposal, positives[0].text),
-    "fallback",
-  );
-  assert.equal(fallbackResult.relationship, "supports");
-  assert.equal(fallbackResult.requirement_supported, true);
-  assert.deepEqual(fallbackResult.covered_elements, ["disposal_scope"]);
-
   const recoveredAfterUnrelatedNegative = postProcessOpenAiClassification(
     unrelatedNegativeResponse(records),
-    inputFor(records, positives[3].text + " No written procedure establishes required vendor safeguards."),
+    inputFor(records, positives[2].text + " No written procedure establishes required vendor safeguards."),
   );
   assert.equal(recoveredAfterUnrelatedNegative.relationship, "supports");
-  assert.deepEqual(recoveredAfterUnrelatedNegative.covered_elements, positives[3].elements);
+  assert.deepEqual(recoveredAfterUnrelatedNegative.covered_elements, positives[2].elements);
 
   const negatives = [
     {
@@ -348,8 +341,20 @@ test("Old Mill operative fixtures recover requirement-specific elements without 
       text: "The reference index lists copies, extracts, backups, and replicas associated with securityholders for reference.",
     },
     {
+      requirement: disposal,
+      text: "CopperlineLedger holds primary account or registry data, CopperlineVault carries policies and correspondence, and CopperlineRelay supports identity or service requests. For the CopperlineLedger workflow, copies, extracts, reports, screenshots, recordings, backups, and specialist service company-held replicas remain within scope when they can be linked to a shareholder or consumer.",
+    },
+    {
+      requirement: assessment,
+      text: "Rule 121 - Continuing service-company review. Assurance reports, material changes, remediation, and incident history are entered in OakMeridia Evidence Register.",
+    },
+    {
       requirement: preservation,
       text: "The incident briefing may discuss logs and communications, and a shared folder can be used by personnel.",
+    },
+    {
+      requirement: preservation,
+      text: "The duty manager controls access to the folder and may ask Technology to retain a log source.",
     },
     {
       requirement: records,
@@ -385,6 +390,244 @@ test("Old Mill operative fixtures recover requirement-specific elements without 
   );
   assert.equal(longNegativeResult.relationship, "background_context");
   assert.deepEqual(longNegativeResult.covered_elements, []);
+});
+
+test("generic background recovery requires affirmative, element-scoped source actions", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { postProcessOpenAiClassification }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementEvidenceClassifier.ts"),
+  ]);
+  const byId = new Map(REG_SP_REQUIREMENTS.map((item) => [item.id, item]));
+  const inputFor = (requirement, chunkContent) => ({
+    requirement,
+    evaluationGuidance: "Test guidance.",
+    chunkContent,
+    chunkMetadata: {
+      filename: "Independent policy examples.pdf",
+      sectionPath: "Policy procedure",
+      pageStart: 1,
+      pageEnd: 1,
+      chunkIndex: 0,
+      sourceType: "client_policy",
+      evidenceRole: "organization_evidence",
+      evidenceReason: "substantive policy evidence",
+    },
+  });
+  const background = (requirement) => ({
+    relationship: "background_context",
+    confidence: "medium",
+    requirement_supported: false,
+    control_absent_or_out_of_scope: false,
+    covered_elements: [],
+    missing_elements: requirement.requiredElementsForCovered,
+    vague_elements: [],
+    reason: "The model treated the related text as background context.",
+    supporting_quote: null,
+  });
+
+  const rejected = [
+    // Audited regression fixtures: corpus-specific wording is permitted in tests only.
+    // Notice-content denials and scenario descriptions.
+    ["customer_notification_content", "A separate instruction from counsel would be needed for a security-formal outreach package. This policy supplies no required data event description, protective steps, credit resources, identity-theft references, or delivery documented artifact in Copperline Supplier Docket."],
+    ["customer_notification_content", "This appendix describes operating situations distinctive to Old Mill Securities Transfer and its registered transfer and shareholder assistance."],
+    // Independently worded denials and topical internal records.
+    ["customer_notification_content", "The communications handbook does not require incident details or protective guidance in customer notices."],
+    ["customer_notification_content", "No notice template provides identity-theft resources or delivery instructions to recipients."],
+    ["customer_notification_content", "The incident worksheet identifies information categories for the internal investigation team."],
+
+    // Audited recovery-log and adjacent disposal-release language.
+    ["remediation_recovery_validation", "Records Administration Lead traces the restoration prerequisite, validation owner, and residual task in OldMill Disposition Log."],
+    ["remediation_recovery_validation", "Destruction is suspended for legal holds, active investigations, unresolved transactions, and examination requests. The record owner confirms eligibility against the schedule before release."],
+    // Independently worded logs, inventories, and adjacent workflow checks.
+    ["remediation_recovery_validation", "The case register lists restoration checkpoints, validation fields, and residual-task owners."],
+    ["remediation_recovery_validation", "Before recycling media, the archive supervisor verifies release authorization and the hold calendar."],
+    ["remediation_recovery_validation", "The dashboard maps recovery dependencies and confirmation dates for management reporting."],
+
+    // Audited safeguards mapping, exception, and optional notation.
+    ["customer_information_safeguards", "Officer maps the provider dependency, authentication path, and fallback route in OldMill Evidence Register."],
+    ["customer_information_safeguards", "OldMill example 6: a paper file found outside secure storage is reconciled across OldMillVault and OldMillLedger."],
+    ["customer_information_safeguards", "The case file may note patches, password resets, or vendor work."],
+    // Independently worded mappings and optional records.
+    ["customer_information_safeguards", "The architecture diagram maps the multifactor-authentication route for a vendor connection."],
+    ["customer_information_safeguards", "An incident journal may record that a password was reset after a service interruption."],
+    ["customer_information_safeguards", "The facilities inventory lists secure cabinets used by the records department."],
+
+    // Audited and independent non-operative records descriptions.
+    ["written_compliance_records", "Customer-operating record safeguards\nLanternBridge Funding Portal LLC maintains a written protection program for investor operating records, combining administrative supervision, technology controls, and physical safeguards within the workflow owned by Trust and Safety Lead."],
+    ["written_compliance_records", "The security program protects operating files through access controls and staff supervision."],
+    ["written_compliance_records", "The register lists policy editions, incident topics, and retention reminders for reference."],
+  ];
+
+  for (const [requirementId, text] of rejected) {
+    const requirement = byId.get(requirementId);
+    assert.ok(requirement, requirementId);
+    const result = postProcessOpenAiClassification(background(requirement), inputFor(requirement, text));
+    assert.equal(result.relationship, "background_context", text);
+    assert.deepEqual(result.covered_elements, [], text);
+    assert.equal(result.supporting_quote, null, text);
+  }
+
+  const admitted = [
+    {
+      requirementId: "customer_notification_content",
+      text: "The written notice describes the security incident and tells affected customers how to monitor accounts for suspicious activity.",
+      elements: ["incident_description", "protective_steps"],
+    },
+    {
+      requirementId: "customer_notification_content",
+      text: "When a security event requires notification, the firm must send affected individuals a written notice that identifies the information involved and provides a toll-free telephone contact.",
+      elements: ["information_involved", "contact_information", "written_delivery_requirements"],
+    },
+    {
+      requirementId: "remediation_recovery_validation",
+      text: "The Technology team restores affected services, validates restored access and security controls, and tracks assigned corrective actions to closure.",
+      elements: ["recovery_steps", "remediation_tracking", "validation_testing"],
+    },
+    {
+      requirementId: "remediation_recovery_validation",
+      text: "When an outage is resolved, the response lead must restore critical systems and verify restored logging before operations resume.",
+      elements: ["recovery_steps", "validation_testing"],
+    },
+    {
+      requirementId: "customer_information_safeguards",
+      text: "The platform uses multifactor authentication and encryption to protect customer information.",
+      elements: ["customer_information_scope", "safeguards_controls", "technical_safeguards"],
+    },
+    {
+      requirementId: "customer_information_safeguards",
+      text: "When personnel access customer records remotely, they must use multifactor authentication and encrypt the connection.",
+      elements: ["customer_information_scope", "safeguards_controls", "technical_safeguards"],
+    },
+    {
+      requirementId: "written_compliance_records",
+      text: "Compliance maintains an archive of safeguards procedures, incident-response records, customer-notice determinations, and disposal documentation. The archive is retained for five years in an accessible repository.",
+      elements: ["compliance_record_scope", "notice_determination_records", "retention_accessibility"],
+    },
+    {
+      requirementId: "written_compliance_records",
+      text: "When a safeguards procedure is superseded, Compliance must retain the policy record and its customer-notice determination in the controlled archive for the required retention period.",
+      elements: ["compliance_record_scope", "notice_determination_records", "retention_accessibility"],
+    },
+  ];
+
+  for (const fixture of admitted) {
+    const requirement = byId.get(fixture.requirementId);
+    assert.ok(requirement, fixture.requirementId);
+    const result = postProcessOpenAiClassification(
+      background(requirement),
+      inputFor(requirement, fixture.text),
+    );
+    assert.equal(result.relationship, "supports", fixture.text);
+    assert.deepEqual(result.covered_elements, fixture.elements, fixture.text);
+    assert.equal(fixture.text.includes(result.supporting_quote ?? ""), true, fixture.text);
+  }
+});
+
+test("operative element rules require a non-discretionary action tied to the required object", () => {
+  const disposalScope = (text) => requirementSpecificElementMatch(
+    "disposal_consumer_customer_information",
+    "disposal_scope",
+    text,
+  );
+  const disposalMethod = (text) => requirementSpecificElementMatch(
+    "disposal_consumer_customer_information",
+    "secure_disposal_method",
+    text,
+  );
+  const assessmentScope = (text) => requirementSpecificElementMatch(
+    "incident_assessment_containment_control",
+    "assesses_scope",
+    text,
+  );
+  const containment = (text) => requirementSpecificElementMatch(
+    "incident_assessment_containment_control",
+    "containment_control",
+    text,
+  );
+  const incidentMaterials = (text) => requirementSpecificElementMatch(
+    "incident_evidence_log_preservation",
+    "incident_materials",
+    text,
+  );
+  const preservationProcess = (text) => requirementSpecificElementMatch(
+    "incident_evidence_log_preservation",
+    "preservation_process",
+    text,
+  );
+
+  // Audited regression examples: descriptions and discretionary requests are
+  // topical context, not operative support.
+  assert.equal(disposalScope(
+    "Copies, extracts, reports, screenshots, recordings, backups, and specialist service company-held replicas remain within scope when they can be linked to a shareholder or consumer.",
+  ), false);
+  assert.equal(assessmentScope(
+    "Rule 121 - Continuing service-company review. Assurance reports, material changes, remediation, and incident history are entered in OakMeridia Evidence Register.",
+  ), false);
+  assert.equal(incidentMaterials(
+    "The duty manager controls access to the folder and may ask Technology to retain a log source.",
+  ), false);
+  assert.equal(preservationProcess(
+    "The duty manager controls access to the folder and may ask Technology to retain a log source.",
+  ), false);
+
+  // Independent document types and vocabulary prove the rule is not tied to
+  // the audited material.
+  assert.equal(disposalScope(
+    "The museum archive index identifies donor files and backup images held in the repository.",
+  ), false);
+  assert.equal(disposalScope(
+    "A facilities inventory lists devices that may contain resident account data.",
+  ), false);
+  assert.equal(disposalScope(
+    "When client files reach the retention date, the records officer must securely erase backup copies before media reuse.",
+  ), true);
+  assert.equal(disposalMethod(
+    "When client files reach the retention date, the records officer must securely erase backup copies before media reuse.",
+  ), true);
+  assert.equal(disposalScope(
+    "The credit union disposal procedure requires staff to dispose of paper customer files through shredding and to sanitize retired drives.",
+  ), true);
+  assert.equal(disposalMethod(
+    "The credit union disposal procedure requires staff to dispose of paper customer files through shredding and to sanitize retired drives.",
+  ), true);
+
+  assert.equal(assessmentScope(
+    "The supplier dashboard records incident counts and closure dates each quarter.",
+  ), false);
+  assert.equal(assessmentScope(
+    "The audit committee reviews last year's event statistics for trend reporting.",
+  ), false);
+  assert.equal(assessmentScope(
+    "When an alert indicates unauthorized access, the response lead must assess its nature and scope and isolate affected systems.",
+  ), true);
+  assert.equal(containment(
+    "When an alert indicates unauthorized access, the response lead must assess its nature and scope and isolate affected systems.",
+  ), true);
+  assert.equal(assessmentScope(
+    "Security analysts assess the impact of each breach and identify the affected account services.",
+  ), true);
+
+  assert.equal(incidentMaterials(
+    "The supervisor may request that system logs be retained after an event.",
+  ), false);
+  assert.equal(preservationProcess(
+    "When appropriate, an analyst keeps screenshots in a work folder.",
+  ), false);
+  assert.equal(incidentMaterials(
+    "Training slides describe the importance of preserving evidence after investigations.",
+  ), false);
+  assert.equal(incidentMaterials(
+    "If a security event involves personal records, the incident coordinator must preserve relevant logs and correspondence in the case file.",
+  ), true);
+  assert.equal(preservationProcess(
+    "If a security event involves personal records, the incident coordinator must preserve relevant logs and correspondence in the case file.",
+  ), true);
+  assert.equal(incidentMaterials(
+    "The investigation procedure retains email exports and logs, records collection metadata, and documents custody transfers.",
+  ), true);
+  assert.equal(preservationProcess(
+    "The investigation procedure retains email exports and logs, records collection metadata, and documents custody transfers.",
+  ), true);
 });
 
 test("post-processing preserves an incident-specific Legal delay procedure as partial evidence", async () => {

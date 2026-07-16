@@ -5,6 +5,7 @@ import {
 } from "./aiProcessingPolicy";
 import { detectNegativeEvidence } from "./negativeEvidence";
 import {
+  admitsPositiveRecoveryElement,
   requirementSpecificElementMatch,
   requiresOperativeElementSupport,
   usesCanonicalOperativeElementModel,
@@ -979,6 +980,7 @@ function scoreQuoteCandidate(
 function extractSourceQuote(
   input: RequirementEvidenceClassifierInput,
   classification: Omit<RequirementEvidenceClassification, "classifier_provider">,
+  quoteAdmission?: (quote: string) => boolean,
 ) {
   if (!relationshipRequiresSourceQuote(classification.relationship)) {
     return null;
@@ -1014,6 +1016,7 @@ function extractSourceQuote(
       item.score > 0
       && input.chunkContent.includes(item.candidate)
       && quoteIsValidForRelationship(input, classification, item.candidate)
+      && (!quoteAdmission || quoteAdmission(item.candidate))
     )
     .sort((left, right) => {
       const scoreDelta = right.score - left.score;
@@ -1054,7 +1057,7 @@ export function buildRequirementEvaluationGuidance(requirement: RegSpRequirement
     customer_information_safeguards:
       "Covered support requires administrative, technical, and physical safeguards for customer information. A subset of operative safeguards may be partial; generic security language is context only.",
     disposal_consumer_customer_information:
-      "Treat a definite policy scope statement that enumerates multiple stored forms of consumer, customer, or securityholder-linked information as disposal_scope, even when the disposal method is in a separate chunk. Do not infer scope from a title, a bare data inventory, or a discretionary description. Secure disposal methods still require an operative disposal action.",
+      "Disposal scope requires a non-discretionary disposal action tied to covered customer or consumer information. A title, data inventory, or scope description alone is context. Secure disposal methods also require an operative disposal action.",
     written_compliance_records:
       "Treat a maintained archive of current or superseded procedures plus a compliance-record inventory covering multiple safeguards, disposal, incident, determination, notice, delay, or provider categories as operative recordkeeping. Specific retention duration and accessible storage prove retention_accessibility; determinations or copies of security messages/notices prove notice_determination_records. Generic departmental or operational retention remains context only.",
     evidence_log_preservation:
@@ -1293,7 +1296,7 @@ export function classifyRequirementEvidenceHeuristically(
 ): RequirementEvidenceClassification {
   const classification = classifyRequirementEvidenceHeuristicallyInternal(input, provider);
   const { classifier_provider: classifierProvider, ...withoutProvider } = classification;
-  const recovery = recoverRequirementSpecificElementSupport(withoutProvider, input);
+  const recovery = recoverOperativeElementSupport(withoutProvider, input);
   return {
     ...preserveRecoveredElementLevelSupport(
       downgradeUngroundedEvidence(recovery.classification, input),
@@ -1440,20 +1443,19 @@ function reasonInfersAbsence(reason: string) {
   return INFERRED_ABSENCE_REASON_PATTERNS.some((pattern) => pattern.test(reason));
 }
 
-function recoverRequirementSpecificElementSupport(
+function recoverOperativeElementSupport(
   parsed: Omit<RequirementEvidenceClassification, "classifier_provider">,
   input: RequirementEvidenceClassifierInput,
 ) {
-  if (parsed.relationship === "negative_evidence") {
+  // Recovery is a conservative correction for a model that treated an exact,
+  // operative excerpt as background. Do not rewrite an already-positive or
+  // negative per-chunk classification.
+  if (parsed.relationship !== "background_context" && parsed.relationship !== "irrelevant") {
     return { classification: parsed, promoteElementLevelSupport: false };
   }
 
-  const requirementId = classifierLegacyRequirementId(input.requirement.id);
-  if (![
-    "disposal_consumer_customer_information",
-    "evidence_log_preservation",
-    "written_compliance_records",
-  ].includes(requirementId)) {
+  const elementIds = (input.requirement.coverageElements ?? []).map((element) => element.id);
+  if (!usesCanonicalOperativeElementModel(input.requirement.id, elementIds)) {
     return { classification: parsed, promoteElementLevelSupport: false };
   }
 
@@ -1469,54 +1471,42 @@ function recoverRequirementSpecificElementSupport(
     missing_elements: coverage.missingRequired,
     vague_elements: coverage.vague,
   };
-  const supportingQuote = extractSourceQuote(input, recovered);
+  const supportingQuote = extractSourceQuote(input, recovered, (quote) =>
+    quoteSupportedElementIds(input, recovered, quote).some((elementId) =>
+      admitsPositiveRecoveryElement(input.requirement.id, elementId, quote),
+    ));
   if (!supportingQuote) {
     return { classification: parsed, promoteElementLevelSupport: false };
   }
 
-  const fullySupported = coverage.missingRequired.length === 0;
+  const admittedElements = quoteSupportedElementIds(input, recovered, supportingQuote)
+    .filter((elementId) =>
+      admitsPositiveRecoveryElement(input.requirement.id, elementId, supportingQuote));
+  if (admittedElements.length === 0) {
+    return { classification: parsed, promoteElementLevelSupport: false };
+  }
+  const missingRequired = input.requirement.requiredElementsForCovered.filter(
+    (elementId) => !admittedElements.includes(elementId),
+  );
+  const fullySupported = missingRequired.length === 0;
   return {
     classification: {
       ...recovered,
       confidence: parsed.confidence === "high" ? "high" as const : "medium" as const,
       requirement_supported: fullySupported,
       control_absent_or_out_of_scope: false,
+      covered_elements: admittedElements,
+      missing_elements: missingRequired,
       reason:
         "Recovered requirement-specific element support from an exact, operative source quote. " +
         parsed.reason,
       supporting_quote: supportingQuote,
     },
-    // Aggregation already requires an exact quote and validates each element. The
-    // disposal requirement has intentionally separate scope and method passages,
-    // so retain a strict direct proof of either element for that existing ledger.
-    promoteElementLevelSupport: !fullySupported
-      && shouldPromoteDisposalElementLevelSupport(requirementId, coverage.covered, input.chunkContent),
+    // The element ledger can combine distinct exact, operative excerpts. Preserve
+    // this direct proof of the listed element(s) without treating the whole
+    // requirement as covered.
+    promoteElementLevelSupport: !fullySupported,
   };
-}
-
-function shouldPromoteDisposalElementLevelSupport(
-  requirementId: string,
-  coveredElements: string[],
-  chunkContent: string,
-) {
-  if (requirementId !== "disposal_consumer_customer_information") return false;
-  if (coveredElements.includes("secure_disposal_method")) return true;
-  if (!coveredElements.includes("disposal_scope")) return false;
-
-  const normalized = normalize(chunkContent);
-  const inventoryItems = [
-    "copies",
-    "extracts",
-    "reports",
-    "screenshots",
-    "recordings",
-    "backups",
-    "replicas",
-  ].filter((item) => new RegExp(`\\b${item}\\b`).test(normalized)).length;
-  return inventoryItems >= 2
-    && /\bwithin scope\b/.test(normalized)
-    && /\b(?:linked|related|attributable)\b/.test(normalized)
-    && /\b(?:consumer|customer|securityholder)s?\b/.test(normalized);
 }
 
 function preserveRecoveredElementLevelSupport(
@@ -1618,7 +1608,7 @@ export function postProcessOpenAiClassification(
         `Downgraded from negative_evidence because absence must be explicit for this requirement and cannot be inferred from silence or adjacent controls. ${parsed.reason}`,
       supporting_quote: null,
     };
-    const recovery = recoverRequirementSpecificElementSupport(downgradedNegative, input);
+    const recovery = recoverOperativeElementSupport(downgradedNegative, input);
     return preserveRecoveredElementLevelSupport(
       downgradeUngroundedEvidence(recovery.classification, input),
       recovery.promoteElementLevelSupport,
@@ -1649,7 +1639,7 @@ export function postProcessOpenAiClassification(
     }, input);
   }
 
-  const recovery = recoverRequirementSpecificElementSupport(parsed, input);
+  const recovery = recoverOperativeElementSupport(parsed, input);
   const recovered = recovery.classification;
   const recoveredCoveredElements = recovered.covered_elements ?? [];
   const requiredMissing = (input.requirement.requiredElementsForCovered ?? []).filter(

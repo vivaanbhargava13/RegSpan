@@ -1588,9 +1588,9 @@ test("unclear applicability can need review and retains high unresolved risk", (
       requirement_supported: false,
       covered_elements: [],
       missing_elements: [],
-      supporting_quote: "Customer notification obligations apply where applicable under the business unit applicability matrix.",
-      content_preview: "Customer notification obligations apply where applicable under the business unit applicability matrix.",
-      grade_reason: "The cited text raises applicability but does not confirm whether this requirement applies.",
+      supporting_quote: "Compliance must determine whether the customer-notification requirement applies to municipal advisory accounts before this procedure is used.",
+      content_preview: "Compliance must determine whether the customer-notification requirement applies to municipal advisory accounts before this procedure is used.",
+      grade_reason: "The cited source directly leaves applicability unresolved for a defined account population.",
     }),
   ]);
 
@@ -1599,6 +1599,62 @@ test("unclear applicability can need review and retains high unresolved risk", (
   assert.match(finding.summary, /not enough detail to confirm full coverage/);
   assert.match(finding.rationale, /applicability question/);
   assert.doesNotMatch(finding.remediation, /reviewed documents appear to define/i);
+});
+
+test("needs review requires a grounded source ambiguity rather than a generic applicability inference", () => {
+  const evidenceFree = aggregateFindingForRequirement(requirement, [
+    chunk({
+      grade: "background",
+      evidence_relationship: "background_context",
+      requirement_supported: false,
+      covered_elements: [],
+      missing_elements: [],
+      supporting_quote: null,
+      content_preview: "Operations guidance for customer-facing teams.",
+      grade_reason: "The classifier inferred that applicability might depend on business context.",
+    }),
+  ]);
+  const genericScope = aggregateFindingForRequirement(requirement, [
+    chunk({
+      grade: "background",
+      evidence_relationship: "background_context",
+      requirement_supported: false,
+      covered_elements: [],
+      missing_elements: [],
+      supporting_quote: "Customer notification duties apply as applicable.",
+      content_preview: "Customer notification duties apply as applicable.",
+      grade_reason: "The source uses generic applicability language.",
+    }),
+  ]);
+  const explicitLimitation = aggregateFindingForRequirement(requirement, [
+    negativeChunk({
+      supporting_quote: "This handbook does not establish a customer-notification decision procedure.",
+      content_preview: "This handbook does not establish a customer-notification decision procedure.",
+      grade_reason: "This handbook does not establish a customer-notification decision procedure.",
+      negative_evidence_reason: "This handbook does not establish a customer-notification decision procedure.",
+    }),
+  ]);
+  const auditedLimitation = aggregateFindingForRequirement(requirement, [
+    negativeChunk({
+      supporting_quote: "A future policy revision may consolidate privacy and cyber response. This governance document does not establish an end-to-end program designed around detection, response, and restoration sequence for unauthorized access to or use of securityholder information.",
+      content_preview: "A future policy revision may consolidate privacy and cyber response. This governance document does not establish an end-to-end program designed around detection, response, and restoration sequence for unauthorized access to or use of securityholder information.",
+      grade_reason: "The current document expressly limits an incident-response program without identifying another controlling source.",
+      negative_evidence_reason: "The current document expressly limits an incident-response program without identifying another controlling source.",
+    }),
+  ]);
+  const unrelatedCrossReference = aggregateFindingForRequirement(requirement, [
+    negativeChunk({
+      supporting_quote: "Vendor onboarding is defined in the Third-Party Standard.",
+      content_preview: "Vendor onboarding is defined in the Third-Party Standard.",
+      grade_reason: "Vendor onboarding is defined in the Third-Party Standard.",
+      negative_evidence_reason: "Vendor onboarding is defined in the Third-Party Standard.",
+    }),
+  ]);
+
+  for (const finding of [evidenceFree, genericScope, explicitLimitation, auditedLimitation, unrelatedCrossReference]) {
+    assert.equal(finding.status, "missing");
+    assert.notEqual(finding.status, "needs_review");
+  }
 });
 
 test("negative evidence scope classifier distinguishes organization from document limitations", () => {
