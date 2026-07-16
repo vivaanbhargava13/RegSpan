@@ -314,6 +314,34 @@ export function assertCorpusEvaluationSafety({
   return { actorUserId: actorUserId.trim(), workspacePrefix };
 }
 
+/**
+ * This deliberately authorizes only the corpus runner's local, configured
+ * evaluator. It is not a general rate-limit bypass and is locked out in
+ * production even when corpus evaluation itself is enabled there.
+ */
+export function assertEvaluationAppLimitBypass({
+  requested,
+  environment,
+  actorUserId,
+  workspacePrefix,
+}) {
+  if (requested !== true) return false;
+  if (environment?.NODE_ENV === "production") {
+    throw new CorpusEvaluationSafetyError("App-limit bypass is unavailable in production.");
+  }
+  if (environment?.REGSPAN_EVAL_ENABLED !== "true") {
+    throw new CorpusEvaluationSafetyError("App-limit bypass requires REGSPAN_EVAL_ENABLED=true.");
+  }
+  const configuredActor = environment?.REGSPAN_EVAL_ACTOR_USER_ID?.trim();
+  const configuredPrefix = environment?.REGSPAN_EVAL_WORKSPACE_PREFIX?.trim();
+  if (!configuredActor || configuredActor !== actorUserId
+    || !configuredPrefix || configuredPrefix !== workspacePrefix
+    || !/^regspan-eval-[a-z0-9-]*$/.test(configuredPrefix)) {
+    throw new CorpusEvaluationSafetyError("App-limit bypass is not authorized for this evaluator workspace.");
+  }
+  return true;
+}
+
 export function assertCorpusEvaluationExternalAiOptIn(allowExternalAi) {
   if (allowExternalAi !== true) {
     throw new CorpusEvaluationSafetyError(

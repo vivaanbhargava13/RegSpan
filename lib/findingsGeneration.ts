@@ -29,6 +29,7 @@ import { loadRegSpRequirementsForFindings } from "@/lib/regulatoryControls";
 import { getServerSupabaseAdminClient } from "@/lib/supabase/server";
 
 export const FINDINGS_GENERATION_TOP_K = 25;
+const EVALUATION_UNRESTRICTED_CONCURRENCY = 2_147_483_647;
 
 export class FindingsGenerationError extends Error {
   constructor(
@@ -48,6 +49,8 @@ type GenerateFindingsInput = {
   topK?: number;
   classifierTelemetry?: RequirementEvidenceClassifierTelemetry;
   evaluationCaseIdByDocumentId?: ReadonlyMap<string, string>;
+  /** Internal corpus evaluator only; authorization happens at its boundary. */
+  bypassAppLimits?: boolean;
 };
 
 type AnalysisRunRow = {
@@ -232,17 +235,21 @@ async function createAnalysisRun({
   workspaceId,
   actorUserId,
   requirementCount,
+  bypassAppLimits = false,
 }: {
   supabase: SupabaseClient;
   workspaceId: string;
   actorUserId: string;
   requirementCount: number;
+  bypassAppLimits?: boolean;
 }) {
   const { data, error } = await supabase.rpc("start_analysis_run_with_quota_v1", {
     p_workspace_id: workspaceId,
     p_actor_user_id: actorUserId,
     p_requirement_count: requirementCount,
-    p_max_active_runs: workspaceQuotaConfiguration().maxActiveAnalysisRuns,
+    p_max_active_runs: bypassAppLimits
+      ? EVALUATION_UNRESTRICTED_CONCURRENCY
+      : workspaceQuotaConfiguration().maxActiveAnalysisRuns,
   });
 
   if (error || !data) {
@@ -466,6 +473,7 @@ export async function generateFindingsForWorkspace({
   topK = FINDINGS_GENERATION_TOP_K,
   classifierTelemetry,
   evaluationCaseIdByDocumentId,
+  bypassAppLimits = false,
 }: GenerateFindingsInput) {
   await assertProcessedEvidenceExists(supabase, workspaceId);
   const requirements = await loadRegSpRequirementsForFindings({ supabase });
@@ -474,6 +482,7 @@ export async function generateFindingsForWorkspace({
     workspaceId,
     actorUserId,
     requirementCount: requirements.length,
+    bypassAppLimits,
   });
 
   if (runStart.state === "reused_active_run") {
@@ -529,6 +538,7 @@ export async function generateFindingsForWorkspace({
         classifierCandidates,
         classifier,
         evaluationCaseIdByDocumentId,
+        classifierTelemetry,
       );
       const finding = aggregateFindingForRequirement(
         requirement,

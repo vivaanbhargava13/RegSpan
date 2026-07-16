@@ -35,6 +35,7 @@ export async function uploadDocumentForWorkspace({
   file: suppliedFile,
   documentType: suppliedDocumentType,
   notes: suppliedNotes,
+  bypassProcessingQuota = false,
 }: {
   supabase: SupabaseClient;
   correlationId: string;
@@ -42,6 +43,8 @@ export async function uploadDocumentForWorkspace({
   file: FormDataEntryValue | null;
   documentType?: string | null;
   notes?: string | null;
+  /** Internal evaluator only; caller authorization is verified before this boundary. */
+  bypassProcessingQuota?: boolean;
 }): Promise<UploadedDocumentResult> {
   const file = await validatePdfFile(suppliedFile);
   const documentType = ALLOWED_DOCUMENT_TYPES.has(suppliedDocumentType?.trim() ?? "")
@@ -106,6 +109,7 @@ export async function uploadDocumentForWorkspace({
     documentId,
     workspaceId,
     idempotencyKey: `${correlationId}:upload:${documentId}`,
+    bypassQuota: bypassProcessingQuota,
   });
 
   return { documentId, filename, processing };

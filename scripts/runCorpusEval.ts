@@ -6,13 +6,17 @@ import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { assertExternalAiProcessingServerAvailable } from "@/lib/aiProcessingPolicy";
 import { canonicalElementIdsForFinalPositiveQuote } from "@/lib/findingsAggregation";
 import type {
+  OpenAiClassifierSchedulerSnapshot,
   RequirementEvidenceClassifierProviderFailureEvent,
   RequirementEvidenceClassifierProviderRetryEvent,
   RequirementEvidenceClassifierResolvedConfiguration,
   RequirementEvidenceClassifierTelemetry,
   RequirementEvidenceClassifierTelemetryPath,
 } from "@/lib/requirementEvidenceClassifier";
-import { RequirementEvidenceClassifierProviderFailureError } from "@/lib/requirementEvidenceClassifier";
+import {
+  createOpenAiClassifierProviderScheduler,
+  RequirementEvidenceClassifierProviderFailureError,
+} from "@/lib/requirementEvidenceClassifier";
 import { RateLimitError } from "@/lib/rateLimit";
 import { canonicalControlKeyForRequirement } from "@/lib/regulatoryControlFramework";
 import { loadRegSpRequirementsForFindings } from "@/lib/regulatoryControls";
@@ -34,6 +38,7 @@ import {
   CorpusEvaluationTimeoutError,
   CorpusEvaluationRateLimitWaitExceededError,
   CorpusManifestError,
+  assertEvaluationAppLimitBypass,
   assertCorpusEvaluationExternalAiOptIn,
   assertCorpusEvaluationSafety,
   createOneShotEvaluationState,
@@ -83,6 +88,8 @@ type RunnerArgs = {
   waitOnRateLimit: boolean;
   maxRateLimitWaitMs: number;
   strictClassifierProviderErrors: boolean;
+  bypassAppLimits: boolean;
+  classifierConcurrency: number | null;
   blind: boolean;
   help: boolean;
 };
@@ -227,6 +234,7 @@ type RunState = {
   completedAt?: string;
   actorUserId: string;
   workspacePrefix: string;
+  appLimitBypass?: boolean;
   selectedCaseIds: string[];
   selectedCaseCount: number;
   filtered: boolean;
@@ -245,19 +253,22 @@ type RunState = {
 type EvaluationClassifierTelemetry = {
   telemetry: RequirementEvidenceClassifierTelemetry;
   sidecar: (state: RunState) => {
-    schemaVersion: 1;
+    schemaVersion: 2;
     runId: string;
     resolvedClassifier: RequirementEvidenceClassifierResolvedConfiguration | null;
     counts: Record<RequirementEvidenceClassifierTelemetryPath, number>;
     providerFailures: RequirementEvidenceClassifierProviderFailureEvent[];
     providerRetries: RequirementEvidenceClassifierProviderRetryEvent[];
+    scheduler: OpenAiClassifierSchedulerSnapshot;
   };
 };
 
 function createEvaluationClassifierTelemetry({
   strictProviderFailures = false,
+  classifierConcurrency,
 }: {
   strictProviderFailures?: boolean;
+  classifierConcurrency?: number | null;
 } = {}): EvaluationClassifierTelemetry {
   let resolvedClassifier: RequirementEvidenceClassifierResolvedConfiguration | null = null;
   const counts = Object.fromEntries(CLASSIFIER_TELEMETRY_PATHS.map((path) => [path, 0])) as Record<
@@ -266,6 +277,9 @@ function createEvaluationClassifierTelemetry({
   >;
   const providerFailures: RequirementEvidenceClassifierProviderFailureEvent[] = [];
   const providerRetries: RequirementEvidenceClassifierProviderRetryEvent[] = [];
+  const scheduler = createOpenAiClassifierProviderScheduler({
+    maxConcurrency: classifierConcurrency ?? 5,
+  });
 
   return {
     telemetry: {
@@ -305,16 +319,19 @@ function createEvaluationClassifierTelemetry({
           retryDelayMs: event.retryDelayMs,
         });
       },
+      providerScheduler: scheduler,
+      candidateConcurrencyOverride: classifierConcurrency ?? undefined,
       strictProviderFailures,
     },
     sidecar(state) {
       return {
-        schemaVersion: 1,
+        schemaVersion: 2,
         runId: state.runId,
         resolvedClassifier,
         counts: { ...counts },
         providerFailures: providerFailures.map((event) => ({ ...event })),
         providerRetries: providerRetries.map((event) => ({ ...event })),
+        scheduler: scheduler.snapshot(),
       };
     },
   };
@@ -335,7 +352,9 @@ Options:
   --workspace-prefix <prefix>  Explicit prefix beginning regspan-eval-; overrides REGSPAN_EVAL_WORKSPACE_PREFIX.
   --case <case-id>             Run one manifest case; repeat to select multiple cases.
   --allow-external-ai          Allow external AI for newly created evaluation workspaces.
+  --bypass-app-limits          Development-only evaluator bypass for product quotas and user concurrency limits.
   --strict-classifier-provider-errors  Evaluation-only: record and fail a case on the first classifier provider error.
+  --classifier-concurrency <n> Diagnostic OpenAI classifier concurrency override (1-25); default adaptive cap is 5.
   --wait-on-rate-limit         Wait and retry Analysis rate limits (default).
   --no-wait-on-rate-limit      Fail immediately when Analysis is rate limited.
   --max-rate-limit-wait-ms <n> Maximum total wait for Analysis rate limits. Defaults to ${DEFAULT_MAX_RATE_LIMIT_WAIT_MS}.
@@ -360,6 +379,8 @@ function parseArgs(argv: string[]): RunnerArgs {
     waitOnRateLimit: true,
     maxRateLimitWaitMs: DEFAULT_MAX_RATE_LIMIT_WAIT_MS,
     strictClassifierProviderErrors: false,
+    bypassAppLimits: false,
+    classifierConcurrency: null,
     blind: false,
     help: false,
   };
@@ -379,7 +400,9 @@ function parseArgs(argv: string[]): RunnerArgs {
       index += 1;
     }
     else if (arg === "--allow-external-ai") args.allowExternalAi = true;
+    else if (arg === "--bypass-app-limits") args.bypassAppLimits = true;
     else if (arg === "--strict-classifier-provider-errors") args.strictClassifierProviderErrors = true;
+    else if (arg === "--classifier-concurrency") { args.classifierConcurrency = Number(next); index += 1; }
     else if (arg === "--wait-on-rate-limit") args.waitOnRateLimit = true;
     else if (arg === "--no-wait-on-rate-limit") args.waitOnRateLimit = false;
     else if (arg === "--max-rate-limit-wait-ms") { args.maxRateLimitWaitMs = Number(next); index += 1; }
@@ -397,6 +420,12 @@ function parseArgs(argv: string[]): RunnerArgs {
     || args.maxRateLimitWaitMs < 1_000
     || args.maxRateLimitWaitMs > 3_600_000) {
     throw new Error("--max-rate-limit-wait-ms must be an integer from 1000 through 3600000.");
+  }
+  if (args.classifierConcurrency !== null
+    && (!Number.isSafeInteger(args.classifierConcurrency)
+      || args.classifierConcurrency < 1
+      || args.classifierConcurrency > 25)) {
+    throw new Error("--classifier-concurrency must be an integer from 1 through 25.");
   }
   if (args.blind && args.mode !== "isolated") {
     throw new Error("--blind supports isolated mode only so each holdout document remains independently scorable.");
@@ -603,7 +632,7 @@ async function preflightCorpusFiles(corpusDir: string, definitions: CorpusCase[]
   return files;
 }
 
-function runContext(state: RunState): EvaluationRunContext {
+function runContext(state: RunState, bypassAppLimits: boolean): EvaluationRunContext {
   return {
     runId: state.runId,
     actorUserId: state.actorUserId,
@@ -612,6 +641,7 @@ function runContext(state: RunState): EvaluationRunContext {
     workspacePrefix: state.workspacePrefix,
     externalAiProcessingEnabled: true,
     evaluationAnalysisQuotaAuthorized: true,
+    bypassAppLimits,
   };
 }
 
@@ -885,10 +915,15 @@ function finalizeBlindExecutionOutcome(state: RunState) {
   return summary;
 }
 
-async function createWorkspace(state: RunState, workspaceKey: string, outputDir: string) {
+async function createWorkspace(
+  state: RunState,
+  workspaceKey: string,
+  outputDir: string,
+  bypassAppLimits: boolean,
+) {
   const context = await createFreshEvaluationWorkspace({
     supabase: getServerSupabaseAdminClient(),
-    context: runContext(state),
+    context: runContext(state, bypassAppLimits),
     workspaceKey,
   });
   state.workspaces[workspaceKey].id = context.workspaceId;
@@ -1148,6 +1183,12 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) return usage();
   const { actorUserId, workspacePrefix } = assertRunnerSafety(args);
+  const bypassAppLimits = assertEvaluationAppLimitBypass({
+    requested: args.bypassAppLimits,
+    environment: process.env,
+    actorUserId,
+    workspacePrefix,
+  });
   assertExternalAiEvaluationSafety(args);
   const corpusDir = await resolveCorpusDirectory(args.corpus);
   const requirements = await loadRegSpRequirementsForFindings({ supabase: getServerSupabaseAdminClient() });
@@ -1165,7 +1206,7 @@ async function main() {
   if (selectedCases.length === 0) throw new Error(`No corpus cases are enabled for ${args.mode} mode.`);
   const preparedFiles = await preflightCorpusFiles(
     corpusDir,
-    manifest.cases.filter((definition) => definition.enabled),
+    selectedCases,
   );
 
   const state = createState({
@@ -1178,8 +1219,10 @@ async function main() {
     workspacePrefix,
     blind: args.blind,
   });
+  state.appLimitBypass = bypassAppLimits;
   const classifierTelemetry = createEvaluationClassifierTelemetry({
     strictProviderFailures: args.strictClassifierProviderErrors,
+    classifierConcurrency: args.classifierConcurrency,
   });
   const outputDir = resolve(
     "eval-results",
@@ -1190,7 +1233,7 @@ async function main() {
   let activeCaseId: string | null = null;
   try {
     if (args.mode === "combined") {
-      const context = await createWorkspace(state, "combined", outputDir);
+      const context = await createWorkspace(state, "combined", outputDir, bypassAppLimits);
       for (const definition of selectedCases) {
         activeCaseId = definition.id;
         await processCase({ definition, state, context, bytes: preparedFiles.get(definition.id)!, outputDir, pollTimeoutMs: args.pollTimeoutMs });
@@ -1201,7 +1244,7 @@ async function main() {
         cases: selectedCases,
         runCase: async (definition) => {
           activeCaseId = definition.id;
-          const context = await createWorkspace(state, definition.id, outputDir);
+          const context = await createWorkspace(state, definition.id, outputDir, bypassAppLimits);
           await processCase({ definition, state, context, bytes: preparedFiles.get(definition.id)!, outputDir, pollTimeoutMs: args.pollTimeoutMs });
           await analyzeAndScore({ definitions: [definition], state, context, outputDir, pollTimeoutMs: args.pollTimeoutMs, waitOnRateLimit: args.waitOnRateLimit, maxRateLimitWaitMs: args.maxRateLimitWaitMs, requirementsById, classifierTelemetry });
         },

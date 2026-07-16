@@ -6,6 +6,7 @@ import {
   createRequirementEvidenceClassifier,
   type RequirementEvidenceClassification,
   type RequirementEvidenceClassifier,
+  type RequirementEvidenceClassifierTelemetry,
   type RequirementEvidenceClassifierProvider,
   type RequirementEvidenceConfidence,
   type RequirementEvidenceRelationship,
@@ -209,13 +210,14 @@ export async function buildRequirementMatchResultWithClassifier(
   chunks: RetrievedChunk[],
   classifier: RequirementEvidenceClassifier = createRequirementEvidenceClassifier(),
   evaluationCaseIdByDocumentId?: ReadonlyMap<string, string>,
+  classifierTelemetry?: RequirementEvidenceClassifierTelemetry,
 ): Promise<RequirementMatchResult> {
   const graded = (await mapWithClassifierConcurrency(chunks, async (chunk) => {
     const classification = await classifier.classify(classifierInputForChunk(requirement, chunk, {
       caseId: evaluationCaseIdByDocumentId?.get(chunk.document_id) ?? null,
     }));
     return chunkWithClassification(chunk, classification);
-  })).sort((left, right) => {
+  }, classifierTelemetry?.candidateConcurrencyOverride ?? CLASSIFIER_CANDIDATE_CONCURRENCY)).sort((left, right) => {
     const gradeDelta = gradeRank[left.grade] - gradeRank[right.grade];
     if (gradeDelta !== 0) return gradeDelta;
     const leftRerank = left.rerank_score ?? 0;

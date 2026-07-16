@@ -76,6 +76,10 @@ export type RequirementEvidenceClassifierTelemetry = {
   recordPath?: (path: RequirementEvidenceClassifierTelemetryPath) => void;
   recordProviderFailure?: (event: RequirementEvidenceClassifierProviderFailureEvent) => void;
   recordProviderRetry?: (event: RequirementEvidenceClassifierProviderRetryEvent) => void;
+  /** Evaluation-only, runner-owned scheduler. Never module-global. */
+  providerScheduler?: RequirementEvidenceClassifierProviderScheduler;
+  /** Evaluation-only diagnostic override; absent keeps the normal cap. */
+  candidateConcurrencyOverride?: number;
   /** Evaluation-only: fail the analysis after recording a provider failure. */
   strictProviderFailures?: boolean;
 };
@@ -131,6 +135,41 @@ export type RequirementEvidenceClassifierRuntime = {
   random?: () => number;
   now?: () => number;
 };
+
+type HeaderReader = { get?: (name: string) => string | null };
+
+export type OpenAiClassifierSchedulerSnapshot = {
+  mode: "adaptive";
+  configuredConcurrency: number;
+  currentConcurrency: number;
+  inFlight: number;
+  requestStarts: number;
+  successfulResponses: number;
+  retryWaits: number;
+  sharedCooldowns: number;
+  rateLimitResponses: number;
+  concurrencyReductions: number;
+  concurrencyRecoveries: number;
+  headerPacingEvents: number;
+};
+
+export type RequirementEvidenceClassifierProviderScheduler = {
+  acquire(input?: { promptCharacters?: number }): Promise<() => void>;
+  observeResponseHeaders(headers: HeaderReader, promptCharacters: number): void;
+  recordSuccess(): void;
+  waitForRetry(input: {
+    httpStatus: number | null;
+    retryAfter: string | null;
+    fallbackDelayMs: number;
+  }): Promise<number>;
+  snapshot(): OpenAiClassifierSchedulerSnapshot;
+};
+
+export type OpenAiClassifierSchedulerOptions = {
+  maxConcurrency?: number;
+  now?: () => number;
+  sleep?: (milliseconds: number) => Promise<void>;
+};
 type SentenceScopedNegativeEvidence = ReturnType<typeof detectNegativeEvidence> & {
   sentence: string | null;
   elementIds: string[];
@@ -141,6 +180,7 @@ const CLASSIFIER_TIMEOUT_MS = 30_000;
 const CLASSIFIER_MAX_ATTEMPTS = 3;
 const CLASSIFIER_RETRY_BACKOFF_BASE_MS = 250;
 const CLASSIFIER_RETRY_BACKOFF_CAP_MS = 2_000;
+const SCHEDULER_MINIMUM_STAGGER_MS = 25;
 const SILENCE_BASED_NEGATIVE_REASON_PATTERNS = [
   /\bdoes not\s+(?:explicitly\s+)?(?:mention|reference|discuss|describe|state|include|address|contain)\b/i,
   /\bdoesn['’]?t\s+(?:explicitly\s+)?(?:mention|reference|discuss|describe|state|include|address|contain)\b/i,
@@ -242,6 +282,204 @@ function retryDelayMs({
   );
   const jitter = 0.5 + Math.min(1, Math.max(0, random()));
   return Math.round(boundedBase * jitter);
+}
+
+function openAiRateLimitNumber(headers: HeaderReader, name: string) {
+  const value = headers.get?.(name)?.trim() ?? "";
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function openAiRateLimitResetMs(headers: HeaderReader, name: string) {
+  const value = headers.get?.(name)?.trim().toLowerCase() ?? "";
+  if (!value) return null;
+  const numeric = Number(value);
+  if (Number.isFinite(numeric) && numeric >= 0) return Math.ceil(numeric * 1_000);
+
+  let matched = false;
+  let milliseconds = 0;
+  for (const part of value.matchAll(/(\d+(?:\.\d+)?)\s*(ms|s|m|h)/g)) {
+    matched = true;
+    const amount = Number(part[1]);
+    const unit = part[2];
+    const multiplier = unit === "h" ? 3_600_000 : unit === "m" ? 60_000 : unit === "s" ? 1_000 : 1;
+    milliseconds += amount * multiplier;
+  }
+  return matched && Number.isFinite(milliseconds) ? Math.ceil(milliseconds) : null;
+}
+
+/**
+ * Run-scoped OpenAI request coordinator. It intentionally schedules only
+ * provider transport: prompts, classifications, evidence ordering, and
+ * aggregation remain outside this component.
+ */
+export class OpenAiClassifierProviderScheduler implements RequirementEvidenceClassifierProviderScheduler {
+  private readonly configuredConcurrency: number;
+  private readonly now: () => number;
+  private readonly sleep: (milliseconds: number) => Promise<void>;
+  private currentConcurrency: number;
+  private inFlight = 0;
+  private nextStartAt = 0;
+  private cooldownUntil = 0;
+  private successStreak = 0;
+  private requestStarts = 0;
+  private successfulResponses = 0;
+  private retryWaits = 0;
+  private sharedCooldowns = 0;
+  private rateLimitResponses = 0;
+  private concurrencyReductions = 0;
+  private concurrencyRecoveries = 0;
+  private headerPacingEvents = 0;
+  private availabilityWaiters: Array<() => void> = [];
+
+  constructor({
+    maxConcurrency = 5,
+    now = () => Date.now(),
+    sleep = (milliseconds) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds)),
+  }: OpenAiClassifierSchedulerOptions = {}) {
+    if (!Number.isInteger(maxConcurrency) || maxConcurrency < 1 || maxConcurrency > 25) {
+      throw new Error("OpenAI classifier concurrency must be an integer from 1 through 25.");
+    }
+    this.configuredConcurrency = maxConcurrency;
+    this.currentConcurrency = maxConcurrency;
+    this.now = now;
+    this.sleep = sleep;
+  }
+
+  private notifyAvailability() {
+    const waiters = this.availabilityWaiters;
+    this.availabilityWaiters = [];
+    for (const resolve of waiters) resolve();
+  }
+
+  private waitForAvailability() {
+    return new Promise<void>((resolve) => this.availabilityWaiters.push(resolve));
+  }
+
+  async acquire(_input: { promptCharacters?: number } = {}) {
+    // Prompt size is consumed from response headers for pacing; retain it here
+    // so the scheduler interface can evolve without changing call ordering.
+    void _input.promptCharacters;
+    while (true) {
+      const now = this.now();
+      const notBefore = Math.max(this.nextStartAt, this.cooldownUntil);
+      if (this.inFlight < this.currentConcurrency && now >= notBefore) {
+        this.inFlight += 1;
+        this.requestStarts += 1;
+        // A fixed small stagger prevents a shared cooldown from releasing a herd.
+        this.nextStartAt = now + SCHEDULER_MINIMUM_STAGGER_MS;
+        let released = false;
+        return () => {
+          if (released) return;
+          released = true;
+          this.inFlight = Math.max(0, this.inFlight - 1);
+          this.notifyAvailability();
+        };
+      }
+
+      if (this.inFlight >= this.currentConcurrency) {
+        await this.waitForAvailability();
+      } else {
+        await this.sleep(Math.max(1, notBefore - now));
+      }
+    }
+  }
+
+  observeResponseHeaders(headers: HeaderReader, promptCharacters: number) {
+    const remainingRequests = openAiRateLimitNumber(headers, "x-ratelimit-remaining-requests");
+    const requestResetMs = openAiRateLimitResetMs(headers, "x-ratelimit-reset-requests");
+    const remainingTokens = openAiRateLimitNumber(headers, "x-ratelimit-remaining-tokens");
+    const tokenResetMs = openAiRateLimitResetMs(headers, "x-ratelimit-reset-tokens");
+    const estimatedTokens = Math.max(1, Math.ceil(promptCharacters / 4));
+    const pacingIntervals: number[] = [];
+
+    if (remainingRequests !== null && requestResetMs !== null
+      && remainingRequests <= Math.max(1, this.currentConcurrency * 2)) {
+      pacingIntervals.push(Math.ceil(requestResetMs / Math.max(1, remainingRequests + 1)));
+    }
+    if (remainingTokens !== null && tokenResetMs !== null
+      && remainingTokens <= estimatedTokens * Math.max(1, this.currentConcurrency * 2)) {
+      const remainingRequestEquivalents = Math.max(1, Math.floor(remainingTokens / estimatedTokens));
+      pacingIntervals.push(Math.ceil(tokenResetMs / remainingRequestEquivalents));
+    }
+
+    const pacingMs = Math.max(0, ...pacingIntervals);
+    if (pacingMs > SCHEDULER_MINIMUM_STAGGER_MS) {
+      this.nextStartAt = Math.max(this.nextStartAt, this.now() + pacingMs);
+      this.headerPacingEvents += 1;
+    }
+  }
+
+  recordSuccess() {
+    this.successfulResponses += 1;
+    this.successStreak += 1;
+    if (this.currentConcurrency < this.configuredConcurrency
+      && this.successStreak >= Math.max(2, this.currentConcurrency * 4)) {
+      this.currentConcurrency += 1;
+      this.successStreak = 0;
+      this.concurrencyRecoveries += 1;
+      this.notifyAvailability();
+    }
+  }
+
+  async waitForRetry({
+    httpStatus,
+    retryAfter,
+    fallbackDelayMs,
+  }: {
+    httpStatus: number | null;
+    retryAfter: string | null;
+    fallbackDelayMs: number;
+  }) {
+    const now = this.now();
+    const retryAfterMs = retryAfterDelayMs(retryAfter, this.now);
+    const delayMs = Math.max(0, retryAfterMs ?? fallbackDelayMs);
+    if (httpStatus === 429) {
+      this.rateLimitResponses += 1;
+      const sharedDeadline = now + delayMs;
+      const extendedSharedCooldown = sharedDeadline > this.cooldownUntil;
+      if (extendedSharedCooldown) {
+        this.cooldownUntil = sharedDeadline;
+        this.sharedCooldowns += 1;
+      }
+      if (extendedSharedCooldown) {
+        const reduced = Math.max(1, Math.floor(this.currentConcurrency / 2));
+        if (reduced < this.currentConcurrency) {
+          this.currentConcurrency = reduced;
+          this.concurrencyReductions += 1;
+        }
+      }
+      this.successStreak = 0;
+      this.notifyAvailability();
+    }
+    const waitMs = Math.max(0, Math.max(now + delayMs, this.cooldownUntil) - now);
+    this.retryWaits += 1;
+    if (waitMs > 0) await this.sleep(waitMs);
+    return waitMs;
+  }
+
+  snapshot(): OpenAiClassifierSchedulerSnapshot {
+    return {
+      mode: "adaptive",
+      configuredConcurrency: this.configuredConcurrency,
+      currentConcurrency: this.currentConcurrency,
+      inFlight: this.inFlight,
+      requestStarts: this.requestStarts,
+      successfulResponses: this.successfulResponses,
+      retryWaits: this.retryWaits,
+      sharedCooldowns: this.sharedCooldowns,
+      rateLimitResponses: this.rateLimitResponses,
+      concurrencyReductions: this.concurrencyReductions,
+      concurrencyRecoveries: this.concurrencyRecoveries,
+      headerPacingEvents: this.headerPacingEvents,
+    };
+  }
+}
+
+export function createOpenAiClassifierProviderScheduler(
+  options: OpenAiClassifierSchedulerOptions = {},
+): RequirementEvidenceClassifierProviderScheduler {
+  return new OpenAiClassifierProviderScheduler(options);
 }
 
 function countSignalMatches(text: string, signals: string[]) {
@@ -1798,6 +2036,7 @@ export function createRequirementEvidenceClassifier(
       const now = runtime.now ?? (() => Date.now());
       const sleep = runtime.sleep ?? ((milliseconds) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds)));
       const random = runtime.random ?? Math.random;
+      const providerScheduler = telemetry?.providerScheduler;
       const requestStartedAt = now();
       const promptCharacters = prompt.system.length + prompt.user.length;
       const providerFailure = ({
@@ -1849,7 +2088,14 @@ export function createRequirementEvidenceClassifier(
         if (!isRetryableProviderFailure({ httpStatus, errorCategory }) || requestAttempt >= CLASSIFIER_MAX_ATTEMPTS) {
           return false;
         }
-        const retryDelay = retryDelayMs({ attempt: requestAttempt, retryAfter, now, random });
+        const fallbackRetryDelay = retryDelayMs({ attempt: requestAttempt, retryAfter, now, random });
+        const retryDelay = providerScheduler
+          ? await providerScheduler.waitForRetry({
+            httpStatus,
+            retryAfter,
+            fallbackDelayMs: fallbackRetryDelay,
+          })
+          : fallbackRetryDelay;
         telemetry?.recordProviderRetry?.({
           caseId: input.evaluationCaseId ?? null,
           requirementId: input.requirement.id,
@@ -1863,11 +2109,14 @@ export function createRequirementEvidenceClassifier(
           retryAfter,
           retryDelayMs: retryDelay,
         });
-        await sleep(retryDelay);
+        if (!providerScheduler) await sleep(retryDelay);
         return true;
       };
 
       for (let requestAttempt = 1; requestAttempt <= CLASSIFIER_MAX_ATTEMPTS; requestAttempt += 1) {
+        const releaseProviderPermit = providerScheduler
+          ? await providerScheduler.acquire({ promptCharacters })
+          : null;
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), CLASSIFIER_TIMEOUT_MS);
         try {
@@ -1888,6 +2137,7 @@ export function createRequirementEvidenceClassifier(
             }),
             signal: controller.signal,
           });
+          providerScheduler?.observeResponseHeaders(response.headers, promptCharacters);
 
           if (!response.ok) {
             const httpStatus = httpStatusForFailure(response);
@@ -1898,6 +2148,7 @@ export function createRequirementEvidenceClassifier(
           }
 
           try {
+            providerScheduler?.recordSuccess();
             const parsed = postProcessOpenAiClassification(
               parseOpenAiClassification(await response.json(), input.requirement),
               input,
@@ -1924,6 +2175,7 @@ export function createRequirementEvidenceClassifier(
           return providerFailure({ httpStatus, errorCategory, retryAfter, requestAttempt });
         } finally {
           clearTimeout(timeout);
+          releaseProviderPermit?.();
         }
       }
 

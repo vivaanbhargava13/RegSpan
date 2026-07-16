@@ -10,6 +10,7 @@ import {
   CorpusEvaluationTimeoutError,
   CorpusEvaluationRateLimitWaitExceededError,
   CorpusEvaluationSafetyError,
+  assertEvaluationAppLimitBypass,
   assertCorpusEvaluationSafety,
   assertCorpusEvaluationExternalAiOptIn,
   evaluationAnalysisRateLimitCategory,
@@ -34,6 +35,10 @@ import {
   snapshotSetViolations,
   validateCorpusManifest,
 } from "../scripts/corpusEvalCore.mjs";
+import {
+  preprocessingCacheEntryIsReusable,
+  preprocessingReuseKey,
+} from "../scripts/evaluationReuseCore.mjs";
 import {
   writeJsonAtomically,
 } from "../scripts/corpusEvalState.mjs";
@@ -401,6 +406,63 @@ test("production safety fails closed", () => {
     actorUserId: "actor-id",
     workspacePrefix: "regspan-eval-local-",
   }), { actorUserId: "actor-id", workspacePrefix: "regspan-eval-local-" });
+});
+
+test("app-limit bypass is limited to the configured non-production evaluation actor", async () => {
+  const authorized = {
+    requested: true,
+    environment: {
+      NODE_ENV: "development",
+      REGSPAN_EVAL_ENABLED: "true",
+      REGSPAN_EVAL_ACTOR_USER_ID: ACTOR_ID,
+      REGSPAN_EVAL_WORKSPACE_PREFIX: "regspan-eval-local-",
+    },
+    actorUserId: ACTOR_ID,
+    workspacePrefix: "regspan-eval-local-",
+  };
+  assert.equal(assertEvaluationAppLimitBypass(authorized), true);
+  assert.equal(assertEvaluationAppLimitBypass({ ...authorized, requested: false }), false);
+  assert.throws(
+    () => assertEvaluationAppLimitBypass({ ...authorized, actorUserId: "normal-user" }),
+    CorpusEvaluationSafetyError,
+  );
+  assert.throws(
+    () => assertEvaluationAppLimitBypass({
+      ...authorized,
+      environment: { ...authorized.environment, NODE_ENV: "production" },
+    }),
+    CorpusEvaluationSafetyError,
+  );
+
+  const evaluator = await readFile("lib/corpusEvaluation.ts", "utf8");
+  assert.match(evaluator, /if \(!context\.bypassAppLimits\)/);
+  assert.match(evaluator, /bypassProcessingQuota: context\.bypassAppLimits === true/);
+});
+
+test("development preprocessing cache keys reject any source-pipeline mismatch", async () => {
+  const base = {
+    pdfHash: "a".repeat(64),
+    parserChunkerVersion: "parser-chunker-v2",
+    sourceType: "client_procedure",
+    embeddingModelInputVersion: "text-embedding-3-small:normalized-v1",
+  };
+  const entry = { key: preprocessingReuseKey(base) };
+  assert.equal(preprocessingCacheEntryIsReusable(entry, base), true);
+  for (const [key, value] of Object.entries({
+    pdfHash: "b".repeat(64),
+    parserChunkerVersion: "parser-chunker-v3",
+    sourceType: "client_policy",
+    embeddingModelInputVersion: "text-embedding-3-large:normalized-v1",
+  })) {
+    assert.equal(
+      preprocessingCacheEntryIsReusable(entry, { ...base, [key]: value }),
+      false,
+      `${key} mismatch must reject preprocessing reuse`,
+    );
+  }
+  const docs = await readFile("docs/evaluation-reuse-mode.md", "utf8");
+  assert.match(docs, /benchmark-fresh/);
+  assert.match(docs, /retrieval, classifier calls, aggregation, persistence, and scoring/);
 });
 
 test("external AI opt-in is required before evaluation workspaces are created", () => {

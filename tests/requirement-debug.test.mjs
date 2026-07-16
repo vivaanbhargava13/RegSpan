@@ -2418,3 +2418,106 @@ test("requirement debug client does not expose server secrets", async () => {
   assert.equal(client.includes("createEmbeddingProvider"), false);
   assert.match(client, /\/api\/requirement-debug/);
 });
+
+test("runner-scoped scheduler shares 429 cooldowns, staggers retries, and adapts concurrency", async () => {
+  const { createOpenAiClassifierProviderScheduler } = await loadTsModule("lib/requirementEvidenceClassifier.ts");
+  let now = 0;
+  const sharedCooldownWaits = [];
+  const scheduler = createOpenAiClassifierProviderScheduler({
+    maxConcurrency: 4,
+    now: () => now,
+    sleep: async (milliseconds) => { sharedCooldownWaits.push(milliseconds); },
+  });
+
+  await Promise.all([
+    scheduler.waitForRetry({ httpStatus: 429, retryAfter: "1", fallbackDelayMs: 250 }),
+    scheduler.waitForRetry({ httpStatus: 429, retryAfter: "1", fallbackDelayMs: 250 }),
+  ]);
+  assert.deepEqual(sharedCooldownWaits, [1_000, 1_000]);
+  assert.deepEqual(scheduler.snapshot(), {
+    mode: "adaptive",
+    configuredConcurrency: 4,
+    currentConcurrency: 2,
+    inFlight: 0,
+    requestStarts: 0,
+    successfulResponses: 0,
+    retryWaits: 2,
+    sharedCooldowns: 1,
+    rateLimitResponses: 2,
+    concurrencyReductions: 1,
+    concurrencyRecoveries: 0,
+    headerPacingEvents: 0,
+  });
+
+  for (let index = 0; index < 20; index += 1) scheduler.recordSuccess();
+  assert.equal(scheduler.snapshot().currentConcurrency, 4);
+  assert.equal(scheduler.snapshot().concurrencyRecoveries, 2);
+
+  let staggerNow = 0;
+  const staggerWaits = [];
+  const staggered = createOpenAiClassifierProviderScheduler({
+    maxConcurrency: 2,
+    now: () => staggerNow,
+    sleep: async (milliseconds) => {
+      staggerWaits.push(milliseconds);
+      staggerNow += milliseconds;
+    },
+  });
+  const firstRelease = await staggered.acquire();
+  const secondRelease = await staggered.acquire();
+  assert.deepEqual(staggerWaits, [25]);
+  assert.equal(staggered.snapshot().inFlight, 2);
+  firstRelease();
+  secondRelease();
+
+  let boundedNow = 0;
+  const bounded = createOpenAiClassifierProviderScheduler({
+    maxConcurrency: 5,
+    now: () => boundedNow,
+    sleep: async (milliseconds) => { boundedNow += milliseconds; },
+  });
+  const releases = [];
+  for (let index = 0; index < 5; index += 1) releases.push(await bounded.acquire());
+  assert.equal(bounded.snapshot().inFlight, 5);
+  const sixthPermit = bounded.acquire();
+  releases[0]();
+  releases.push(await sixthPermit);
+  assert.equal(bounded.snapshot().inFlight, 5);
+  for (const release of releases) release();
+
+  const firstRun = createOpenAiClassifierProviderScheduler({ maxConcurrency: 3 });
+  const secondRun = createOpenAiClassifierProviderScheduler({ maxConcurrency: 3 });
+  await firstRun.waitForRetry({ httpStatus: 429, retryAfter: "0", fallbackDelayMs: 0 });
+  assert.equal(firstRun.snapshot().currentConcurrency, 1);
+  assert.equal(secondRun.snapshot().currentConcurrency, 3);
+});
+
+test("scheduler paces from OpenAI request and token limit headers before exhaustion", async () => {
+  const { createOpenAiClassifierProviderScheduler } = await loadTsModule("lib/requirementEvidenceClassifier.ts");
+  let now = 0;
+  const waits = [];
+  const scheduler = createOpenAiClassifierProviderScheduler({
+    maxConcurrency: 3,
+    now: () => now,
+    sleep: async (milliseconds) => {
+      waits.push(milliseconds);
+      now += milliseconds;
+    },
+  });
+  const release = await scheduler.acquire();
+  release();
+  scheduler.observeResponseHeaders({
+    get(name) {
+      return {
+        "x-ratelimit-remaining-requests": "1",
+        "x-ratelimit-reset-requests": "1s",
+        "x-ratelimit-remaining-tokens": "100",
+        "x-ratelimit-reset-tokens": "1s",
+      }[name] ?? null;
+    },
+  }, 400);
+  const pacedRelease = await scheduler.acquire();
+  pacedRelease();
+  assert.deepEqual(waits, [1_000]);
+  assert.equal(scheduler.snapshot().headerPacingEvents, 1);
+});

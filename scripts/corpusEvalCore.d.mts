@@ -47,6 +47,12 @@ export function assertCorpusEvaluationSafety(input: Record<string, unknown>): {
   actorUserId: string;
   workspacePrefix: string;
 };
+export function assertEvaluationAppLimitBypass(input: {
+  requested: boolean;
+  environment: Record<string, string | undefined>;
+  actorUserId: string;
+  workspacePrefix: string;
+}): boolean;
 export function assertCorpusEvaluationExternalAiOptIn(allowExternalAi: boolean): void;
 export function evaluationAnalysisRateLimitCategory(input: {
   evaluationAuthorized: boolean;

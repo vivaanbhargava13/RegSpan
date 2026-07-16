@@ -4,6 +4,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { N8nWebhookError, triggerN8nIngestion } from "@/lib/n8n";
 import { workspaceQuotaConfiguration } from "@/lib/rateLimit";
 
+const EVALUATION_UNRESTRICTED_CONCURRENCY = 2_147_483_647;
+
 export type QueueDocumentProcessingResult = {
   ok: boolean;
   jobId?: string;
@@ -94,12 +96,15 @@ export async function queueDocumentProcessing({
   documentId,
   workspaceId,
   idempotencyKey,
+  bypassQuota = false,
 }: {
   supabase: SupabaseClient;
   correlationId: string;
   documentId: string;
   workspaceId: string;
   idempotencyKey: string;
+  /** Internal evaluation caller only; product routes never set this. */
+  bypassQuota?: boolean;
 }): Promise<QueueDocumentProcessingResult> {
   const { data, error } = await supabase.rpc("start_processing_job_with_quota_v1", {
     p_workspace_id: workspaceId,
@@ -108,7 +113,9 @@ export async function queueDocumentProcessing({
     p_step: "Awaiting n8n ingestion",
     p_idempotency_key: idempotencyKey.slice(0, 128),
     p_request_id: correlationId,
-    p_max_active_jobs: workspaceQuotaConfiguration().maxActiveProcessingJobs,
+    p_max_active_jobs: bypassQuota
+      ? EVALUATION_UNRESTRICTED_CONCURRENCY
+      : workspaceQuotaConfiguration().maxActiveProcessingJobs,
   });
 
   if (error) {

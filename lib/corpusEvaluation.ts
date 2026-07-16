@@ -37,6 +37,8 @@ export type EvaluationRunContext = {
   workspacePrefix: string;
   externalAiProcessingEnabled: true;
   evaluationAnalysisQuotaAuthorized: true;
+  /** Development-only runner authorization; never set by product routes. */
+  bypassAppLimits?: boolean;
 };
 
 export type EvaluationWorkspaceContext = EvaluationRunContext & {
@@ -99,6 +101,9 @@ export async function createFreshEvaluationWorkspace({
   workspaceKey: string;
 }): Promise<EvaluationWorkspaceContext> {
   const workspaceName = expectedWorkspaceName(context, workspaceKey);
+  if (context.bypassAppLimits && !workspaceName.startsWith(context.workspacePrefix)) {
+    throw new CorpusEvaluationError("Evaluation app-limit bypass workspace identity is invalid.");
+  }
   const { data: user, error: userError } = await supabase.auth.admin.getUserById(context.actorUserId);
   if (userError || !user.user) throw new CorpusEvaluationError("Evaluation actor user could not be verified.");
 
@@ -209,30 +214,32 @@ export async function uploadCorpusDocument({
   correlationId: string;
 }) {
   await verifyEvaluationWorkspace(supabase, context);
-  const request = evaluationRequest(correlationId);
-  for (const category of [
-    evaluationDocumentUploadRateLimitForContext(context),
-    "workspace_document_upload",
-    "workspace_processing_request",
-  ] as const) {
+  if (!context.bypassAppLimits) {
+    const request = evaluationRequest(correlationId);
+    for (const category of [
+      evaluationDocumentUploadRateLimitForContext(context),
+      "workspace_document_upload",
+      "workspace_processing_request",
+    ] as const) {
+      await checkRateLimit({
+        request,
+        category,
+        supabase,
+        correlationId,
+        userId: context.actorUserId,
+        workspaceId: context.workspaceId,
+      });
+    }
     await checkRateLimit({
       request,
-      category,
+      category: "workspace_upload_bytes",
       supabase,
       correlationId,
       userId: context.actorUserId,
       workspaceId: context.workspaceId,
+      cost: bytes.byteLength,
     });
   }
-  await checkRateLimit({
-    request,
-    category: "workspace_upload_bytes",
-    supabase,
-    correlationId,
-    userId: context.actorUserId,
-    workspaceId: context.workspaceId,
-    cost: bytes.byteLength,
-  });
 
   const fileBytes = new Uint8Array(bytes);
   const file = new File([fileBytes.buffer], filename, { type: "application/pdf" });
@@ -246,6 +253,7 @@ export async function uploadCorpusDocument({
       notes?.trim(),
       `Automated corpus evaluation run ${context.runId}. Source type: ${sourceType.replace("_", " ")}.`,
     ].filter(Boolean).join("\n\n"),
+    bypassProcessingQuota: context.bypassAppLimits === true,
   });
 }
 
@@ -458,20 +466,23 @@ export async function runWorkspaceAnalysis({
     pollTimeoutMs,
   });
   if (existing) return existing;
-  await checkRateLimit({
-    request: evaluationRequest(correlationId),
-    category: evaluationAnalysisRateLimitForContext(context),
-    supabase,
-    correlationId,
-    userId: context.actorUserId,
-    workspaceId: context.workspaceId,
-  });
+  if (!context.bypassAppLimits) {
+    await checkRateLimit({
+      request: evaluationRequest(correlationId),
+      category: evaluationAnalysisRateLimitForContext(context),
+      supabase,
+      correlationId,
+      userId: context.actorUserId,
+      workspaceId: context.workspaceId,
+    });
+  }
   const result = await generateFindingsForWorkspace({
     supabase,
     workspaceId: context.workspaceId,
     actorUserId: context.actorUserId,
     classifierTelemetry,
     evaluationCaseIdByDocumentId,
+    bypassAppLimits: context.bypassAppLimits === true,
   });
   if (result.state === "reused_active_run") {
     const recovered = await recoverWorkspaceAnalysis({
