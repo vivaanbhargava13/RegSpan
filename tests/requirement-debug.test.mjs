@@ -2439,6 +2439,9 @@ test("runner-scoped scheduler shares 429 cooldowns, staggers retries, and adapts
     configuredConcurrency: 4,
     currentConcurrency: 2,
     inFlight: 0,
+    queuedRequests: 0,
+    cooldownReason: "rate_limit",
+    expectedResumeAt: 1_000,
     requestStarts: 0,
     successfulResponses: 0,
     retryWaits: 2,
@@ -2520,4 +2523,180 @@ test("scheduler paces from OpenAI request and token limit headers before exhaust
   pacedRelease();
   assert.deepEqual(waits, [1_000]);
   assert.equal(scheduler.snapshot().headerPacingEvents, 1);
+});
+
+test("scheduler queue lifecycle releases permits, emits liveness, and rejects aborted waiters", async () => {
+  const { createOpenAiClassifierProviderScheduler } = await loadTsModule("lib/requirementEvidenceClassifier.ts");
+  const progress = [];
+  const scheduler = createOpenAiClassifierProviderScheduler({
+    maxConcurrency: 1,
+    heartbeatIntervalMs: 5,
+    onProgress(event) { progress.push(event); },
+  });
+  const firstRelease = await scheduler.acquire({ caseId: "case-a", requirementId: "requirement-a" });
+  const queuedPermit = scheduler.acquire({ caseId: "case-a", requirementId: "requirement-a" });
+  assert.equal(scheduler.snapshot().inFlight, 1);
+  assert.equal(scheduler.snapshot().queuedRequests, 1);
+  assert.ok(progress.some((event) => event.phase === "queued" && event.caseId === "case-a"));
+
+  firstRelease();
+  const secondRelease = await queuedPermit;
+  secondRelease();
+  assert.equal(scheduler.snapshot().inFlight, 0);
+  assert.equal(scheduler.snapshot().queuedRequests, 0);
+  assert.ok(progress.some((event) => event.phase === "released"));
+
+  const heldRelease = await scheduler.acquire({ caseId: "case-a", requirementId: "requirement-a" });
+  const abandonedPermit = scheduler.acquire({ caseId: "case-a", requirementId: "requirement-a" });
+  scheduler.abortQueued(new Error("watchdog aborted queued request"));
+  await assert.rejects(abandonedPermit, /watchdog aborted queued request/);
+  heldRelease();
+  assert.equal(scheduler.snapshot().inFlight, 0);
+  assert.equal(scheduler.snapshot().queuedRequests, 0);
+  assert.ok(progress.some((event) => event.phase === "queue_aborted"));
+});
+
+test("scheduler rejects malformed reset headers and heartbeats during legitimate waits", async () => {
+  const { createOpenAiClassifierProviderScheduler } = await loadTsModule("lib/requirementEvidenceClassifier.ts");
+  let now = 0;
+  const waits = [];
+  const progress = [];
+  const scheduler = createOpenAiClassifierProviderScheduler({
+    maxConcurrency: 1,
+    now: () => now,
+    heartbeatIntervalMs: 5,
+    sleep: async (milliseconds) => {
+      waits.push(milliseconds);
+      now += milliseconds;
+    },
+    onProgress(event) { progress.push(event); },
+  });
+  const release = await scheduler.acquire({ caseId: "case-b", requirementId: "requirement-b" });
+  release();
+  scheduler.observeResponseHeaders({
+    get(name) {
+      return {
+        "x-ratelimit-remaining-requests": "0",
+        "x-ratelimit-reset-requests": "999h trailing-garbage",
+        "x-ratelimit-remaining-tokens": "0",
+        "x-ratelimit-reset-tokens": "1s invalid",
+      }[name] ?? null;
+    },
+  }, 400);
+  const malformedRelease = await scheduler.acquire();
+  malformedRelease();
+  assert.equal(scheduler.snapshot().headerPacingEvents, 0);
+  assert.ok(Math.max(...waits) < 1_000);
+
+  const heartbeatScheduler = createOpenAiClassifierProviderScheduler({
+    maxConcurrency: 1,
+    heartbeatIntervalMs: 1,
+    onProgress(event) { progress.push(event); },
+  });
+  const heldRelease = await heartbeatScheduler.acquire({ caseId: "case-b", requirementId: "requirement-b" });
+  const queued = heartbeatScheduler.acquire({ caseId: "case-b", requirementId: "requirement-b" });
+  await new Promise((resolve) => setTimeout(resolve, 8));
+  assert.ok(progress.some((event) => event.phase === "heartbeat" && event.caseId === "case-b"));
+  heldRelease();
+  (await queued)();
+  assert.equal(heartbeatScheduler.snapshot().queuedRequests, 0);
+  assert.equal(heartbeatScheduler.snapshot().inFlight, 0);
+});
+
+test("requirement watchdog emits a diagnostic and drains queued scheduler work", async () => {
+  const [{ createOpenAiClassifierProviderScheduler }, { runWithRequirementProcessingWatchdog, RequirementProcessingWatchdogTimeoutError }] = await Promise.all([
+    loadTsModule("lib/requirementEvidenceClassifier.ts"),
+    loadTsModule("lib/requirementProcessingWatchdog.ts"),
+  ]);
+  const scheduler = createOpenAiClassifierProviderScheduler({ maxConcurrency: 1 });
+  const release = await scheduler.acquire({ caseId: "case-c", requirementId: "requirement-c" });
+  const queued = scheduler.acquire({ caseId: "case-c", requirementId: "requirement-c" });
+  await assert.rejects(
+    runWithRequirementProcessingWatchdog({
+      requirementId: "requirement-c",
+      timeoutMs: 10,
+      operation: () => queued,
+      onTimeout: () => scheduler.abortQueued(new Error("requirement watchdog")),
+    }),
+    (error) => error instanceof RequirementProcessingWatchdogTimeoutError
+      && error.requirementId === "requirement-c",
+  );
+  release();
+  assert.equal(scheduler.snapshot().queuedRequests, 0);
+  assert.equal(scheduler.snapshot().inFlight, 0);
+});
+
+test("classifier releases scheduler permits on success, provider errors, aborts, and parse errors", async () => {
+  const { createOpenAiClassifierProviderScheduler, createRequirementEvidenceClassifier } = await loadTsModule("lib/requirementEvidenceClassifier.ts");
+  const environment = {
+    ENABLE_EXTERNAL_AI_PROCESSING: "true",
+    ENABLE_EXTERNAL_AI_CLASSIFIER: "true",
+    REQUIREMENT_CLASSIFIER_PROVIDER: "openai",
+    REQUIREMENT_CLASSIFIER_MODEL: "gpt-test",
+    REQUIREMENT_CLASSIFIER_API_KEY: "test-key",
+  };
+  const policy = {
+    workspaceId: "workspace-lifecycle",
+    workspaceConsentEnabled: true,
+    externalAiProcessingEnabled: true,
+    externalAiClassifierEnabled: true,
+    denialReason: null,
+  };
+  const input = {
+    requirement: {
+      id: "safeguards_customer_information",
+      title: "Safeguards",
+      description: "Protect customer information.",
+      retrievalQuery: "protect customer information",
+      directSignals: ["protect customer information"],
+      actionSignals: ["protect"],
+      topicSignals: ["customer information"],
+      partialSignals: [], backgroundSignals: [], coverageElements: [], requiredElementsForCovered: [], optionalElements: [],
+    },
+    evaluationGuidance: "Classify safeguards.",
+    chunkContent: "The company protects customer information with encryption.",
+    evaluationCaseId: "case-lifecycle",
+    candidateChunkId: "chunk-lifecycle",
+    chunkMetadata: {
+      filename: "policy.pdf", sectionPath: null, pageStart: 1, pageEnd: 1, chunkIndex: 0,
+      sourceType: "client_policy", evidenceRole: "organization_evidence", evidenceReason: "policy text",
+    },
+  };
+  const success = {
+    ok: true,
+    headers: { get: () => null },
+    async json() {
+      return { choices: [{ message: { content: JSON.stringify({
+        relationship: "irrelevant", confidence: "low", requirement_supported: false,
+        control_absent_or_out_of_scope: false, covered_elements: [], missing_elements: [], vague_elements: [],
+        reason: "No support.", supporting_quote: null,
+      }) } }] };
+    },
+  };
+  for (const responseOrError of [
+    success,
+    { ok: false, status: 404, headers: { get: () => null } },
+    { ok: true, headers: { get: () => null }, async json() { return { choices: [] }; } },
+    Object.assign(new Error("aborted"), { name: "AbortError" }),
+  ]) {
+    let now = 0;
+    const scheduler = createOpenAiClassifierProviderScheduler({
+      maxConcurrency: 1,
+      now: () => now,
+      sleep: async (milliseconds) => { now += milliseconds; },
+    });
+    const classifier = createRequirementEvidenceClassifier(
+      environment,
+      async () => {
+        if (responseOrError instanceof Error) throw responseOrError;
+        return responseOrError;
+      },
+      policy,
+      { providerScheduler: scheduler },
+      { now: () => now, sleep: async (milliseconds) => { now += milliseconds; }, random: () => 0.5 },
+    );
+    await classifier.classify(input);
+    assert.equal(scheduler.snapshot().inFlight, 0);
+    assert.equal(scheduler.snapshot().queuedRequests, 0);
+  }
 });

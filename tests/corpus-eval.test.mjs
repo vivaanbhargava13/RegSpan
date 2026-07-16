@@ -1289,6 +1289,10 @@ test("corpus runner is one-shot and contains no resume, adoption, or cleanup pat
   assert.match(runner, /runWorkspaceAnalysis/);
   assert.match(runner, /--allow-external-ai/);
   assert.match(runner, /--strict-classifier-provider-errors/);
+  assert.match(runner, /createLiveReportFlusher/);
+  assert.match(runner, /recordProgress/);
+  assert.match(runner, /classifierProgress/);
+  assert.match(runner, /progressEvents/);
   assert.match(runner, /classifier_provider_failure/);
   assert.match(runner, /assertExternalAiProcessingServerAvailable/);
   assert.match(runner, /error instanceof RateLimitError/);
@@ -1329,6 +1333,8 @@ test("corpus runner is one-shot and contains no resume, adoption, or cleanup pat
   assert.doesNotMatch(evaluator, /\.update\(\{\s*external_ai_processing_enabled/);
   assert.doesNotMatch(evaluator, /deleteDocumentForWorkspace|cleanupEvaluation|recoverEvaluation/);
   assert.doesNotMatch(findingsGeneration, /onAnalysisRunStarted/);
+  assert.match(findingsGeneration, /runWithRequirementProcessingWatchdog/);
+  assert.match(findingsGeneration, /requirement_processing_watchdog/);
   assert.match(uploadService, /queueDocumentProcessing/);
   assert.doesNotMatch(uploadService, /suppliedDocumentId|suppliedIdempotencyKey/);
   assert.match(deletionService, /delete_document_and_derived/);
