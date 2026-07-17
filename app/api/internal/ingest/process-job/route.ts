@@ -16,10 +16,12 @@ import { authenticateIngestionWorker } from "@/lib/ingestionWorker";
 import { WorkerSecretConfigurationError } from "@/lib/ingestionWorkerAuth";
 import {
   assertSupportedPdf,
+  assertPdfChunkCompleteness,
   buildDeterministicChunks,
   extractPdfPages,
   PdfProcessingError,
   PDF_EXTRACTION_VERSION,
+  validatePersistedChunkCompleteness,
 } from "@/lib/pdfIngestion";
 import { embedDocumentChunks } from "@/lib/chunkEmbeddings";
 import { createEmbeddingProvider, EmbeddingProcessingError } from "@/lib/embeddings";
@@ -456,10 +458,9 @@ export async function POST(request: Request) {
       );
     }
 
+    const pdfBytes = new Uint8Array(await fileBlob.arrayBuffer());
     stage = "extract_pdf_text";
-    const pages = await extractPdfPages(
-      new Uint8Array(await fileBlob.arrayBuffer()),
-    );
+    let pages = await extractPdfPages(pdfBytes);
 
     stage = "build_document_chunks";
     const { sourceType: documentSourceType, evidenceRole } = resolveDocumentSource({
@@ -470,16 +471,31 @@ export async function POST(request: Request) {
       contentPreview: null,
       evidenceReason: null,
     });
-    const { chunks, hierarchy } = buildDeterministicChunks({
-      pages,
-      documentId: payload.documentId,
-      workspaceId: payload.workspaceId,
-      jobId: payload.jobId,
-      filename: document.filename ?? "document.pdf",
-      documentType: document.document_type,
-      sourceType: documentSourceType,
-      evidenceRole,
-    });
+    const processingPayload = payload;
+    if (!processingPayload) {
+      throw new PdfProcessingError("worker_payload_missing", "The processing request is invalid.", 400);
+    }
+    const buildChunks = (reextractionOutcome: "not_required" | "succeeded") =>
+      buildDeterministicChunks({
+        pages,
+        documentId: processingPayload.documentId,
+        workspaceId: processingPayload.workspaceId,
+        jobId: processingPayload.jobId,
+        filename: document.filename ?? "document.pdf",
+        documentType: document.document_type,
+        sourceType: documentSourceType,
+        evidenceRole,
+        reextractionOutcome,
+      });
+    let chunkBuild = buildChunks("not_required");
+    if (chunkBuild.completeness.finalCompletenessStatus !== "complete") {
+      stage = "reextract_pdf_text_for_completeness";
+      pages = await extractPdfPages(pdfBytes);
+      stage = "rebuild_document_chunks_for_completeness";
+      chunkBuild = buildChunks("succeeded");
+    }
+    assertPdfChunkCompleteness(chunkBuild.completeness);
+    const { chunks, hierarchy, completeness } = chunkBuild;
     const workspaceAiPolicy = await loadWorkspaceExternalAiProcessingPolicy({
       supabase,
       workspaceId: payload.workspaceId,
@@ -543,6 +559,38 @@ export async function POST(request: Request) {
         chunkCount: storageResult.chunk_count ?? null,
         replayed: true,
       });
+    }
+
+    stage = "verify_stored_document_chunk_completeness";
+    const { data: persistedChunkData, error: persistedChunkError } = await supabase
+      .from("document_chunks")
+      .select("chunk_index, content, content_hash, page_start, page_end, char_start, char_end")
+      .eq("workspace_id", payload.workspaceId)
+      .eq("document_id", payload.documentId);
+    if (persistedChunkError) {
+      throw new PdfProcessingError(
+        "pdf_chunk_persistence_validation_failed",
+        "Stored PDF text could not be verified.",
+        500,
+      );
+    }
+    const persistedCompleteness = validatePersistedChunkCompleteness(
+      contextChunks,
+      (persistedChunkData ?? []) as typeof contextChunks,
+    );
+    if (persistedCompleteness.finalCompletenessStatus !== "complete") {
+      throw new PdfProcessingError(
+        "pdf_chunk_persistence_incomplete",
+        "Stored PDF text could not be retained completely.",
+        422,
+        {
+          expected_chunk_count: persistedCompleteness.expectedChunkCount,
+          persisted_chunk_count: persistedCompleteness.persistedChunkCount,
+          missing_chunk_count: persistedCompleteness.missingChunkIndexes.length,
+          mismatched_chunk_count: persistedCompleteness.mismatchedChunkIndexes.length,
+          missing_page_count: persistedCompleteness.missingPageNumbers.length,
+        },
+      );
     }
 
     stage = "generate_chunk_embeddings";
@@ -610,6 +658,11 @@ export async function POST(request: Request) {
         embedding_provider: embeddingResult.provider,
         embedding_model: embeddingResult.model,
         page_count: pages.length,
+        materially_nonempty_page_count: completeness.materiallyNonemptyPages.length,
+        chunk_covered_character_count: completeness.chunkCoveredCharacterCount,
+        extracted_normalized_character_count: completeness.extractedNormalizedCharacterCount,
+        reextraction_outcome: completeness.reextractionOutcome,
+        completeness_status: completeness.finalCompletenessStatus,
         extraction_version: PDF_EXTRACTION_VERSION,
       },
     });
@@ -625,6 +678,7 @@ export async function POST(request: Request) {
       embeddedCount: embeddingResult.embeddedCount,
       skippedEmbeddingCount: embeddingResult.skippedCount,
       pageCount: pages.length,
+      completenessStatus: completeness.finalCompletenessStatus,
       replayed: result.replayed,
     });
 

@@ -299,12 +299,12 @@ test("PDF page and extracted-text limits reject before chunking or embeddings", 
 
   const worker = await readFile("app/api/internal/ingest/process-job/route.ts", "utf8");
   assert.ok(
-    worker.indexOf("const pages = await extractPdfPages") <
-      worker.indexOf("const { chunks, hierarchy } = buildDeterministicChunks"),
+    worker.indexOf("let pages = await extractPdfPages") <
+      worker.indexOf("let chunkBuild = buildChunks"),
     "page and text limits must run before chunk construction",
   );
   assert.ok(
-    worker.indexOf("const pages = await extractPdfPages") <
+    worker.indexOf("let pages = await extractPdfPages") <
       worker.indexOf("const embeddingResult = await embedDocumentChunks"),
     "page and text limits must run before embedding",
   );
@@ -548,18 +548,19 @@ test("notice-content obligations survive contact-block filtering when contact de
   assert.ok(result.chunks.every((item) => item.metadata.evidence_class !== "contact_block"));
 });
 
-test("pure contact directories remain excluded from substantive chunks", () => {
-  assert.throws(
-    () => buildDeterministicChunks({
-      pages: [{
-        pageNumber: 1,
-        text: "Contact us by phone at 555-0100, email at help@example.test, or mail at 100 Main Street, Suite 200.",
-      }],
-      documentId: "10000000-0000-4000-8000-000000000021",
-      workspaceId: "20000000-0000-4000-8000-000000000022",
-      jobId: "30000000-0000-4000-8000-000000000023",
-      filename: "contacts.pdf",
-    }),
-    (error) => error instanceof PdfProcessingError && error.code === "insufficient_pdf_text",
-  );
+test("pure contact directories remain excluded from substantive retrieval while retaining page coverage", () => {
+  const result = buildDeterministicChunks({
+    pages: [{
+      pageNumber: 1,
+      text: "Contact us by phone at 555-0100, email at help@example.test, or mail at 100 Main Street, Suite 200.",
+    }],
+    documentId: "10000000-0000-4000-8000-000000000021",
+    workspaceId: "20000000-0000-4000-8000-000000000022",
+    jobId: "30000000-0000-4000-8000-000000000023",
+    filename: "contacts.pdf",
+  });
+  assert.equal(result.chunks.length, 1);
+  assert.equal(result.chunks[0].metadata.evidence_class, "contact_block");
+  assert.equal(result.chunks[0].metadata.retrieval_included, false);
+  assert.equal(result.completeness.finalCompletenessStatus, "complete");
 });

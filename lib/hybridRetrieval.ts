@@ -95,6 +95,7 @@ async function fetchKeywordRows({
       .from("document_chunks")
       .select(selectColumns)
       .eq("workspace_id", workspaceId)
+      .contains("metadata", { retrieval_included: true })
       .or(clauses.join(","))
       .limit(Math.max(limit * 4, 80));
     if (documentIds) query = query.in("document_id", documentIds);
@@ -109,6 +110,7 @@ async function fetchKeywordRows({
     .from("document_chunks")
     .select(selectColumns)
     .eq("workspace_id", workspaceId)
+    .contains("metadata", { retrieval_included: true })
     .limit(Math.max(limit * 4, 120));
   if (documentIds) query = query.in("document_id", documentIds);
   const { data, error } = await query;

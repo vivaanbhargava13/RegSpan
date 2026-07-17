@@ -14,7 +14,11 @@ const identifiers = {
 };
 
 function build(pages) {
-  return buildDeterministicChunks({ pages, ...identifiers });
+  const result = buildDeterministicChunks({ pages, ...identifiers });
+  return {
+    ...result,
+    chunks: result.chunks.filter((chunk) => chunk.metadata.retrieval_included !== false),
+  };
 }
 
 test("explicit client standard classification persists as organization evidence", () => {

@@ -46,7 +46,10 @@ documents are never sent to n8n.
 6. Missing or changed chunks are embedded in bounded batches and upserted by
    `(chunk_id, embedding_model)`.
 7. `finalize_ingestion_embeddings_v1` marks the job and document `Processed`
-   only after every active chunk has a matching embedding and content hash.
+   only after every retrieval-eligible evidence chunk has a matching embedding
+   and content hash. Non-retrieval chunks, including source-completeness-only
+   chunks, remain stored for audit coverage but are not retrieval candidates or
+   embedding inputs.
 
 A retry during embedding safely resumes: stable chunks keep their IDs, completed
 embeddings are skipped, and only missing vectors are generated. Existing

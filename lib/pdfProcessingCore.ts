@@ -8,7 +8,8 @@ export const DEFAULT_MAX_EXTRACTED_TEXT_CHARS = 2_000_000;
 export const DEFAULT_MAX_PDF_PAGE_TEXT_CHARS = 500_000;
 export const DEFAULT_PDF_PROCESSING_TIMEOUT_MS = 180_000;
 export const MIN_EXTRACTED_CHARACTERS = 20;
-export const CHUNKING_VERSION = "section-aware-v3-evidence";
+export const CHUNKING_VERSION = "section-aware-v4-complete";
+export const CHUNK_COMPLETENESS_VERSION = "chunk-completeness-v1";
 export const CHUNK_CONTEXT_VERSION = "chunk-context-v1";
 export const CHUNK_ANNOTATION_VERSION = "chunk-synopsis-v1";
 export const EVIDENCE_CLASSIFICATION_VERSION = "evidence-v2";
@@ -47,6 +48,48 @@ export type StoredDocumentChunk = {
   token_estimate: number;
   processing_job_id: string;
   content_hash: string;
+};
+
+export type PdfChunkCompletenessRange = {
+  pageNumber: number;
+  charStart: number;
+  charEnd: number;
+  characterCount: number;
+};
+
+export type PdfChunkCompletenessDiagnostics = {
+  version: typeof CHUNK_COMPLETENESS_VERSION;
+  extractedPageCount: number;
+  materiallyNonemptyPages: number[];
+  pagesRepresentedInChunks: number[];
+  missingPageNumbers: number[];
+  extractedPageNumberGaps: number[];
+  extractedNormalizedCharacterCount: number;
+  chunkCoveredCharacterCount: number;
+  recoveredUncoveredRanges: PdfChunkCompletenessRange[];
+  unexplainedUncoveredRanges: PdfChunkCompletenessRange[];
+  truncatedSectionFragments: Array<{
+    sectionPath: string;
+    pageStart: number;
+    pageEnd: number;
+    uncoveredCharacterCount: number;
+  }>;
+  reextractionOutcome: "not_required" | "succeeded" | "not_attempted";
+  finalCompletenessStatus: "complete" | "incomplete";
+};
+
+export type PersistedChunkCompletenessRow = Pick<
+  StoredDocumentChunk,
+  "chunk_index" | "content" | "content_hash" | "page_start" | "page_end" | "char_start" | "char_end"
+>;
+
+export type PersistedChunkCompletenessDiagnostics = {
+  expectedChunkCount: number;
+  persistedChunkCount: number;
+  missingChunkIndexes: number[];
+  mismatchedChunkIndexes: number[];
+  missingPageNumbers: number[];
+  finalCompletenessStatus: "complete" | "incomplete";
 };
 
 export class PdfProcessingError extends Error {
@@ -444,6 +487,8 @@ type ChunkDraft = {
   sectionPath: string;
   headingPage: number;
   sourceSectionPaths: string[];
+  coverageOnly?: boolean;
+  isToc?: boolean;
 };
 
 type ClassifiedChunkDraft = ChunkDraft & {
@@ -815,6 +860,59 @@ function getPageEdgeCandidates(lines: PageLine[]) {
   return candidates;
 }
 
+function isRepeatedBoundaryLabel(value: string) {
+  const line = value.trim();
+  const words = getWords(line);
+  return words.length >= 2
+    && words.length <= 8
+    && !/[.!?;:]$/.test(line)
+    && !/^(?:\d+(?:\.\d+)*\.?|[A-Z]\.|[IVXLCDM]+\.)\s+/i.test(line)
+    && !/\b(?:must|shall|should|will|may|is|are|were|been|being)\b/i.test(line);
+}
+
+function getAdjacentRepeatedBoundaryLineIndexes(pages: PreparedPage[]) {
+  const repeated = new Map<number, Set<number>>();
+  for (let index = 0; index < pages.length - 1; index += 1) {
+    const current = pages[index];
+    const following = pages[index + 1];
+    if (following.pageNumber !== current.pageNumber + 1 || current.isToc || following.isToc) {
+      continue;
+    }
+    const currentIndexes = current.lines
+      .map((line, lineIndex) => line.content ? lineIndex : -1)
+      .filter((lineIndex) => lineIndex >= 0)
+      .slice(-6);
+    const followingIndexes = following.lines
+      .map((line, lineIndex) => line.content ? lineIndex : -1)
+      .filter((lineIndex) => lineIndex >= 0)
+      .slice(0, 6);
+    for (const currentIndex of currentIndexes) {
+      const currentLine = current.lines[currentIndex].content;
+      if (
+        !isRepeatedBoundaryLabel(currentLine)
+        || isProtectedEvidenceHeading(currentLine)
+      ) {
+        continue;
+      }
+      const currentKey = normalizedLineKey(currentLine);
+      const followingIndex = followingIndexes.find((candidateIndex) => {
+        const candidate = following.lines[candidateIndex].content;
+        return isRepeatedBoundaryLabel(candidate)
+          && !isProtectedEvidenceHeading(candidate)
+          && normalizedLineKey(candidate) === currentKey;
+      });
+      if (followingIndex === undefined) continue;
+      const currentMatches = repeated.get(current.pageNumber) ?? new Set<number>();
+      currentMatches.add(currentIndex);
+      repeated.set(current.pageNumber, currentMatches);
+      const followingMatches = repeated.get(following.pageNumber) ?? new Set<number>();
+      followingMatches.add(followingIndex);
+      repeated.set(following.pageNumber, followingMatches);
+    }
+  }
+  return repeated;
+}
+
 function getEdgeFingerprintKeys(value: string) {
   const normalized = (normalizedVariableFooterKey(value) ?? normalizedLineKey(value))
     .replace(/(?:\s+|[-|]\s*)(?:PAGE\s+)?\d{1,4}(?:\s+OF\s+\d{1,4})?\s*$/i, "")
@@ -870,6 +968,7 @@ function preparePagesForChunking(pages: ExtractedPdfPage[]) {
       .filter(([, pageNumbers]) => pageNumbers.size >= 2)
       .map(([key, pageNumbers]) => [key, Math.min(...pageNumbers)] as const),
   );
+  const adjacentRepeatedBoundaryLineIndexes = getAdjacentRepeatedBoundaryLineIndexes(prepared);
 
   const stats: CleanupStats = {
     boilerplateLinesRemoved: 0,
@@ -896,6 +995,9 @@ function preparePagesForChunking(pages: ExtractedPdfPage[]) {
     const candidates = getPageEdgeCandidates(page.lines);
     const preservedFirstTitleIndexes = new Set<number>();
     const repeatedLineIndexes = new Set<number>();
+    for (const index of adjacentRepeatedBoundaryLineIndexes.get(page.pageNumber) ?? []) {
+      repeatedLineIndexes.add(index);
+    }
     for (const candidate of candidates) {
       const repeatedKey = getEdgeFingerprintKeys(candidate.content)
         .find((key) => repeatedKeys.has(key));
@@ -1357,6 +1459,10 @@ function classifyChunkDraft(
     .flatMap((block) => block.content.split("\n"))
     .map((line) => line.trim())
     .filter(Boolean);
+  const hasOperativeLine = bodyLines.some((line) => GUIDANCE_VERB_PATTERN.test(
+    line.replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, " ")
+      .replace(/https?:\/\/\S+/gi, " "),
+  ));
 
   if (lines.length > 0 && lines.every(isExplicitBoilerplate)) {
     return decision("boilerplate", "explicit_or_repeated_page_boilerplate");
@@ -1370,6 +1476,7 @@ function classifyChunkDraft(
     contactSignals >= 2
     && !hasNotificationProcedure(content)
     && !hasSubstantiveNoticeContentObligations(content)
+    && !hasOperativeLine
   ) {
     return decision("contact_block", "contact_or_address_information_without_procedure");
   }
@@ -1439,7 +1546,7 @@ function classifyChunkDraft(
   );
 }
 
-function filterEvidenceDrafts(
+function classifyChunkDrafts(
   drafts: ChunkDraft[],
   pages: ExtractedPdfPage[],
   stats: CleanupStats,
@@ -1450,16 +1557,323 @@ function filterEvidenceDrafts(
     last: Math.max(...pageNumbers),
   };
 
-  const evidenceDrafts: ClassifiedChunkDraft[] = [];
+  const classifiedDrafts: ClassifiedChunkDraft[] = [];
   for (const draft of drafts) {
     const classification = classifyChunkDraft(draft, pageBounds);
-    if (classification.evidenceClass === "evidence") {
-      evidenceDrafts.push({ ...draft, ...classification });
+    if (classification.evidenceClass !== "evidence") {
+      stats.excludedCandidates[classification.evidenceClass] += 1;
+    }
+    classifiedDrafts.push({ ...draft, ...classification });
+  }
+  return classifiedDrafts;
+}
+
+type ChunkCoverageEntry = {
+  pageStart: number;
+  pageEnd: number;
+  charStart: number;
+  charEnd: number;
+};
+
+type CharacterInterval = { start: number; end: number };
+
+function sortedPages(pages: ExtractedPdfPage[]) {
+  return [...pages].sort((left, right) => left.pageNumber - right.pageNumber);
+}
+
+function getPageOffsets(pages: ExtractedPdfPage[]) {
+  const offsets = new Map<number, { start: number; end: number }>();
+  let offset = 0;
+  for (const page of pages) {
+    offsets.set(page.pageNumber, { start: offset, end: offset + page.text.length });
+    offset += page.text.length + 2;
+  }
+  return { offsets, documentEnd: offset };
+}
+
+function mergeCharacterIntervals(intervals: CharacterInterval[]) {
+  const merged: CharacterInterval[] = [];
+  for (const interval of intervals
+    .filter((item) => item.end > item.start)
+    .sort((left, right) => left.start - right.start || left.end - right.end)) {
+    const previous = merged.at(-1);
+    if (!previous || interval.start > previous.end) {
+      merged.push({ ...interval });
       continue;
     }
-    stats.excludedCandidates[classification.evidenceClass] += 1;
+    previous.end = Math.max(previous.end, interval.end);
   }
-  return evidenceDrafts;
+  return merged;
+}
+
+function trimRangeToText(text: string, start: number, end: number) {
+  const value = text.slice(start, end);
+  const leading = value.search(/\S/);
+  if (leading < 0) return null;
+  const trailing = value.length - value.trimEnd().length;
+  return { start: start + leading, end: end - trailing };
+}
+
+function uncoveredTextRanges(
+  pages: ExtractedPdfPage[],
+  intervals: CharacterInterval[],
+  offsets: Map<number, { start: number; end: number }>,
+) {
+  const ranges: PdfChunkCompletenessRange[] = [];
+  for (const page of pages) {
+    const pageOffset = offsets.get(page.pageNumber);
+    if (!pageOffset || !/\S/.test(page.text)) continue;
+    const localIntervals = intervals
+      .filter((interval) => interval.end > pageOffset.start && interval.start < pageOffset.end)
+      .map((interval) => ({
+        start: Math.max(interval.start, pageOffset.start),
+        end: Math.min(interval.end, pageOffset.end),
+      }));
+    let cursor = pageOffset.start;
+    for (const interval of mergeCharacterIntervals(localIntervals)) {
+      if (interval.start > cursor) {
+        const trimmed = trimRangeToText(
+          page.text,
+          cursor - pageOffset.start,
+          interval.start - pageOffset.start,
+        );
+        if (trimmed) {
+          ranges.push({
+            pageNumber: page.pageNumber,
+            charStart: pageOffset.start + trimmed.start,
+            charEnd: pageOffset.start + trimmed.end,
+            characterCount: trimmed.end - trimmed.start,
+          });
+        }
+      }
+      cursor = Math.max(cursor, interval.end);
+    }
+    if (cursor < pageOffset.end) {
+      const trimmed = trimRangeToText(
+        page.text,
+        cursor - pageOffset.start,
+        pageOffset.end - pageOffset.start,
+      );
+      if (trimmed) {
+        ranges.push({
+          pageNumber: page.pageNumber,
+          charStart: pageOffset.start + trimmed.start,
+          charEnd: pageOffset.start + trimmed.end,
+          characterCount: trimmed.end - trimmed.start,
+        });
+      }
+    }
+  }
+  return ranges;
+}
+
+function pageNumberGaps(pages: ExtractedPdfPage[]) {
+  const pageNumbers = pages.map((page) => page.pageNumber);
+  if (pageNumbers.length < 2) return [];
+  const known = new Set(pageNumbers);
+  const gaps: number[] = [];
+  for (let pageNumber = Math.min(...pageNumbers); pageNumber <= Math.max(...pageNumbers); pageNumber += 1) {
+    if (!known.has(pageNumber)) gaps.push(pageNumber);
+  }
+  return gaps;
+}
+
+function sectionCoverageGaps(sections: Section[], drafts: ChunkDraft[]) {
+  const gaps: PdfChunkCompletenessDiagnostics["truncatedSectionFragments"] = [];
+  for (const section of sections) {
+    const retainedDrafts = drafts.filter((draft) => draft.sourceSectionPaths.includes(section.path));
+    if (retainedDrafts.length === 0 && section.blocks.some((block) => block.type !== "heading")) {
+      gaps.push({
+        sectionPath: section.path,
+        pageStart: Math.min(...section.blocks.map((block) => block.pageStart)),
+        pageEnd: Math.max(...section.blocks.map((block) => block.pageEnd)),
+        uncoveredCharacterCount: section.blocks.reduce(
+          (total, block) => total + block.charEnd - block.charStart,
+          0,
+        ),
+      });
+    }
+  }
+  return gaps;
+}
+
+function inspectChunkCompleteness({
+  pages,
+  chunks,
+  recoveredUncoveredRanges = [],
+  truncatedSectionFragments = [],
+  reextractionOutcome = "not_attempted",
+}: {
+  pages: ExtractedPdfPage[];
+  chunks: ChunkCoverageEntry[];
+  recoveredUncoveredRanges?: PdfChunkCompletenessRange[];
+  truncatedSectionFragments?: PdfChunkCompletenessDiagnostics["truncatedSectionFragments"];
+  reextractionOutcome?: PdfChunkCompletenessDiagnostics["reextractionOutcome"];
+}): PdfChunkCompletenessDiagnostics {
+  const orderedPages = sortedPages(pages);
+  const { offsets, documentEnd } = getPageOffsets(orderedPages);
+  const materiallyNonemptyPages = orderedPages
+    .filter((page) => /\S/.test(page.text))
+    .map((page) => page.pageNumber);
+  const intervals = mergeCharacterIntervals(chunks.map((chunk) => ({
+    start: Math.max(0, chunk.charStart),
+    end: Math.min(documentEnd, chunk.charEnd),
+  })));
+  const pagesRepresentedInChunks = materiallyNonemptyPages.filter((pageNumber) => chunks.some(
+    (chunk) => chunk.pageStart <= pageNumber && chunk.pageEnd >= pageNumber,
+  ));
+  const missingPageNumbers = materiallyNonemptyPages.filter(
+    (pageNumber) => !pagesRepresentedInChunks.includes(pageNumber),
+  );
+  const unexplainedUncoveredRanges = uncoveredTextRanges(orderedPages, intervals, offsets);
+  const chunkCoveredCharacterCount = orderedPages.reduce((total, page) => {
+    const pageOffset = offsets.get(page.pageNumber);
+    if (!pageOffset) return total;
+    return total + mergeCharacterIntervals(
+      intervals
+        .filter((interval) => interval.end > pageOffset.start && interval.start < pageOffset.end)
+        .map((interval) => ({
+          start: Math.max(interval.start, pageOffset.start),
+          end: Math.min(interval.end, pageOffset.end),
+        })),
+    ).reduce((pageTotal, interval) => pageTotal + interval.end - interval.start, 0);
+  }, 0);
+  const complete = missingPageNumbers.length === 0
+    && pageNumberGaps(orderedPages).length === 0
+    && unexplainedUncoveredRanges.length === 0
+    && truncatedSectionFragments.length === 0;
+
+  return {
+    version: CHUNK_COMPLETENESS_VERSION,
+    extractedPageCount: orderedPages.length,
+    materiallyNonemptyPages,
+    pagesRepresentedInChunks,
+    missingPageNumbers,
+    extractedPageNumberGaps: pageNumberGaps(orderedPages),
+    extractedNormalizedCharacterCount: orderedPages.reduce(
+      (total, page) => total + page.text.length,
+      0,
+    ),
+    chunkCoveredCharacterCount,
+    recoveredUncoveredRanges,
+    unexplainedUncoveredRanges,
+    truncatedSectionFragments,
+    reextractionOutcome,
+    finalCompletenessStatus: complete ? "complete" : "incomplete",
+  };
+}
+
+function buildCoverageDrafts({
+  pages,
+  preparedPages,
+  ranges,
+}: {
+  pages: ExtractedPdfPage[];
+  preparedPages: PreparedPage[];
+  ranges: PdfChunkCompletenessRange[];
+}): ClassifiedChunkDraft[] {
+  const { offsets } = getPageOffsets(pages);
+  const preparedByPage = new Map(preparedPages.map((page) => [page.pageNumber, page]));
+  return ranges.flatMap((range) => {
+    const page = pages.find((item) => item.pageNumber === range.pageNumber);
+    const pageOffset = offsets.get(range.pageNumber);
+    if (!page || !pageOffset || !/\S/.test(page.text)) return [];
+    const localStart = range.charStart - pageOffset.start;
+    const localEnd = range.charEnd - pageOffset.start;
+    const content = page.text.slice(localStart, localEnd).trim();
+    if (!content) return [];
+    const parts = splitTextBlock({
+      type: "paragraph",
+      content,
+      pageStart: range.pageNumber,
+      pageEnd: range.pageNumber,
+      charStart: range.charStart,
+      charEnd: range.charEnd,
+    });
+    return parts.map((block) => ({
+      content: block.content,
+      blocks: [block],
+      pageStart: range.pageNumber,
+      pageEnd: range.pageNumber,
+      charStart: block.charStart,
+      charEnd: block.charEnd,
+      sectionHeading: `Extracted page ${range.pageNumber}`,
+      parentHeading: "Document",
+      parentPath: null,
+      sectionPath: `Document Coverage > Page ${range.pageNumber}`,
+      headingPage: range.pageNumber,
+      sourceSectionPaths: [],
+      coverageOnly: true,
+      isToc: preparedByPage.get(range.pageNumber)?.isToc ?? false,
+      evidenceClass: "low_value_context" as const,
+      evidenceReason: "coverage_only_unrepresented_extracted_text",
+    }));
+  });
+}
+
+export function assertPdfChunkCompleteness(completeness: PdfChunkCompletenessDiagnostics) {
+  if (completeness.finalCompletenessStatus === "complete") return;
+  throw new PdfProcessingError(
+    "pdf_chunk_completeness_failed",
+    "Extracted PDF text could not be retained completely.",
+    422,
+    {
+      extracted_page_count: completeness.extractedPageCount,
+      missing_page_count: completeness.missingPageNumbers.length,
+      page_gap_count: completeness.extractedPageNumberGaps.length,
+      uncovered_range_count: completeness.unexplainedUncoveredRanges.length,
+      truncated_section_count: completeness.truncatedSectionFragments.length,
+    },
+  );
+}
+
+export function validatePersistedChunkCompleteness(
+  expectedChunks: StoredDocumentChunk[],
+  persistedChunks: PersistedChunkCompletenessRow[],
+): PersistedChunkCompletenessDiagnostics {
+  const persistedByIndex = new Map(persistedChunks.map((chunk) => [chunk.chunk_index, chunk]));
+  const missingChunkIndexes: number[] = [];
+  const mismatchedChunkIndexes: number[] = [];
+  for (const expected of expectedChunks) {
+    const persisted = persistedByIndex.get(expected.chunk_index);
+    if (!persisted) {
+      missingChunkIndexes.push(expected.chunk_index);
+      continue;
+    }
+    if (
+      persisted.content_hash !== expected.content_hash
+      || persisted.content !== expected.content
+      || persisted.page_start !== expected.page_start
+      || persisted.page_end !== expected.page_end
+      || persisted.char_start !== expected.char_start
+      || persisted.char_end !== expected.char_end
+    ) {
+      mismatchedChunkIndexes.push(expected.chunk_index);
+    }
+  }
+  const expectedPages = new Set(expectedChunks.flatMap((chunk) => {
+    const pages: number[] = [];
+    for (let page = chunk.page_start; page <= chunk.page_end; page += 1) pages.push(page);
+    return pages;
+  }));
+  const persistedPages = new Set(persistedChunks.flatMap((chunk) => {
+    const pages: number[] = [];
+    for (let page = chunk.page_start; page <= chunk.page_end; page += 1) pages.push(page);
+    return pages;
+  }));
+  const missingPageNumbers = [...expectedPages].filter((page) => !persistedPages.has(page)).sort((a, b) => a - b);
+  const complete = missingChunkIndexes.length === 0
+    && mismatchedChunkIndexes.length === 0
+    && missingPageNumbers.length === 0
+    && persistedChunks.length === expectedChunks.length;
+  return {
+    expectedChunkCount: expectedChunks.length,
+    persistedChunkCount: persistedChunks.length,
+    missingChunkIndexes,
+    mismatchedChunkIndexes,
+    missingPageNumbers,
+    finalCompletenessStatus: complete ? "complete" : "incomplete",
+  };
 }
 
 export function buildChunkEmbeddingInput(input: {
@@ -1559,12 +1973,43 @@ export function buildDeterministicChunks(input: {
   documentType?: string | null;
   sourceType?: string | null;
   evidenceRole?: string | null;
+  reextractionOutcome?: PdfChunkCompletenessDiagnostics["reextractionOutcome"];
 }) {
-  const prepared = preparePagesForChunking(input.pages);
+  const pages = sortedPages(input.pages);
+  const prepared = preparePagesForChunking(pages);
   const sections = parseSections(prepared.pages);
   const groups = mergeShortSiblingSections(sections);
   const candidateDrafts = buildChunkDrafts(groups);
-  const drafts = filterEvidenceDrafts(candidateDrafts, input.pages, prepared.stats);
+  const classifiedDrafts = classifyChunkDrafts(candidateDrafts, pages, prepared.stats);
+  const sectionFragments = sectionCoverageGaps(sections, classifiedDrafts);
+  const initialCompleteness = inspectChunkCompleteness({
+    pages,
+    chunks: classifiedDrafts.map((draft) => ({
+      pageStart: draft.pageStart,
+      pageEnd: draft.pageEnd,
+      charStart: draft.charStart,
+      charEnd: draft.charEnd,
+    })),
+    truncatedSectionFragments: sectionFragments,
+    reextractionOutcome: input.reextractionOutcome,
+  });
+  const drafts = [...classifiedDrafts, ...buildCoverageDrafts({
+    pages,
+    preparedPages: prepared.pages,
+    ranges: initialCompleteness.unexplainedUncoveredRanges,
+  })].sort((left, right) => left.charStart - right.charStart || left.charEnd - right.charEnd);
+  const completeness = inspectChunkCompleteness({
+    pages,
+    chunks: drafts.map((draft) => ({
+      pageStart: draft.pageStart,
+      pageEnd: draft.pageEnd,
+      charStart: draft.charStart,
+      charEnd: draft.charEnd,
+    })),
+    recoveredUncoveredRanges: initialCompleteness.unexplainedUncoveredRanges,
+    truncatedSectionFragments: sectionFragments,
+    reextractionOutcome: input.reextractionOutcome,
+  });
 
   if (drafts.length === 0) {
     throw new PdfProcessingError(
@@ -1598,6 +2043,7 @@ export function buildDeterministicChunks(input: {
     const tokenEstimate = estimateChunkTokens(draft.content);
     const sourceType = input.sourceType ?? "client_policy";
     const evidenceRole = input.evidenceRole ?? "organization_evidence";
+    const retrievalIncluded = draft.evidenceClass === "evidence" && draft.coverageOnly !== true;
     const embeddingInput = buildChunkEmbeddingInput({
       filename: input.filename,
       documentType: input.documentType ?? null,
@@ -1657,11 +2103,12 @@ export function buildDeterministicChunks(input: {
         evidence_class: draft.evidenceClass,
         evidence_reason: draft.evidenceReason,
         classification_version: EVIDENCE_CLASSIFICATION_VERSION,
-        is_boilerplate: false,
-        is_toc: false,
+        coverage_only: draft.coverageOnly === true,
+        is_boilerplate: draft.evidenceClass === "boilerplate",
+        is_toc: draft.isToc === true,
         is_footnote: false,
-        retrieval_excluded: false,
-        retrieval_included: true,
+        retrieval_excluded: !retrievalIncluded,
+        retrieval_included: retrievalIncluded,
         chunking_version: CHUNKING_VERSION,
         chunk_context_version: CHUNK_CONTEXT_VERSION,
         chunk_annotation_version: null,
@@ -1690,6 +2137,7 @@ export function buildDeterministicChunks(input: {
     filename: input.filename,
     extraction_version: PDF_EXTRACTION_VERSION,
     chunking_version: CHUNKING_VERSION,
+    completeness,
     cleanup: {
       boilerplate_lines_removed: prepared.stats.boilerplateLinesRemoved,
       footnote_lines_removed: prepared.stats.footnoteLinesRemoved,
@@ -1699,5 +2147,5 @@ export function buildDeterministicChunks(input: {
     headings: buildHierarchy(sections, drafts),
   };
 
-  return { chunks, hierarchy };
+  return { chunks, hierarchy, completeness };
 }
