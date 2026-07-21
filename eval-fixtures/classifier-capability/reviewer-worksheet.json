@@ -1,7 +1,8 @@
 {
   "schema_version": "classifier-capability-reviewer-worksheet/v1",
-  "fixture_suite_hash": "0b03dee820b0be45a74fa87171e3b1700390551eef425f5c97d4647a70713a7a",
-  "unresolved_multi_candidate_blocker": "Aggregation case recovery-remediation-validation-cross-candidate-aggregation-review is source-complete but unresolved. Paid mode remains blocked until a reviewer manually adjudicates the final status, case-supported elements, and every candidate relationship, element, direct-support, and hard-negative field.",
+  "fixture_suite_hash": "2d867460a314063bef3aeec81d95952922476b4d8bbfa1b9bbe7a4ff8bffc73a",
+  "paid_readiness_blocker": null,
+  "experiment_limitation": "This experiment measures per-candidate classifier capability within the current architecture. It does not evaluate cross-candidate element aggregation, retrieval quality, ingestion, or the proposed facts-only redesign. No valid complementary aggregation case is included.",
   "multi_candidate_artifacts_inspected": [
     "eval-results/requirement-eval-latest.json",
     "eval-results/retrieval-eval-latest.json",
@@ -11,389 +12,7 @@
     "eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json",
     "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json"
   ],
-  "multi_candidate_review_case": {
-    "case_id": "recovery-remediation-validation-cross-candidate-aggregation-review",
-    "evaluation_role": "unresolved",
-    "requirement": {
-      "id": "response_recovery_remediation_validation",
-      "title": "Response recovery and remediation validation",
-      "description": "The reviewed documents appear to define how the firm recovers from unauthorized access or use of customer information and validates remediation or corrective action.",
-      "element_definitions": [
-        {
-          "id": "recovery_steps",
-          "label": "Defines recovery after unauthorized access or use",
-          "requiredForCovered": true,
-          "signals": [
-            "recover from unauthorized access",
-            "recover from unauthorized use",
-            "recovery",
-            "restore",
-            "restoration"
-          ]
-        },
-        {
-          "id": "remediation_tracking",
-          "label": "Tracks remediation or corrective actions",
-          "requiredForCovered": true,
-          "signals": [
-            "remediation tracking",
-            "track remediation",
-            "corrective action",
-            "corrective actions",
-            "vulnerability remediation"
-          ]
-        },
-        {
-          "id": "validation_testing",
-          "label": "Validates recovery or remediation",
-          "requiredForCovered": true,
-          "signals": [
-            "validate recovery",
-            "confirm remediation",
-            "verify restored assets",
-            "follow-up vulnerability scan",
-            "repeated testing",
-            "validation"
-          ]
-        }
-      ]
-    },
-    "proposed_expected_status": {
-      "value": null,
-      "provenance": {
-        "confirmed": false,
-        "source_type": "implementation_inference",
-        "reviewer_id": null,
-        "reviewed_at": null,
-        "source_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
-        "source_locator": "candidates[0]",
-        "source_hash": "5295776657aff76b357e5f64a1a17f066c655e914b3366a58e7fb7905a1788c8",
-        "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
-      }
-    },
-    "proposed_expected_supported_elements": {
-      "value": null,
-      "provenance": {
-        "confirmed": false,
-        "source_type": "implementation_inference",
-        "reviewer_id": null,
-        "reviewed_at": null,
-        "source_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
-        "source_locator": "candidates[0]",
-        "source_hash": "5295776657aff76b357e5f64a1a17f066c655e914b3366a58e7fb7905a1788c8",
-        "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
-      }
-    },
-    "reviewer_decisions": {
-      "expected_status": null,
-      "case_supported_elements": null,
-      "reviewer_id": null,
-      "reviewed_at": null,
-      "notes": null
-    },
-    "candidates": [
-      {
-        "order": 1,
-        "candidate_id": "f67e4e3d-d73a-4cc8-a331-04bb9f2c1b6e",
-        "exact_candidate_text": "4. Cyber Incident Response Governance\n\nNorthline Brokerage Services, Inc. maintains this written incident response program as part of its customer information\nsafeguards framework. The program is reasonably designed to detect, respond to, and recover from unauthorized\naccess to or use of customer information. It applies to customer information in paper, electronic, and other forms,\nincluding information maintained by service providers on the firm's behalf.\nThe program begins when monitoring, employee reporting, a service-provider notice, or another reliable source indicates\nthat unauthorized access or use has occurred or is reasonably likely to have occurred. The Incident Response Lead\nopens a case, assigns severity, preserves relevant records, and coordinates assessment, containment, customer-notice\nanalysis, recovery, and closure.\n\n• Detect: monitor security alerts, access anomalies, customer complaints, lost devices, vendor notices, and misuse\nreports.\n• Respond: investigate, contain, control, communicate, and document decisions.\n• Recover: restore approved services, remediate root causes, validate controls and access, and complete a\npost-incident review.",
-        "proposed_expected_relationship": {
-          "value": null,
-          "provenance": {
-            "confirmed": false,
-            "source_type": "implementation_inference",
-            "reviewer_id": null,
-            "reviewed_at": null,
-            "source_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
-            "source_locator": "candidates[0]",
-            "source_hash": "5295776657aff76b357e5f64a1a17f066c655e914b3366a58e7fb7905a1788c8",
-            "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
-          }
-        },
-        "proposed_expected_elements": {
-          "value": null,
-          "provenance": {
-            "confirmed": false,
-            "source_type": "implementation_inference",
-            "reviewer_id": null,
-            "reviewed_at": null,
-            "source_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
-            "source_locator": "candidates[0]",
-            "source_hash": "5295776657aff76b357e5f64a1a17f066c655e914b3366a58e7fb7905a1788c8",
-            "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
-          }
-        },
-        "proposed_direct_support": {
-          "value": null,
-          "provenance": {
-            "confirmed": false,
-            "source_type": "implementation_inference",
-            "reviewer_id": null,
-            "reviewed_at": null,
-            "source_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
-            "source_locator": "candidates[0]",
-            "source_hash": "5295776657aff76b357e5f64a1a17f066c655e914b3366a58e7fb7905a1788c8",
-            "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
-          }
-        },
-        "proposed_hard_negative": {
-          "value": null,
-          "provenance": {
-            "confirmed": false,
-            "source_type": "implementation_inference",
-            "reviewer_id": null,
-            "reviewed_at": null,
-            "source_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
-            "source_locator": "candidates[0]",
-            "source_hash": "5295776657aff76b357e5f64a1a17f066c655e914b3366a58e7fb7905a1788c8",
-            "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
-          }
-        },
-        "source": {
-          "kind": "frozen_evaluation_pack",
-          "path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
-          "locator": "candidates[0]",
-          "content_sha256": "ad8d9652a9012326951de4e989cfc0b4c04765b63ca80b5fc50268247ec3156b",
-          "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
-        },
-        "stored_provenance": {
-          "original_position": 1,
-          "workspace_id": "af584c33-42fe-4ce4-b641-c3b381c98214",
-          "document_id": "0cca8649-fd13-42f1-b259-28e54d12fe37",
-          "chunk_id": "f67e4e3d-d73a-4cc8-a331-04bb9f2c1b6e",
-          "chunk_index": 3,
-          "filename": "northline_regulation_sp_policy.pdf",
-          "page_start": 3,
-          "page_end": 3,
-          "section_path": "4. Cyber Incident Response Governance",
-          "stored_content_sha256": "ad8d9652a9012326951de4e989cfc0b4c04765b63ca80b5fc50268247ec3156b",
-          "independently_recomputed_sha256": "ad8d9652a9012326951de4e989cfc0b4c04765b63ca80b5fc50268247ec3156b",
-          "stored_embedding_input_sha256": "4942e75572bf3038dac556b87c6924105cba6694a4c45902dc90b43e1653024b",
-          "section_heading": "4. Cyber Incident Response Governance",
-          "parent_heading": "Document",
-          "retrieval_selection_metadata": {
-            "selection_method": "frozen_evaluation_pack",
-            "order_key": "chunk_index",
-            "order_value": 3
-          },
-          "semantic_rank": null,
-          "keyword_rank": null,
-          "merged_rank": null,
-          "source_artifact_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
-          "source_artifact_locator": "candidates[0]",
-          "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
-        },
-        "reviewer_decisions": {
-          "expected_relationship": null,
-          "expected_elements": null,
-          "direct_support": null,
-          "hard_negative": null,
-          "reviewer_id": null,
-          "reviewed_at": null,
-          "notes": null
-        }
-      },
-      {
-        "order": 2,
-        "candidate_id": "5479d864-f145-4454-b00f-b8e572a20ac7",
-        "exact_candidate_text": "8. Service Provider Oversight\n\nThe firm maintains and enforces written procedures for due diligence and ongoing monitoring of service providers that\nreceive, maintain, process, or are permitted access to customer information. Reviews consider security controls,\nincident-response capability, subcontractor use, independent assurance reports, material changes, and known control\nfailures.\nOversight is reasonably designed to ensure that service providers protect against unauthorized access to or use of\ncustomer information and notify the firm as soon as possible, but no later than 72 hours after becoming aware that a\nbreach in security resulted in unauthorized access to a customer information system maintained by the provider.\nUpon receipt of a qualifying provider notice, or upon independent detection of the incident, the firm immediately initiates\nits incident response program. A provider may deliver customer notices under a written agreement, but the firm remains\nresponsible for ensuring that each required notice satisfies the firm's obligations and is timely delivered.\n\n• document initial and periodic due diligence;\n• track identified risks and remediation;\n\n• maintain provider breach notices and related communications;\n• verify completion and delivery when a provider sends customer notices on the firm's behalf.",
-        "proposed_expected_relationship": {
-          "value": null,
-          "provenance": {
-            "confirmed": false,
-            "source_type": "implementation_inference",
-            "reviewer_id": null,
-            "reviewed_at": null,
-            "source_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
-            "source_locator": "candidates[1]",
-            "source_hash": "5295776657aff76b357e5f64a1a17f066c655e914b3366a58e7fb7905a1788c8",
-            "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
-          }
-        },
-        "proposed_expected_elements": {
-          "value": null,
-          "provenance": {
-            "confirmed": false,
-            "source_type": "implementation_inference",
-            "reviewer_id": null,
-            "reviewed_at": null,
-            "source_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
-            "source_locator": "candidates[1]",
-            "source_hash": "5295776657aff76b357e5f64a1a17f066c655e914b3366a58e7fb7905a1788c8",
-            "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
-          }
-        },
-        "proposed_direct_support": {
-          "value": null,
-          "provenance": {
-            "confirmed": false,
-            "source_type": "implementation_inference",
-            "reviewer_id": null,
-            "reviewed_at": null,
-            "source_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
-            "source_locator": "candidates[1]",
-            "source_hash": "5295776657aff76b357e5f64a1a17f066c655e914b3366a58e7fb7905a1788c8",
-            "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
-          }
-        },
-        "proposed_hard_negative": {
-          "value": null,
-          "provenance": {
-            "confirmed": false,
-            "source_type": "implementation_inference",
-            "reviewer_id": null,
-            "reviewed_at": null,
-            "source_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
-            "source_locator": "candidates[1]",
-            "source_hash": "5295776657aff76b357e5f64a1a17f066c655e914b3366a58e7fb7905a1788c8",
-            "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
-          }
-        },
-        "source": {
-          "kind": "frozen_evaluation_pack",
-          "path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
-          "locator": "candidates[1]",
-          "content_sha256": "69f597b46d36a061eb76c3d271de3525907d2671d2f3fc4def76dd67758d99ce",
-          "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
-        },
-        "stored_provenance": {
-          "original_position": 2,
-          "workspace_id": "af584c33-42fe-4ce4-b641-c3b381c98214",
-          "document_id": "0cca8649-fd13-42f1-b259-28e54d12fe37",
-          "chunk_id": "5479d864-f145-4454-b00f-b8e572a20ac7",
-          "chunk_index": 7,
-          "filename": "northline_regulation_sp_policy.pdf",
-          "page_start": 4,
-          "page_end": 5,
-          "section_path": "8. Service Provider Oversight",
-          "stored_content_sha256": "69f597b46d36a061eb76c3d271de3525907d2671d2f3fc4def76dd67758d99ce",
-          "independently_recomputed_sha256": "69f597b46d36a061eb76c3d271de3525907d2671d2f3fc4def76dd67758d99ce",
-          "stored_embedding_input_sha256": "019a2957594c418f03d53d8a6342360f1ce2e0b9877c81e895f3130cf72b21fc",
-          "section_heading": "8. Service Provider Oversight",
-          "parent_heading": "Document",
-          "retrieval_selection_metadata": {
-            "selection_method": "frozen_evaluation_pack",
-            "order_key": "chunk_index",
-            "order_value": 7
-          },
-          "semantic_rank": null,
-          "keyword_rank": null,
-          "merged_rank": null,
-          "source_artifact_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
-          "source_artifact_locator": "candidates[1]",
-          "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
-        },
-        "reviewer_decisions": {
-          "expected_relationship": null,
-          "expected_elements": null,
-          "direct_support": null,
-          "hard_negative": null,
-          "reviewer_id": null,
-          "reviewed_at": null,
-          "notes": null
-        }
-      },
-      {
-        "order": 3,
-        "candidate_id": "8c104761-0821-4330-9cfc-5b843b4d5175",
-        "exact_candidate_text": "17. Appendix A - Incident File Minimum Contents\n\n• incident identifier, discovery date, and awareness date;\n• affected systems, business processes, customer information types, and individuals;\n• investigation timeline, containment actions, and recovery steps;\n• notification analysis, decision, approvals, and copies of notices;\n• service-provider notices, contracts, communications, and remediation;\n• logs, exports, screenshots, evidence sources, and preservation details;\n• corrective actions, validation results, post-incident findings, and closure approval.",
-        "proposed_expected_relationship": {
-          "value": null,
-          "provenance": {
-            "confirmed": false,
-            "source_type": "implementation_inference",
-            "reviewer_id": null,
-            "reviewed_at": null,
-            "source_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
-            "source_locator": "candidates[2]",
-            "source_hash": "5295776657aff76b357e5f64a1a17f066c655e914b3366a58e7fb7905a1788c8",
-            "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
-          }
-        },
-        "proposed_expected_elements": {
-          "value": null,
-          "provenance": {
-            "confirmed": false,
-            "source_type": "implementation_inference",
-            "reviewer_id": null,
-            "reviewed_at": null,
-            "source_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
-            "source_locator": "candidates[2]",
-            "source_hash": "5295776657aff76b357e5f64a1a17f066c655e914b3366a58e7fb7905a1788c8",
-            "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
-          }
-        },
-        "proposed_direct_support": {
-          "value": null,
-          "provenance": {
-            "confirmed": false,
-            "source_type": "implementation_inference",
-            "reviewer_id": null,
-            "reviewed_at": null,
-            "source_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
-            "source_locator": "candidates[2]",
-            "source_hash": "5295776657aff76b357e5f64a1a17f066c655e914b3366a58e7fb7905a1788c8",
-            "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
-          }
-        },
-        "proposed_hard_negative": {
-          "value": null,
-          "provenance": {
-            "confirmed": false,
-            "source_type": "implementation_inference",
-            "reviewer_id": null,
-            "reviewed_at": null,
-            "source_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
-            "source_locator": "candidates[2]",
-            "source_hash": "5295776657aff76b357e5f64a1a17f066c655e914b3366a58e7fb7905a1788c8",
-            "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
-          }
-        },
-        "source": {
-          "kind": "frozen_evaluation_pack",
-          "path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
-          "locator": "candidates[2]",
-          "content_sha256": "7dce6f4d89abb84465546fae07568a2fc3d218b6390d15f6aa9606237cd78322",
-          "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
-        },
-        "stored_provenance": {
-          "original_position": 3,
-          "workspace_id": "af584c33-42fe-4ce4-b641-c3b381c98214",
-          "document_id": "0cca8649-fd13-42f1-b259-28e54d12fe37",
-          "chunk_id": "8c104761-0821-4330-9cfc-5b843b4d5175",
-          "chunk_index": 16,
-          "filename": "northline_regulation_sp_policy.pdf",
-          "page_start": 7,
-          "page_end": 7,
-          "section_path": "17. Appendix A - Incident File Minimum Contents",
-          "stored_content_sha256": "7dce6f4d89abb84465546fae07568a2fc3d218b6390d15f6aa9606237cd78322",
-          "independently_recomputed_sha256": "7dce6f4d89abb84465546fae07568a2fc3d218b6390d15f6aa9606237cd78322",
-          "stored_embedding_input_sha256": "6a44d45ae586bf804bbd0f1e3ef7098790d3219e198a5ce2daf345f834e3420f",
-          "section_heading": "17. Appendix A - Incident File Minimum Contents",
-          "parent_heading": "Document",
-          "retrieval_selection_metadata": {
-            "selection_method": "frozen_evaluation_pack",
-            "order_key": "chunk_index",
-            "order_value": 16
-          },
-          "semantic_rank": null,
-          "keyword_rank": null,
-          "merged_rank": null,
-          "source_artifact_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
-          "source_artifact_locator": "candidates[2]",
-          "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
-        },
-        "reviewer_decisions": {
-          "expected_relationship": null,
-          "expected_elements": null,
-          "direct_support": null,
-          "hard_negative": null,
-          "reviewer_id": null,
-          "reviewed_at": null,
-          "notes": null
-        }
-      }
-    ]
-  },
+  "multi_candidate_review_case": null,
   "cases": [
     {
       "case_id": "assessment-full-operative-procedure",
@@ -537,6 +156,7 @@
               "normalization_recipe": null
             }
           },
+          "adjudication_note": null,
           "source": {
             "kind": "committed_corpus",
             "path": "eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf",
@@ -690,6 +310,7 @@
               "normalization_recipe": null
             }
           },
+          "adjudication_note": null,
           "source": {
             "kind": "regression_diagnostic",
             "path": "tests/requirement-debug.test.mjs",
@@ -847,6 +468,7 @@
               "normalization_recipe": "Removed the section heading and bullets; joined source line wraps with spaces."
             }
           },
+          "adjudication_note": null,
           "source": {
             "kind": "regression_diagnostic",
             "path": "eval-results/requirement-eval-latest.json",
@@ -1017,6 +639,7 @@
               "normalization_recipe": null
             }
           },
+          "adjudication_note": null,
           "source": {
             "kind": "committed_corpus",
             "path": "eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf",
@@ -1185,6 +808,7 @@
               "normalization_recipe": "Removed the section heading and bullets; joined source line wraps with spaces."
             }
           },
+          "adjudication_note": null,
           "source": {
             "kind": "regression_diagnostic",
             "path": "eval-results/requirement-eval-latest.json",
@@ -1351,6 +975,7 @@
               "normalization_recipe": null
             }
           },
+          "adjudication_note": null,
           "source": {
             "kind": "regression_diagnostic",
             "path": "tests/findings-generation.test.mjs",
@@ -1513,6 +1138,7 @@
               "normalization_recipe": "Concatenated the two adjacent diagnostic literals in source order with one space."
             }
           },
+          "adjudication_note": null,
           "source": {
             "kind": "regression_diagnostic",
             "path": "tests/requirement-debug.test.mjs",
@@ -1677,6 +1303,7 @@
               "normalization_recipe": null
             }
           },
+          "adjudication_note": null,
           "source": {
             "kind": "committed_corpus",
             "path": "eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf",
@@ -1833,6 +1460,7 @@
               "normalization_recipe": null
             }
           },
+          "adjudication_note": null,
           "source": {
             "kind": "committed_corpus",
             "path": "eval/corpora/regspan-v2-realistic-corpus/documents/lakeshore_regulation_sp_compliance_program.pdf",
@@ -1989,6 +1617,7 @@
               "normalization_recipe": null
             }
           },
+          "adjudication_note": null,
           "source": {
             "kind": "regression_diagnostic",
             "path": "tests/operative-evidence-elements.test.mjs",
@@ -2149,6 +1778,7 @@
               "normalization_recipe": null
             }
           },
+          "adjudication_note": null,
           "source": {
             "kind": "committed_corpus",
             "path": "eval/corpora/regspan-v2-realistic-corpus/documents/stonehaven_privacy_cybersecurity_practices.pdf",
@@ -2313,6 +1943,7 @@
               "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
             }
           },
+          "adjudication_note": null,
           "source": {
             "kind": "retrieval_capture",
             "path": "eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json",
@@ -2414,6 +2045,7 @@
               "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
             }
           },
+          "adjudication_note": null,
           "source": {
             "kind": "retrieval_capture",
             "path": "eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json",
@@ -2518,6 +2150,7 @@
               "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
             }
           },
+          "adjudication_note": null,
           "source": {
             "kind": "retrieval_capture",
             "path": "eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json",
@@ -2619,6 +2252,7 @@
               "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
             }
           },
+          "adjudication_note": null,
           "source": {
             "kind": "retrieval_capture",
             "path": "eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json",
@@ -2720,6 +2354,7 @@
               "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
             }
           },
+          "adjudication_note": null,
           "source": {
             "kind": "retrieval_capture",
             "path": "eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json",
@@ -2753,6 +2388,398 @@
             "merged_rank": 5,
             "source_artifact_path": "eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json",
             "source_artifact_locator": "candidates[4]",
+            "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+          },
+          "reviewer_decisions": {
+            "expected_relationship": null,
+            "expected_elements": null,
+            "direct_support": null,
+            "hard_negative": null,
+            "reviewer_id": null,
+            "reviewed_at": null,
+            "notes": null
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "recovery-remediation-validation-cross-candidate-aggregation-review",
+      "evaluation_role": "diagnostic_only",
+      "requirement": {
+        "id": "response_recovery_remediation_validation",
+        "title": "Response recovery and remediation validation",
+        "description": "The reviewed documents appear to define how the firm recovers from unauthorized access or use of customer information and validates remediation or corrective action.",
+        "element_definitions": [
+          {
+            "id": "recovery_steps",
+            "label": "Defines recovery after unauthorized access or use",
+            "requiredForCovered": true,
+            "signals": [
+              "recover from unauthorized access",
+              "recover from unauthorized use",
+              "recovery",
+              "restore",
+              "restoration"
+            ]
+          },
+          {
+            "id": "remediation_tracking",
+            "label": "Tracks remediation or corrective actions",
+            "requiredForCovered": true,
+            "signals": [
+              "remediation tracking",
+              "track remediation",
+              "corrective action",
+              "corrective actions",
+              "vulnerability remediation"
+            ]
+          },
+          {
+            "id": "validation_testing",
+            "label": "Validates recovery or remediation",
+            "requiredForCovered": true,
+            "signals": [
+              "validate recovery",
+              "confirm remediation",
+              "verify restored assets",
+              "follow-up vulnerability scan",
+              "repeated testing",
+              "validation"
+            ]
+          }
+        ]
+      },
+      "proposed_expected_status": {
+        "value": "partial",
+        "provenance": {
+          "confirmed": true,
+          "source_type": "manual_adjudication",
+          "reviewer_id": "vivaan-bhargava",
+          "reviewed_at": "2026-07-21T03:48:51.000Z",
+          "source_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
+          "source_locator": "candidates[0]",
+          "source_hash": "5295776657aff76b357e5f64a1a17f066c655e914b3366a58e7fb7905a1788c8",
+          "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+        }
+      },
+      "proposed_expected_supported_elements": {
+        "value": [
+          "recovery_steps",
+          "validation_testing"
+        ],
+        "provenance": {
+          "confirmed": true,
+          "source_type": "manual_adjudication",
+          "reviewer_id": "vivaan-bhargava",
+          "reviewed_at": "2026-07-21T03:48:51.000Z",
+          "source_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
+          "source_locator": "candidates[0]",
+          "source_hash": "5295776657aff76b357e5f64a1a17f066c655e914b3366a58e7fb7905a1788c8",
+          "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+        }
+      },
+      "reviewer_decisions": {
+        "expected_status": null,
+        "expected_supported_elements": null,
+        "reviewer_id": null,
+        "reviewed_at": null,
+        "notes": null
+      },
+      "candidates": [
+        {
+          "order": 1,
+          "candidate_id": "f67e4e3d-d73a-4cc8-a331-04bb9f2c1b6e",
+          "exact_candidate_text": "4. Cyber Incident Response Governance\n\nNorthline Brokerage Services, Inc. maintains this written incident response program as part of its customer information\nsafeguards framework. The program is reasonably designed to detect, respond to, and recover from unauthorized\naccess to or use of customer information. It applies to customer information in paper, electronic, and other forms,\nincluding information maintained by service providers on the firm's behalf.\nThe program begins when monitoring, employee reporting, a service-provider notice, or another reliable source indicates\nthat unauthorized access or use has occurred or is reasonably likely to have occurred. The Incident Response Lead\nopens a case, assigns severity, preserves relevant records, and coordinates assessment, containment, customer-notice\nanalysis, recovery, and closure.\n\n• Detect: monitor security alerts, access anomalies, customer complaints, lost devices, vendor notices, and misuse\nreports.\n• Respond: investigate, contain, control, communicate, and document decisions.\n• Recover: restore approved services, remediate root causes, validate controls and access, and complete a\npost-incident review.",
+          "proposed_expected_relationship": {
+            "value": "partially_supports",
+            "provenance": {
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T03:48:51.000Z",
+              "source_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
+              "source_locator": "candidates[0]",
+              "source_hash": "5295776657aff76b357e5f64a1a17f066c655e914b3366a58e7fb7905a1788c8",
+              "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+            }
+          },
+          "proposed_expected_elements": {
+            "value": [
+              "recovery_steps",
+              "validation_testing"
+            ],
+            "provenance": {
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T03:48:51.000Z",
+              "source_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
+              "source_locator": "candidates[0]",
+              "source_hash": "5295776657aff76b357e5f64a1a17f066c655e914b3366a58e7fb7905a1788c8",
+              "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+            }
+          },
+          "proposed_direct_support": {
+            "value": false,
+            "provenance": {
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T03:48:51.000Z",
+              "source_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
+              "source_locator": "candidates[0]",
+              "source_hash": "5295776657aff76b357e5f64a1a17f066c655e914b3366a58e7fb7905a1788c8",
+              "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+            }
+          },
+          "proposed_hard_negative": {
+            "value": false,
+            "provenance": {
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T03:48:51.000Z",
+              "source_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
+              "source_locator": "candidates[0]",
+              "source_hash": "5295776657aff76b357e5f64a1a17f066c655e914b3366a58e7fb7905a1788c8",
+              "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+            }
+          },
+          "adjudication_note": "The passage defines restoration, root-cause remediation, control/access validation, and post-incident review, but does not define remediation tracking.",
+          "source": {
+            "kind": "frozen_evaluation_pack",
+            "path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
+            "locator": "candidates[0]",
+            "content_sha256": "ad8d9652a9012326951de4e989cfc0b4c04765b63ca80b5fc50268247ec3156b",
+            "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+          },
+          "stored_provenance": {
+            "original_position": 1,
+            "workspace_id": "af584c33-42fe-4ce4-b641-c3b381c98214",
+            "document_id": "0cca8649-fd13-42f1-b259-28e54d12fe37",
+            "chunk_id": "f67e4e3d-d73a-4cc8-a331-04bb9f2c1b6e",
+            "chunk_index": 3,
+            "filename": "northline_regulation_sp_policy.pdf",
+            "page_start": 3,
+            "page_end": 3,
+            "section_path": "4. Cyber Incident Response Governance",
+            "stored_content_sha256": "ad8d9652a9012326951de4e989cfc0b4c04765b63ca80b5fc50268247ec3156b",
+            "independently_recomputed_sha256": "ad8d9652a9012326951de4e989cfc0b4c04765b63ca80b5fc50268247ec3156b",
+            "stored_embedding_input_sha256": "4942e75572bf3038dac556b87c6924105cba6694a4c45902dc90b43e1653024b",
+            "section_heading": "4. Cyber Incident Response Governance",
+            "parent_heading": "Document",
+            "retrieval_selection_metadata": {
+              "selection_method": "frozen_evaluation_pack",
+              "order_key": "chunk_index",
+              "order_value": 3
+            },
+            "semantic_rank": null,
+            "keyword_rank": null,
+            "merged_rank": null,
+            "source_artifact_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
+            "source_artifact_locator": "candidates[0]",
+            "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+          },
+          "reviewer_decisions": {
+            "expected_relationship": null,
+            "expected_elements": null,
+            "direct_support": null,
+            "hard_negative": null,
+            "reviewer_id": null,
+            "reviewed_at": null,
+            "notes": null
+          }
+        },
+        {
+          "order": 2,
+          "candidate_id": "5479d864-f145-4454-b00f-b8e572a20ac7",
+          "exact_candidate_text": "8. Service Provider Oversight\n\nThe firm maintains and enforces written procedures for due diligence and ongoing monitoring of service providers that\nreceive, maintain, process, or are permitted access to customer information. Reviews consider security controls,\nincident-response capability, subcontractor use, independent assurance reports, material changes, and known control\nfailures.\nOversight is reasonably designed to ensure that service providers protect against unauthorized access to or use of\ncustomer information and notify the firm as soon as possible, but no later than 72 hours after becoming aware that a\nbreach in security resulted in unauthorized access to a customer information system maintained by the provider.\nUpon receipt of a qualifying provider notice, or upon independent detection of the incident, the firm immediately initiates\nits incident response program. A provider may deliver customer notices under a written agreement, but the firm remains\nresponsible for ensuring that each required notice satisfies the firm's obligations and is timely delivered.\n\n• document initial and periodic due diligence;\n• track identified risks and remediation;\n\n• maintain provider breach notices and related communications;\n• verify completion and delivery when a provider sends customer notices on the firm's behalf.",
+          "proposed_expected_relationship": {
+            "value": "background_context",
+            "provenance": {
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T03:48:51.000Z",
+              "source_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
+              "source_locator": "candidates[1]",
+              "source_hash": "5295776657aff76b357e5f64a1a17f066c655e914b3366a58e7fb7905a1788c8",
+              "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+            }
+          },
+          "proposed_expected_elements": {
+            "value": [],
+            "provenance": {
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T03:48:51.000Z",
+              "source_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
+              "source_locator": "candidates[1]",
+              "source_hash": "5295776657aff76b357e5f64a1a17f066c655e914b3366a58e7fb7905a1788c8",
+              "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+            }
+          },
+          "proposed_direct_support": {
+            "value": false,
+            "provenance": {
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T03:48:51.000Z",
+              "source_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
+              "source_locator": "candidates[1]",
+              "source_hash": "5295776657aff76b357e5f64a1a17f066c655e914b3366a58e7fb7905a1788c8",
+              "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+            }
+          },
+          "proposed_hard_negative": {
+            "value": true,
+            "provenance": {
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T03:48:51.000Z",
+              "source_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
+              "source_locator": "candidates[1]",
+              "source_hash": "5295776657aff76b357e5f64a1a17f066c655e914b3366a58e7fb7905a1788c8",
+              "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+            }
+          },
+          "adjudication_note": "Provider oversight and tracking provider risks/remediation do not establish incident recovery remediation tracking.",
+          "source": {
+            "kind": "frozen_evaluation_pack",
+            "path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
+            "locator": "candidates[1]",
+            "content_sha256": "69f597b46d36a061eb76c3d271de3525907d2671d2f3fc4def76dd67758d99ce",
+            "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+          },
+          "stored_provenance": {
+            "original_position": 2,
+            "workspace_id": "af584c33-42fe-4ce4-b641-c3b381c98214",
+            "document_id": "0cca8649-fd13-42f1-b259-28e54d12fe37",
+            "chunk_id": "5479d864-f145-4454-b00f-b8e572a20ac7",
+            "chunk_index": 7,
+            "filename": "northline_regulation_sp_policy.pdf",
+            "page_start": 4,
+            "page_end": 5,
+            "section_path": "8. Service Provider Oversight",
+            "stored_content_sha256": "69f597b46d36a061eb76c3d271de3525907d2671d2f3fc4def76dd67758d99ce",
+            "independently_recomputed_sha256": "69f597b46d36a061eb76c3d271de3525907d2671d2f3fc4def76dd67758d99ce",
+            "stored_embedding_input_sha256": "019a2957594c418f03d53d8a6342360f1ce2e0b9877c81e895f3130cf72b21fc",
+            "section_heading": "8. Service Provider Oversight",
+            "parent_heading": "Document",
+            "retrieval_selection_metadata": {
+              "selection_method": "frozen_evaluation_pack",
+              "order_key": "chunk_index",
+              "order_value": 7
+            },
+            "semantic_rank": null,
+            "keyword_rank": null,
+            "merged_rank": null,
+            "source_artifact_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
+            "source_artifact_locator": "candidates[1]",
+            "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+          },
+          "reviewer_decisions": {
+            "expected_relationship": null,
+            "expected_elements": null,
+            "direct_support": null,
+            "hard_negative": null,
+            "reviewer_id": null,
+            "reviewed_at": null,
+            "notes": null
+          }
+        },
+        {
+          "order": 3,
+          "candidate_id": "8c104761-0821-4330-9cfc-5b843b4d5175",
+          "exact_candidate_text": "17. Appendix A - Incident File Minimum Contents\n\n• incident identifier, discovery date, and awareness date;\n• affected systems, business processes, customer information types, and individuals;\n• investigation timeline, containment actions, and recovery steps;\n• notification analysis, decision, approvals, and copies of notices;\n• service-provider notices, contracts, communications, and remediation;\n• logs, exports, screenshots, evidence sources, and preservation details;\n• corrective actions, validation results, post-incident findings, and closure approval.",
+          "proposed_expected_relationship": {
+            "value": "background_context",
+            "provenance": {
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T03:48:51.000Z",
+              "source_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
+              "source_locator": "candidates[2]",
+              "source_hash": "5295776657aff76b357e5f64a1a17f066c655e914b3366a58e7fb7905a1788c8",
+              "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+            }
+          },
+          "proposed_expected_elements": {
+            "value": [],
+            "provenance": {
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T03:48:51.000Z",
+              "source_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
+              "source_locator": "candidates[2]",
+              "source_hash": "5295776657aff76b357e5f64a1a17f066c655e914b3366a58e7fb7905a1788c8",
+              "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+            }
+          },
+          "proposed_direct_support": {
+            "value": false,
+            "provenance": {
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T03:48:51.000Z",
+              "source_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
+              "source_locator": "candidates[2]",
+              "source_hash": "5295776657aff76b357e5f64a1a17f066c655e914b3366a58e7fb7905a1788c8",
+              "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+            }
+          },
+          "proposed_hard_negative": {
+            "value": true,
+            "provenance": {
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T03:48:51.000Z",
+              "source_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
+              "source_locator": "candidates[2]",
+              "source_hash": "5295776657aff76b357e5f64a1a17f066c655e914b3366a58e7fb7905a1788c8",
+              "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+            }
+          },
+          "adjudication_note": "An incident-file contents inventory does not require the listed recovery or validation actions to occur.",
+          "source": {
+            "kind": "frozen_evaluation_pack",
+            "path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
+            "locator": "candidates[2]",
+            "content_sha256": "7dce6f4d89abb84465546fae07568a2fc3d218b6390d15f6aa9606237cd78322",
+            "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+          },
+          "stored_provenance": {
+            "original_position": 3,
+            "workspace_id": "af584c33-42fe-4ce4-b641-c3b381c98214",
+            "document_id": "0cca8649-fd13-42f1-b259-28e54d12fe37",
+            "chunk_id": "8c104761-0821-4330-9cfc-5b843b4d5175",
+            "chunk_index": 16,
+            "filename": "northline_regulation_sp_policy.pdf",
+            "page_start": 7,
+            "page_end": 7,
+            "section_path": "17. Appendix A - Incident File Minimum Contents",
+            "stored_content_sha256": "7dce6f4d89abb84465546fae07568a2fc3d218b6390d15f6aa9606237cd78322",
+            "independently_recomputed_sha256": "7dce6f4d89abb84465546fae07568a2fc3d218b6390d15f6aa9606237cd78322",
+            "stored_embedding_input_sha256": "6a44d45ae586bf804bbd0f1e3ef7098790d3219e198a5ce2daf345f834e3420f",
+            "section_heading": "17. Appendix A - Incident File Minimum Contents",
+            "parent_heading": "Document",
+            "retrieval_selection_metadata": {
+              "selection_method": "frozen_evaluation_pack",
+              "order_key": "chunk_index",
+              "order_value": 16
+            },
+            "semantic_rank": null,
+            "keyword_rank": null,
+            "merged_rank": null,
+            "source_artifact_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
+            "source_artifact_locator": "candidates[2]",
             "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
           },
           "reviewer_decisions": {

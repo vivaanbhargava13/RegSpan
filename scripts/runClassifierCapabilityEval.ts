@@ -4,6 +4,7 @@ import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import {
   CLASSIFIER_CAPABILITY_RESULT_SCHEMA,
+  CLASSIFIER_CAPABILITY_EXPERIMENT_LIMITATION,
   assertRequestsDifferOnlyByModel,
   formatClassifierCapabilityMarkdown,
   classifierCapabilityMetrics,
@@ -35,7 +36,7 @@ const DEFAULT_FIXTURE_PATH = "eval-fixtures/classifier-capability/fixtures.v2.js
 const DEFAULT_OUTPUT_PATH = "eval-results/classifier-capability/results.json";
 const PAID_CONFIRMATION = "CLASSIFIER_CAPABILITY_AB";
 
-type Mode = "dry" | "run" | "report";
+type Mode = "dry" | "readiness" | "run" | "report";
 type Args = {
   mode: Mode;
   fixturePath: string;
@@ -55,6 +56,7 @@ function usage() {
 
 Usage:
   npm run eval:classifier-capability:dry -- [--baseline-model <id>] [--challenger-model <id>]
+  npm run eval:classifier-capability:readiness -- --baseline-model <id> --challenger-model <id> --confirm-paid ${PAID_CONFIRMATION}
   npm run eval:classifier-capability -- --baseline-model <id> --challenger-model <id> --confirm-paid ${PAID_CONFIRMATION}
   npm run eval:classifier-capability:report -- [--input <results.json>]
 
@@ -86,7 +88,7 @@ function parseArgs(argv: string[]): Args {
     usage();
     process.exit(0);
   }
-  const mode: Mode = first === "dry" || first === "run" || first === "report" ? first : "dry";
+  const mode: Mode = first === "dry" || first === "readiness" || first === "run" || first === "report" ? first : "dry";
   const args = new Map<string, string>();
   for (let index = mode === first ? 1 : 0; index < argv.length; index += 2) {
     const name = argv[index];
@@ -344,6 +346,7 @@ async function runDry(args: Args, fixtures: ClassifierCapabilityFixtureSuite) {
     frozen_baseline_commit: fixtures.frozen_baseline_commit,
     fixture_suite_hash: fixtures.suite_hash,
     network_calls: 0,
+    experiment_limitation: CLASSIFIER_CAPABILITY_EXPERIMENT_LIMITATION,
     equivalence: "passed: every serialized request is byte-equivalent after replacing only model",
     cases: plan,
   });
@@ -351,18 +354,38 @@ async function runDry(args: Args, fixtures: ClassifierCapabilityFixtureSuite) {
   console.log(`No network calls were made. Dry-run artifact: ${output}`);
 }
 
-async function runPaid(args: Args, fixtures: ClassifierCapabilityFixtureSuite) {
-  const plan = requestPlan(fixtures, args.baselineModel, args.challengerModel);
-  const readinessBlockers = paidRunReadinessBlockers(fixtures);
-  if (readinessBlockers.length > 0) {
-    throw new Error(`Paid run is blocked:\n- ${readinessBlockers.join("\n- ")}`);
-  }
+function paidEnvironmentBlockers(args: Args) {
+  const blockers: string[] = [];
   if (args.confirmPaid !== PAID_CONFIRMATION) {
-    throw new Error(`Refusing provider calls without --confirm-paid ${PAID_CONFIRMATION}.`);
+    blockers.push(`Explicit paid confirmation --confirm-paid ${PAID_CONFIRMATION} is required.`);
   }
   if (process.env.ENABLE_EXTERNAL_AI_PROCESSING?.trim().toLowerCase() !== "true"
     || process.env.ENABLE_EXTERNAL_AI_CLASSIFIER?.trim().toLowerCase() !== "true") {
-    throw new Error("Paid run requires both external AI policy flags to be explicitly true.");
+    blockers.push("Both external-AI policy flags must be explicitly true.");
+  }
+  if (!(process.env.REQUIREMENT_CLASSIFIER_API_KEY?.trim() || process.env.OPENAI_API_KEY?.trim())) {
+    blockers.push("A classifier API key is required.");
+  }
+  return blockers;
+}
+
+async function runReadiness(args: Args, fixtures: ClassifierCapabilityFixtureSuite) {
+  const plan = requestPlan(fixtures, args.baselineModel, args.challengerModel);
+  const blockers = [...paidRunReadinessBlockers(fixtures), ...paidEnvironmentBlockers(args)];
+  if (blockers.length > 0) {
+    console.log(`BLOCKED:\n- ${blockers.join("\n- ")}`);
+    process.exitCode = 1;
+    return;
+  }
+  console.log(`READY: ${fixtures.cases.filter((item) => item.evaluation_role === "scored").length} scored cases and ${plan.reduce((sum, item) => sum + item.requests.length, 0)} total candidate requests validated.`);
+  console.log("Fixture integrity, suite hash, paid configuration, distinct models, and baseline/challenger request equivalence passed. No provider calls were made.");
+}
+
+async function runPaid(args: Args, fixtures: ClassifierCapabilityFixtureSuite) {
+  const plan = requestPlan(fixtures, args.baselineModel, args.challengerModel);
+  const readinessBlockers = [...paidRunReadinessBlockers(fixtures), ...paidEnvironmentBlockers(args)];
+  if (readinessBlockers.length > 0) {
+    throw new Error(`Paid run is blocked:\n- ${readinessBlockers.join("\n- ")}`);
   }
   const baseline = await runArm({
     name: "baseline", model: args.baselineModel, inputRate: args.baselineInputRate,
@@ -461,5 +484,6 @@ async function regenerateReport(args: Args, fixtures: ClassifierCapabilityFixtur
 const args = parseArgs(process.argv.slice(2));
 const fixtures = await loadFixtures(args.fixturePath);
 if (args.mode === "dry") await runDry(args, fixtures);
+else if (args.mode === "readiness") await runReadiness(args, fixtures);
 else if (args.mode === "run") await runPaid(args, fixtures);
 else await regenerateReport(args, fixtures);

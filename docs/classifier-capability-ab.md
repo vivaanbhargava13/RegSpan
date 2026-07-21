@@ -5,6 +5,12 @@ model identifier changes. It reuses production request construction,
 classification, quote and element post-processing, requirement matching, and
 finding aggregation. It does not run ingestion, retrieval, or database work.
 
+This experiment measures per-candidate classifier capability within the current
+architecture. It does not evaluate cross-candidate element aggregation,
+retrieval quality, ingestion, or the proposed facts-only redesign. The paid run
+is intentionally narrow: it asks whether a stronger model materially improves
+classification of each frozen candidate passed through the existing pipeline.
+
 ## Frozen fixture and review state
 
 The current suite is
@@ -22,6 +28,8 @@ Only confirmed `reviewer_answer_key` or `manual_adjudication` fields may be
 scored. Nine approved single-candidate cases are confirmed through manual
 adjudication and scored. The two cases derived from prior OpenAI diagnostics
 remain `diagnostic_only`; their provider-derived provenance was not converted.
+Both attempted multi-candidate recovery cases are also `diagnostic_only`. They
+are retained for transparency but do not enter headline capability metrics.
 
 The blank review artifacts are:
 
@@ -29,11 +37,9 @@ The blank review artifacts are:
 - `eval-fixtures/classifier-capability/reviewer-worksheet.json`
 
 They contain requirement text, element definitions, exact candidate text and
-order, proposed labels, provenance, and blank reviewer fields. The frozen local
-requirement and retrieval reports omit original candidate chunk IDs and exact
-candidate-text hashes, while the isolated corpus results contain case summaries
-rather than ordered candidates. No multi-candidate review case was fabricated,
-and paid mode therefore remains deliberately blocked.
+order, proposed labels, provenance, and blank reviewer fields. No valid
+complementary aggregation case is available. That is an explicit experiment
+limitation, not a paid-run blocker.
 
 Regenerate normalized fixtures and worksheets after an intentional source
 review with:
@@ -64,13 +70,25 @@ Before any provider access, paid mode requires:
 - a valid fixture suite and suite hash;
 - distinct non-empty model identifiers and dry request equivalence;
 - every scored field to be independently confirmed;
-- at least one confirmed scored multi-candidate case;
+- at least eight independently confirmed scored cases;
+- at least three confirmed direct-support positives;
+- at least three confirmed hard negatives;
+- at least one confirmed partial case;
 - no scored field derived from provider output;
 - literal paid confirmation and both external-AI flags;
 - an API key.
 
-The current suite passes single-candidate adjudication but lacks a confirmed
-multi-candidate case, so a paid run cannot start.
+Run the no-provider readiness audit with:
+
+```bash
+npm run eval:classifier-capability:readiness -- \
+  --baseline-model baseline-model-id \
+  --challenger-model challenger-model-id \
+  --confirm-paid CLASSIFIER_CAPABILITY_AB
+```
+
+The audit validates every paid precondition and prints `READY` without making a
+provider call. The lack of a valid aggregation case remains a report limitation.
 
 ## Candidate outcomes and arm validity
 

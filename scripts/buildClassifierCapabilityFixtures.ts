@@ -5,6 +5,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import {
   CLASSIFIER_CAPABILITY_FIXTURE_SCHEMA,
+  CLASSIFIER_CAPABILITY_EXPERIMENT_LIMITATION,
   classifierCapabilityFixtureSuiteHash,
   jsonHash,
   sha256,
@@ -22,6 +23,7 @@ const AGGREGATION_PACK_PATH = "eval-fixtures/classifier-capability/frozen-aggreg
 const DIAGNOSTIC_MULTI_CANDIDATE_CASE_ID = "recovery-remediation-validation-multi-candidate-review";
 const AGGREGATION_CASE_ID = "recovery-remediation-validation-cross-candidate-aggregation-review";
 const DIAGNOSTIC_MULTI_REVIEWED_AT = "2026-07-21T03:31:43.000Z";
+const AGGREGATION_REVIEWED_AT = "2026-07-21T03:48:51.000Z";
 const FROZEN_BASELINE = "d59d1c914397206a7d72aa104edcf4aabcd04bfb";
 const FROZEN_UNCOMMITTED_SOURCE_HASHES: Record<string, string> = {
   "eval-results/requirement-eval-latest.json": "2d9796e2710198cd96efccd83dd304e41f603f4da4d9cf47b28ec1173db47eed",
@@ -48,7 +50,6 @@ const MULTI_CANDIDATE_ARTIFACTS_INSPECTED = [
   MULTI_CANDIDATE_CAPTURE_PATH,
   AGGREGATION_PACK_PATH,
 ];
-const MULTI_CANDIDATE_BLOCKER = `Aggregation case ${AGGREGATION_CASE_ID} is source-complete but unresolved. Paid mode remains blocked until a reviewer manually adjudicates the final status, case-supported elements, and every candidate relationship, element, direct-support, and hard-negative field.`;
 
 type RetrievalCaptureCandidate = {
   candidate_id: string;
@@ -606,21 +607,48 @@ async function main() {
       value: ["recovery_steps", "remediation_tracking", "validation_testing"],
       provenance: diagnosticCaseProvenance,
     },
-    notes: "Diagnostic only: Candidate 1 alone covers all required elements, and its own stored embedding was used as the retrieval query vector. This case cannot satisfy the aggregation gate.",
+    notes: "Diagnostic only: Candidate 1 alone covers all required elements, and its own stored embedding was used as the retrieval query vector. This case does not provide evidence about cross-candidate aggregation.",
     candidates: diagnosticCandidates,
   });
 
-  const aggregationCandidates = aggregationPack.candidates.map((captured) => {
-    const provenance = {
-      ...inferred(captured.source_artifact_path, captured.source_artifact_locator),
-      normalization_recipe: aggregationPack.normalization_recipe,
-    };
+  const aggregationDecisions = [
+    {
+      relationship: "partially_supports" as const,
+      elements: ["recovery_steps", "validation_testing"],
+      direct: false,
+      hardNegative: false,
+      note: "The passage defines restoration, root-cause remediation, control/access validation, and post-incident review, but does not define remediation tracking.",
+    },
+    {
+      relationship: "background_context" as const,
+      elements: [],
+      direct: false,
+      hardNegative: true,
+      note: "Provider oversight and tracking provider risks/remediation do not establish incident recovery remediation tracking.",
+    },
+    {
+      relationship: "background_context" as const,
+      elements: [],
+      direct: false,
+      hardNegative: true,
+      note: "An incident-file contents inventory does not require the listed recovery or validation actions to occur.",
+    },
+  ];
+  const aggregationCandidates = aggregationPack.candidates.map((captured, index) => {
+    const provenance = manual(
+      captured.source_artifact_path,
+      captured.source_artifact_locator,
+      aggregationPack.normalization_recipe,
+      AGGREGATION_REVIEWED_AT,
+    );
+    const decision = aggregationDecisions[index];
     return {
       ...sourceCandidate(captured, aggregationPack),
-      expected_relationship: { value: null, provenance },
-      expected_covered_elements: { value: null, provenance },
-      direct_support_recovery: { value: null, provenance },
-      hard_negative: { value: null, provenance },
+      expected_relationship: { value: decision.relationship, provenance },
+      expected_covered_elements: { value: decision.elements, provenance },
+      direct_support_recovery: { value: decision.direct, provenance },
+      hard_negative: { value: decision.hardNegative, provenance },
+      adjudication_note: decision.note,
     };
   });
   const aggregationCaseProvenance = aggregationCandidates[0].expected_relationship.provenance;
@@ -628,10 +656,13 @@ async function main() {
     id: AGGREGATION_CASE_ID,
     requirement_id: aggregationPack.requirement_id,
     category: "recovery_remediation_validation",
-    evaluation_role: "unresolved",
-    expected_status: { value: null, provenance: aggregationCaseProvenance },
-    expected_supported_elements: { value: null, provenance: aggregationCaseProvenance },
-    notes: `Frozen deterministic stored-chunk order. ${aggregationPack.unconfirmed_review_aid}`,
+    evaluation_role: "diagnostic_only",
+    expected_status: { value: "partial", provenance: aggregationCaseProvenance },
+    expected_supported_elements: {
+      value: ["recovery_steps", "validation_testing"],
+      provenance: aggregationCaseProvenance,
+    },
+    notes: "Diagnostic only: the provider-oversight passage does not establish incident recovery remediation tracking, so this pack does not test complementary aggregation.",
     candidates: aggregationCandidates,
   });
   const suiteWithoutHash: Omit<ClassifierCapabilityFixtureSuite, "suite_hash"> = {
@@ -642,9 +673,10 @@ async function main() {
     requirements,
     requirement_sha256: Object.fromEntries(requirements.map((requirement) => [requirement.id, jsonHash(requirement)])),
     multi_candidate_review: {
-      status: "unresolved",
-      case_id: AGGREGATION_CASE_ID,
-      blocker: MULTI_CANDIDATE_BLOCKER,
+      status: "diagnostic_only",
+      case_id: null,
+      blocker: null,
+      limitation: CLASSIFIER_CAPABILITY_EXPERIMENT_LIMITATION,
     },
     cases,
   };
@@ -669,9 +701,7 @@ async function main() {
       },
       proposed_expected_status: fixtureCase.expected_status,
       proposed_expected_supported_elements: fixtureCase.expected_supported_elements,
-      reviewer_decisions: fixtureCase.id === AGGREGATION_CASE_ID
-        ? { expected_status: null, case_supported_elements: null, reviewer_id: null, reviewed_at: null, notes: null }
-        : { expected_status: null, expected_supported_elements: null, reviewer_id: null, reviewed_at: null, notes: null },
+      reviewer_decisions: { expected_status: null, expected_supported_elements: null, reviewer_id: null, reviewed_at: null, notes: null },
       candidates: fixtureCase.candidates.map((candidate, index) => ({
         order: candidate.stored_provenance?.original_position ?? index + 1,
         candidate_id: candidate.chunk_id,
@@ -680,6 +710,7 @@ async function main() {
         proposed_expected_elements: candidate.expected_covered_elements,
         proposed_direct_support: candidate.direct_support_recovery,
         proposed_hard_negative: candidate.hard_negative,
+        adjudication_note: candidate.adjudication_note ?? null,
         source: candidate.source,
         ...(candidate.stored_provenance ? { stored_provenance: candidate.stored_provenance } : {}),
         reviewer_decisions: {
@@ -694,14 +725,14 @@ async function main() {
       })),
     };
   });
-  const multiCandidateWorksheetCase = worksheetCases.find((item) => item.case_id === AGGREGATION_CASE_ID)!;
   const worksheet = {
     schema_version: "classifier-capability-reviewer-worksheet/v1",
     fixture_suite_hash: suite.suite_hash,
-    unresolved_multi_candidate_blocker: suite.multi_candidate_review.blocker,
+    paid_readiness_blocker: null,
+    experiment_limitation: CLASSIFIER_CAPABILITY_EXPERIMENT_LIMITATION,
     multi_candidate_artifacts_inspected: MULTI_CANDIDATE_ARTIFACTS_INSPECTED,
-    multi_candidate_review_case: multiCandidateWorksheetCase,
-    cases: worksheetCases.filter((item) => item.case_id !== AGGREGATION_CASE_ID),
+    multi_candidate_review_case: null,
+    cases: worksheetCases,
   };
   await writeFile(resolve(WORKSHEET_JSON_PATH), `${JSON.stringify(worksheet, null, 2)}\n`, "utf8");
   const markdown = [
@@ -709,32 +740,23 @@ async function main() {
     "",
     `Fixture suite hash: \`${suite.suite_hash}\``,
     "",
-    "## Unresolved blocker",
+    "## Experiment scope and limitation",
     "",
-    suite.multi_candidate_review.blocker!,
+    CLASSIFIER_CAPABILITY_EXPERIMENT_LIMITATION,
     "",
     "Artifacts inspected:",
     "",
     ...MULTI_CANDIDATE_ARTIFACTS_INSPECTED.map((path) => `- \`${path}\``),
     "",
-    "The historical reports could not be reconstructed because their stored chunks no longer exist. The multi-candidate section below preserves a newly captured, document-scoped retrieval order and remains entirely unresolved.",
-    "",
-    ...[...worksheet.cases, worksheet.multi_candidate_review_case].flatMap((fixtureCase) => [
-      fixtureCase.case_id === AGGREGATION_CASE_ID
-        ? `## Multi-candidate review: ${fixtureCase.case_id}`
-        : `## ${fixtureCase.case_id}`,
+    ...worksheet.cases.flatMap((fixtureCase) => [
+      `## ${fixtureCase.case_id}`,
       "",
       `Role: \`${fixtureCase.evaluation_role}\``,
       `Requirement: **${fixtureCase.requirement.title}** (\`${fixtureCase.requirement.id}\`)`,
       fixtureCase.requirement.description,
       "",
-      ...(fixtureCase.case_id === AGGREGATION_CASE_ID
-        ? ["Unconfirmed review aid only: Candidates 1 and 2 appear capable of complementary operative detail; Candidate 3 appears to be a high-signal incident-file inventory distractor.", ""]
-        : [
-          `Proposed final status: \`${fixtureCase.proposed_expected_status.value}\``,
-          `Proposed supported elements: \`${fixtureCase.proposed_expected_supported_elements.value?.join(", ") || "none"}\``,
-          "",
-        ]),
+      `Proposed final status: \`${fixtureCase.proposed_expected_status.value}\``,
+      `Proposed supported elements: \`${fixtureCase.proposed_expected_supported_elements.value?.join(", ") || "none"}\``,
       "",
       "Reviewer final status: ____________________",
       "Reviewer case-supported elements: ____________________",
@@ -748,12 +770,8 @@ async function main() {
         candidate.exact_candidate_text,
         "```",
         "",
-        ...(fixtureCase.case_id === AGGREGATION_CASE_ID
-          ? []
-          : [
-            `Proposed: relationship \`${candidate.proposed_expected_relationship.value}\`; elements \`${candidate.proposed_expected_elements.value?.join(", ") || "none"}\`; direct-support \`${candidate.proposed_direct_support.value}\`; hard-negative \`${candidate.proposed_hard_negative.value}\`.`,
-            "",
-          ]),
+        `Proposed: relationship \`${candidate.proposed_expected_relationship.value}\`; elements \`${candidate.proposed_expected_elements.value?.join(", ") || "none"}\`; direct-support \`${candidate.proposed_direct_support.value}\`; hard-negative \`${candidate.proposed_hard_negative.value}\`.`,
+        ...(candidate.adjudication_note ? [`Adjudication note: ${candidate.adjudication_note}`, ""] : [""]),
         `Provenance: \`${candidate.proposed_expected_relationship.provenance.source_type}\`, ${candidate.proposed_expected_relationship.provenance.source_path}, ${candidate.proposed_expected_relationship.provenance.source_locator}.`,
         ...(candidate.stored_provenance ? [
           `Stored row: workspace \`${candidate.stored_provenance.workspace_id}\`; document \`${candidate.stored_provenance.document_id}\`; chunk \`${candidate.stored_provenance.chunk_id}\`; index \`${candidate.stored_provenance.chunk_index}\`; original position \`${candidate.stored_provenance.original_position}\`.`,

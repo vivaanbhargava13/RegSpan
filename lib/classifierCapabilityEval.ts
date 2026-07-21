@@ -12,6 +12,7 @@ import type {
 
 export const CLASSIFIER_CAPABILITY_FIXTURE_SCHEMA = "classifier-capability-fixtures/v2";
 export const CLASSIFIER_CAPABILITY_RESULT_SCHEMA = "classifier-capability-results/v2";
+export const CLASSIFIER_CAPABILITY_EXPERIMENT_LIMITATION = "This experiment measures per-candidate classifier capability within the current architecture. It does not evaluate cross-candidate element aggregation, retrieval quality, ingestion, or the proposed facts-only redesign. No valid complementary aggregation case is included.";
 
 export type ClassifierCapabilityProvenanceSource =
   | "reviewer_answer_key"
@@ -47,6 +48,7 @@ export type ClassifierCapabilityCandidateFixture = RetrievedChunk & {
     content_sha256: string;
     normalization_recipe: string | null;
   };
+  adjudication_note?: string;
   stored_provenance?: {
     original_position: number;
     workspace_id: string;
@@ -95,9 +97,10 @@ export type ClassifierCapabilityFixtureSuite = {
   requirements: RegSpRequirement[];
   requirement_sha256: Record<string, string>;
   multi_candidate_review: {
-    status: "confirmed" | "unresolved";
+    status: "confirmed" | "unresolved" | "diagnostic_only";
     case_id: string | null;
     blocker: string | null;
+    limitation?: string | null;
   };
   cases: ClassifierCapabilityCaseFixture[];
 };
@@ -320,54 +323,49 @@ export function validateClassifierCapabilityFixtures(value: unknown): Classifier
 export function paidRunReadinessBlockers(fixtures: ClassifierCapabilityFixtureSuite) {
   const blockers: string[] = [];
   const scored = fixtures.cases.filter((item) => item.evaluation_role === "scored");
-  if (scored.length === 0) blockers.push("No independently confirmed scored fixtures are available.");
+  if (scored.length < 8) blockers.push(`At least 8 independently confirmed scored cases are required; found ${scored.length}.`);
+  let confirmedDirectSupportPositives = 0;
+  let confirmedHardNegatives = 0;
+  let confirmedPartialCases = 0;
   for (const fixtureCase of scored) {
     if (!caseHasConfirmedScoringFields(fixtureCase)) blockers.push(`Scored case ${fixtureCase.id} has unconfirmed fields.`);
-    const provenances = fixtureCase.candidates.flatMap((candidate) => [
-      candidate.expected_relationship.provenance,
-      candidate.expected_covered_elements.provenance,
-      candidate.direct_support_recovery.provenance,
-      candidate.hard_negative.provenance,
-    ]);
+    const provenances = [
+      fixtureCase.expected_status.provenance,
+      fixtureCase.expected_supported_elements.provenance,
+      ...fixtureCase.candidates.flatMap((candidate) => [
+        candidate.expected_relationship.provenance,
+        candidate.expected_covered_elements.provenance,
+        candidate.direct_support_recovery.provenance,
+        candidate.hard_negative.provenance,
+      ]),
+    ];
     if (provenances.some((item) => item.source_type === "diagnostic_artifact")) {
       blockers.push(`Scored case ${fixtureCase.id} is provider-output-derived.`);
     }
+    if (fixtureCase.expected_status.value === "partial"
+      && independentlyConfirmed(fixtureCase.expected_status.provenance)) {
+      confirmedPartialCases += 1;
+    }
+    for (const candidate of fixtureCase.candidates) {
+      if (candidate.direct_support_recovery.value === true
+        && candidate.expected_relationship.value === "supports"
+        && independentlyConfirmed(candidate.direct_support_recovery.provenance)
+        && independentlyConfirmed(candidate.expected_relationship.provenance)) {
+        confirmedDirectSupportPositives += 1;
+      }
+      if (candidate.hard_negative.value === true
+        && independentlyConfirmed(candidate.hard_negative.provenance)) {
+        confirmedHardNegatives += 1;
+      }
+    }
   }
-  const multi = fixtures.multi_candidate_review;
-  const multiCase = multi.case_id ? fixtures.cases.find((item) => item.id === multi.case_id) : null;
-  const multiRequirement = multiCase
-    ? fixtures.requirements.find((requirement) => requirement.id === multiCase.requirement_id) ?? null
-    : null;
-  const positiveCandidates = multiCase?.candidates.filter((candidate) =>
-    candidate.expected_relationship.value === "supports" || candidate.expected_relationship.value === "partially_supports") ?? [];
-  const requiredElements = new Set(multiRequirement?.requiredElementsForCovered ?? []);
-  const caseSupportedRequiredElements = new Set(
-    (multiCase?.expected_supported_elements.value ?? []).filter((element) => requiredElements.has(element)),
-  );
-  const positiveElementSets = positiveCandidates.map((candidate) => new Set(
-    (candidate.expected_covered_elements.value ?? []).filter((element) => caseSupportedRequiredElements.has(element)),
-  ));
-  const positiveElementUnion = new Set(positiveElementSets.flatMap((elements) => [...elements]));
-  const everyPositiveContributesUniqueElement = positiveElementSets.every((elements, index) =>
-    [...elements].some((element) => positiveElementSets.every((other, otherIndex) =>
-      otherIndex === index || !other.has(element))));
-  const noIndividualCoversAll = positiveElementSets.every((elements) =>
-    [...caseSupportedRequiredElements].some((element) => !elements.has(element)));
-  const complementarySupport = positiveCandidates.length >= 2
-    && requiredElements.size > 0
-    && [...requiredElements].every((element) => caseSupportedRequiredElements.has(element))
-    && [...caseSupportedRequiredElements].every((element) => positiveElementUnion.has(element))
-    && noIndividualCoversAll
-    && everyPositiveContributesUniqueElement;
-  const hasHighSignalDistractor = multiCase?.candidates.some((candidate) =>
-    candidate.hard_negative.value
-    && candidate.expected_relationship.value !== "supports"
-    && candidate.expected_relationship.value !== "partially_supports") ?? false;
-  if (multi.status !== "confirmed" || !multiCase || multiCase.evaluation_role !== "scored"
-    || multiCase.candidates.length < 3 || !caseHasConfirmedScoringFields(multiCase)
-    || !complementarySupport || !hasHighSignalDistractor) {
-    blockers.push(multi.blocker ?? "No confirmed scored multi-candidate case is available.");
+  if (confirmedDirectSupportPositives < 3) {
+    blockers.push(`At least 3 confirmed direct-support positives are required; found ${confirmedDirectSupportPositives}.`);
   }
+  if (confirmedHardNegatives < 3) {
+    blockers.push(`At least 3 confirmed hard negatives are required; found ${confirmedHardNegatives}.`);
+  }
+  if (confirmedPartialCases < 1) blockers.push("At least 1 confirmed partial scored case is required.");
   return [...new Set(blockers)];
 }
 
@@ -536,6 +534,10 @@ export function formatClassifierCapabilityMarkdown(fixtures: ClassifierCapabilit
     `Fixture suite hash: \`${fixtures.suite_hash}\`  `,
     `Frozen baseline: \`${fixtures.frozen_baseline_commit}\`  `,
     `Generated: ${result.generated_at}`,
+    "",
+    "## Experiment scope and limitation",
+    "",
+    CLASSIFIER_CAPABILITY_EXPERIMENT_LIMITATION,
     "",
   ];
   if (invalid) lines.push(

@@ -354,9 +354,10 @@
     "response_recovery_remediation_validation": "dd78cddd713682c800f1d44fc9e0e4b201822f3480e16e73b45996c718fc68f5"
   },
   "multi_candidate_review": {
-    "status": "unresolved",
-    "case_id": "recovery-remediation-validation-cross-candidate-aggregation-review",
-    "blocker": "Aggregation case recovery-remediation-validation-cross-candidate-aggregation-review is source-complete but unresolved. Paid mode remains blocked until a reviewer manually adjudicates the final status, case-supported elements, and every candidate relationship, element, direct-support, and hard-negative field."
+    "status": "diagnostic_only",
+    "case_id": null,
+    "blocker": null,
+    "limitation": "This experiment measures per-candidate classifier capability within the current architecture. It does not evaluate cross-candidate element aggregation, retrieval quality, ingestion, or the proposed facts-only redesign. No valid complementary aggregation case is included."
   },
   "cases": [
     {
@@ -1657,7 +1658,7 @@
           "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
         }
       },
-      "notes": "Diagnostic only: Candidate 1 alone covers all required elements, and its own stored embedding was used as the retrieval query vector. This case cannot satisfy the aggregation gate.",
+      "notes": "Diagnostic only: Candidate 1 alone covers all required elements, and its own stored embedding was used as the retrieval query vector. This case does not provide evidence about cross-candidate aggregation.",
       "candidates": [
         {
           "chunk_id": "5e7de7c7-f2b1-4550-a35f-aabdf8289972",
@@ -2197,14 +2198,14 @@
       "id": "recovery-remediation-validation-cross-candidate-aggregation-review",
       "requirement_id": "response_recovery_remediation_validation",
       "category": "recovery_remediation_validation",
-      "evaluation_role": "unresolved",
+      "evaluation_role": "diagnostic_only",
       "expected_status": {
-        "value": null,
+        "value": "partial",
         "provenance": {
-          "confirmed": false,
-          "source_type": "implementation_inference",
-          "reviewer_id": null,
-          "reviewed_at": null,
+          "confirmed": true,
+          "source_type": "manual_adjudication",
+          "reviewer_id": "vivaan-bhargava",
+          "reviewed_at": "2026-07-21T03:48:51.000Z",
           "source_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
           "source_locator": "candidates[0]",
           "source_hash": "5295776657aff76b357e5f64a1a17f066c655e914b3366a58e7fb7905a1788c8",
@@ -2212,19 +2213,22 @@
         }
       },
       "expected_supported_elements": {
-        "value": null,
+        "value": [
+          "recovery_steps",
+          "validation_testing"
+        ],
         "provenance": {
-          "confirmed": false,
-          "source_type": "implementation_inference",
-          "reviewer_id": null,
-          "reviewed_at": null,
+          "confirmed": true,
+          "source_type": "manual_adjudication",
+          "reviewer_id": "vivaan-bhargava",
+          "reviewed_at": "2026-07-21T03:48:51.000Z",
           "source_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
           "source_locator": "candidates[0]",
           "source_hash": "5295776657aff76b357e5f64a1a17f066c655e914b3366a58e7fb7905a1788c8",
           "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
         }
       },
-      "notes": "Frozen deterministic stored-chunk order. Candidates 1 and 2 appear capable of supplying complementary required elements: Candidate 1 describes recovery and validation activity, while Candidate 2 tracks identified risks and remediation. Candidate 3 appears to be a high-signal incident-file inventory distractor rather than an operative procedure. These observations are not reviewer decisions or labels.",
+      "notes": "Diagnostic only: the provider-oversight passage does not establish incident recovery remediation tracking, so this pack does not test complementary aggregation.",
       "candidates": [
         {
           "chunk_id": "f67e4e3d-d73a-4cc8-a331-04bb9f2c1b6e",
@@ -2278,12 +2282,12 @@
             "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
           },
           "expected_relationship": {
-            "value": null,
+            "value": "partially_supports",
             "provenance": {
-              "confirmed": false,
-              "source_type": "implementation_inference",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T03:48:51.000Z",
               "source_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
               "source_locator": "candidates[0]",
               "source_hash": "5295776657aff76b357e5f64a1a17f066c655e914b3366a58e7fb7905a1788c8",
@@ -2291,12 +2295,15 @@
             }
           },
           "expected_covered_elements": {
-            "value": null,
+            "value": [
+              "recovery_steps",
+              "validation_testing"
+            ],
             "provenance": {
-              "confirmed": false,
-              "source_type": "implementation_inference",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T03:48:51.000Z",
               "source_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
               "source_locator": "candidates[0]",
               "source_hash": "5295776657aff76b357e5f64a1a17f066c655e914b3366a58e7fb7905a1788c8",
@@ -2304,12 +2311,12 @@
             }
           },
           "direct_support_recovery": {
-            "value": null,
+            "value": false,
             "provenance": {
-              "confirmed": false,
-              "source_type": "implementation_inference",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T03:48:51.000Z",
               "source_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
               "source_locator": "candidates[0]",
               "source_hash": "5295776657aff76b357e5f64a1a17f066c655e914b3366a58e7fb7905a1788c8",
@@ -2317,18 +2324,19 @@
             }
           },
           "hard_negative": {
-            "value": null,
+            "value": false,
             "provenance": {
-              "confirmed": false,
-              "source_type": "implementation_inference",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T03:48:51.000Z",
               "source_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
               "source_locator": "candidates[0]",
               "source_hash": "5295776657aff76b357e5f64a1a17f066c655e914b3366a58e7fb7905a1788c8",
               "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
             }
-          }
+          },
+          "adjudication_note": "The passage defines restoration, root-cause remediation, control/access validation, and post-incident review, but does not define remediation tracking."
         },
         {
           "chunk_id": "5479d864-f145-4454-b00f-b8e572a20ac7",
@@ -2382,12 +2390,12 @@
             "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
           },
           "expected_relationship": {
-            "value": null,
+            "value": "background_context",
             "provenance": {
-              "confirmed": false,
-              "source_type": "implementation_inference",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T03:48:51.000Z",
               "source_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
               "source_locator": "candidates[1]",
               "source_hash": "5295776657aff76b357e5f64a1a17f066c655e914b3366a58e7fb7905a1788c8",
@@ -2395,12 +2403,12 @@
             }
           },
           "expected_covered_elements": {
-            "value": null,
+            "value": [],
             "provenance": {
-              "confirmed": false,
-              "source_type": "implementation_inference",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T03:48:51.000Z",
               "source_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
               "source_locator": "candidates[1]",
               "source_hash": "5295776657aff76b357e5f64a1a17f066c655e914b3366a58e7fb7905a1788c8",
@@ -2408,12 +2416,12 @@
             }
           },
           "direct_support_recovery": {
-            "value": null,
+            "value": false,
             "provenance": {
-              "confirmed": false,
-              "source_type": "implementation_inference",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T03:48:51.000Z",
               "source_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
               "source_locator": "candidates[1]",
               "source_hash": "5295776657aff76b357e5f64a1a17f066c655e914b3366a58e7fb7905a1788c8",
@@ -2421,18 +2429,19 @@
             }
           },
           "hard_negative": {
-            "value": null,
+            "value": true,
             "provenance": {
-              "confirmed": false,
-              "source_type": "implementation_inference",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T03:48:51.000Z",
               "source_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
               "source_locator": "candidates[1]",
               "source_hash": "5295776657aff76b357e5f64a1a17f066c655e914b3366a58e7fb7905a1788c8",
               "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
             }
-          }
+          },
+          "adjudication_note": "Provider oversight and tracking provider risks/remediation do not establish incident recovery remediation tracking."
         },
         {
           "chunk_id": "8c104761-0821-4330-9cfc-5b843b4d5175",
@@ -2486,12 +2495,12 @@
             "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
           },
           "expected_relationship": {
-            "value": null,
+            "value": "background_context",
             "provenance": {
-              "confirmed": false,
-              "source_type": "implementation_inference",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T03:48:51.000Z",
               "source_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
               "source_locator": "candidates[2]",
               "source_hash": "5295776657aff76b357e5f64a1a17f066c655e914b3366a58e7fb7905a1788c8",
@@ -2499,12 +2508,12 @@
             }
           },
           "expected_covered_elements": {
-            "value": null,
+            "value": [],
             "provenance": {
-              "confirmed": false,
-              "source_type": "implementation_inference",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T03:48:51.000Z",
               "source_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
               "source_locator": "candidates[2]",
               "source_hash": "5295776657aff76b357e5f64a1a17f066c655e914b3366a58e7fb7905a1788c8",
@@ -2512,12 +2521,12 @@
             }
           },
           "direct_support_recovery": {
-            "value": null,
+            "value": false,
             "provenance": {
-              "confirmed": false,
-              "source_type": "implementation_inference",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T03:48:51.000Z",
               "source_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
               "source_locator": "candidates[2]",
               "source_hash": "5295776657aff76b357e5f64a1a17f066c655e914b3366a58e7fb7905a1788c8",
@@ -2525,21 +2534,22 @@
             }
           },
           "hard_negative": {
-            "value": null,
+            "value": true,
             "provenance": {
-              "confirmed": false,
-              "source_type": "implementation_inference",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T03:48:51.000Z",
               "source_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
               "source_locator": "candidates[2]",
               "source_hash": "5295776657aff76b357e5f64a1a17f066c655e914b3366a58e7fb7905a1788c8",
               "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
             }
-          }
+          },
+          "adjudication_note": "An incident-file contents inventory does not require the listed recovery or validation actions to occur."
         }
       ]
     }
   ],
-  "suite_hash": "0b03dee820b0be45a74fa87171e3b1700390551eef425f5c97d4647a70713a7a"
+  "suite_hash": "2d867460a314063bef3aeec81d95952922476b4d8bbfa1b9bbe7a4ff8bffc73a"
 }

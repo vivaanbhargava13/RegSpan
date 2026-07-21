@@ -1,10 +1,10 @@
 # Classifier capability reviewer worksheet
 
-Fixture suite hash: `0b03dee820b0be45a74fa87171e3b1700390551eef425f5c97d4647a70713a7a`
+Fixture suite hash: `2d867460a314063bef3aeec81d95952922476b4d8bbfa1b9bbe7a4ff8bffc73a`
 
-## Unresolved blocker
+## Experiment scope and limitation
 
-Aggregation case recovery-remediation-validation-cross-candidate-aggregation-review is source-complete but unresolved. Paid mode remains blocked until a reviewer manually adjudicates the final status, case-supported elements, and every candidate relationship, element, direct-support, and hard-negative field.
+This experiment measures per-candidate classifier capability within the current architecture. It does not evaluate cross-candidate element aggregation, retrieval quality, ingestion, or the proposed facts-only redesign. No valid complementary aggregation case is included.
 
 Artifacts inspected:
 
@@ -16,8 +16,6 @@ Artifacts inspected:
 - `eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json`
 - `eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json`
 
-The historical reports could not be reconstructed because their stored chunks no longer exist. The multi-candidate section below preserves a newly captured, document-scoped retrieval order and remains entirely unresolved.
-
 ## assessment-full-operative-procedure
 
 Role: `scored`
@@ -26,7 +24,6 @@ The reviewed documents appear to define how the firm assesses the nature and sco
 
 Proposed final status: `covered`
 Proposed supported elements: `assesses_scope, customer_information_systems, containment_control`
-
 
 Reviewer final status: ____________________
 Reviewer case-supported elements: ____________________
@@ -64,7 +61,6 @@ The reviewed documents appear to define how the firm assesses the nature and sco
 Proposed final status: `missing`
 Proposed supported elements: `none`
 
-
 Reviewer final status: ____________________
 Reviewer case-supported elements: ____________________
 Reviewer ID: ____________________
@@ -95,7 +91,6 @@ The reviewed documents appear to define how the firm assesses the nature and sco
 Proposed final status: `partial`
 Proposed supported elements: `customer_information_systems`
 
-
 Reviewer final status: ____________________
 Reviewer case-supported elements: ____________________
 Reviewer ID: ____________________
@@ -125,7 +120,6 @@ The reviewed documents appear to preserve logs, records, forensic evidence, and 
 
 Proposed final status: `covered`
 Proposed supported elements: `incident_materials, integrity_or_chain_of_custody, preservation_process`
-
 
 Reviewer final status: ____________________
 Reviewer case-supported elements: ____________________
@@ -158,7 +152,6 @@ The reviewed documents appear to preserve logs, records, forensic evidence, and 
 Proposed final status: `covered`
 Proposed supported elements: `incident_materials, preservation_process`
 
-
 Reviewer final status: ____________________
 Reviewer case-supported elements: ____________________
 Reviewer ID: ____________________
@@ -188,7 +181,6 @@ The reviewed documents appear to preserve logs, records, forensic evidence, and 
 
 Proposed final status: `partial`
 Proposed supported elements: `incident_materials`
-
 
 Reviewer final status: ____________________
 Reviewer case-supported elements: ____________________
@@ -222,7 +214,6 @@ The reviewed documents appear to preserve logs, records, forensic evidence, and 
 Proposed final status: `missing`
 Proposed supported elements: `none`
 
-
 Reviewer final status: ____________________
 Reviewer case-supported elements: ____________________
 Reviewer ID: ____________________
@@ -252,7 +243,6 @@ The reviewed documents appear to define how the firm recovers from unauthorized 
 
 Proposed final status: `covered`
 Proposed supported elements: `recovery_steps, remediation_tracking, validation_testing`
-
 
 Reviewer final status: ____________________
 Reviewer case-supported elements: ____________________
@@ -290,7 +280,6 @@ The reviewed documents appear to define how the firm recovers from unauthorized 
 Proposed final status: `missing`
 Proposed supported elements: `none`
 
-
 Reviewer final status: ____________________
 Reviewer case-supported elements: ____________________
 Reviewer ID: ____________________
@@ -320,7 +309,6 @@ The reviewed documents appear to define how the firm recovers from unauthorized 
 
 Proposed final status: `missing`
 Proposed supported elements: `none`
-
 
 Reviewer final status: ____________________
 Reviewer case-supported elements: ____________________
@@ -352,7 +340,6 @@ The reviewed documents appear to define how the firm recovers from unauthorized 
 Proposed final status: `partial`
 Proposed supported elements: `recovery_steps`
 
-
 Reviewer final status: ____________________
 Reviewer case-supported elements: ____________________
 Reviewer ID: ____________________
@@ -382,7 +369,6 @@ The reviewed documents appear to define how the firm recovers from unauthorized 
 
 Proposed final status: `covered`
 Proposed supported elements: `recovery_steps, remediation_tracking, validation_testing`
-
 
 Reviewer final status: ____________________
 Reviewer case-supported elements: ____________________
@@ -554,14 +540,14 @@ Reviewer direct-support designation: ____________________
 Reviewer hard-negative designation: ____________________
 Reviewer notes: ____________________
 
-## Multi-candidate review: recovery-remediation-validation-cross-candidate-aggregation-review
+## recovery-remediation-validation-cross-candidate-aggregation-review
 
-Role: `unresolved`
+Role: `diagnostic_only`
 Requirement: **Response recovery and remediation validation** (`response_recovery_remediation_validation`)
 The reviewed documents appear to define how the firm recovers from unauthorized access or use of customer information and validates remediation or corrective action.
 
-Unconfirmed review aid only: Candidates 1 and 2 appear capable of complementary operative detail; Candidate 3 appears to be a high-signal incident-file inventory distractor.
-
+Proposed final status: `partial`
+Proposed supported elements: `recovery_steps, validation_testing`
 
 Reviewer final status: ____________________
 Reviewer case-supported elements: ____________________
@@ -589,7 +575,10 @@ reports.
 post-incident review.
 ```
 
-Provenance: `implementation_inference`, eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json, candidates[0].
+Proposed: relationship `partially_supports`; elements `recovery_steps, validation_testing`; direct-support `false`; hard-negative `false`.
+Adjudication note: The passage defines restoration, root-cause remediation, control/access validation, and post-incident review, but does not define remediation tracking.
+
+Provenance: `manual_adjudication`, eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json, candidates[0].
 Stored row: workspace `af584c33-42fe-4ce4-b641-c3b381c98214`; document `0cca8649-fd13-42f1-b259-28e54d12fe37`; chunk `f67e4e3d-d73a-4cc8-a331-04bb9f2c1b6e`; index `3`; original position `1`.
 Citation: northline_regulation_sp_policy.pdf, pages 3-3; section `4. Cyber Incident Response Governance`; parent `Document`; path `4. Cyber Incident Response Governance`.
 Hashes: stored source `ad8d9652a9012326951de4e989cfc0b4c04765b63ca80b5fc50268247ec3156b`; recomputed `ad8d9652a9012326951de4e989cfc0b4c04765b63ca80b5fc50268247ec3156b`; stored embedding input `4942e75572bf3038dac556b87c6924105cba6694a4c45902dc90b43e1653024b`.
@@ -626,7 +615,10 @@ responsible for ensuring that each required notice satisfies the firm's obligati
 • verify completion and delivery when a provider sends customer notices on the firm's behalf.
 ```
 
-Provenance: `implementation_inference`, eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json, candidates[1].
+Proposed: relationship `background_context`; elements `none`; direct-support `false`; hard-negative `true`.
+Adjudication note: Provider oversight and tracking provider risks/remediation do not establish incident recovery remediation tracking.
+
+Provenance: `manual_adjudication`, eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json, candidates[1].
 Stored row: workspace `af584c33-42fe-4ce4-b641-c3b381c98214`; document `0cca8649-fd13-42f1-b259-28e54d12fe37`; chunk `5479d864-f145-4454-b00f-b8e572a20ac7`; index `7`; original position `2`.
 Citation: northline_regulation_sp_policy.pdf, pages 4-5; section `8. Service Provider Oversight`; parent `Document`; path `8. Service Provider Oversight`.
 Hashes: stored source `69f597b46d36a061eb76c3d271de3525907d2671d2f3fc4def76dd67758d99ce`; recomputed `69f597b46d36a061eb76c3d271de3525907d2671d2f3fc4def76dd67758d99ce`; stored embedding input `019a2957594c418f03d53d8a6342360f1ce2e0b9877c81e895f3130cf72b21fc`.
@@ -654,7 +646,10 @@ Reviewer notes: ____________________
 • corrective actions, validation results, post-incident findings, and closure approval.
 ```
 
-Provenance: `implementation_inference`, eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json, candidates[2].
+Proposed: relationship `background_context`; elements `none`; direct-support `false`; hard-negative `true`.
+Adjudication note: An incident-file contents inventory does not require the listed recovery or validation actions to occur.
+
+Provenance: `manual_adjudication`, eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json, candidates[2].
 Stored row: workspace `af584c33-42fe-4ce4-b641-c3b381c98214`; document `0cca8649-fd13-42f1-b259-28e54d12fe37`; chunk `8c104761-0821-4330-9cfc-5b843b4d5175`; index `16`; original position `3`.
 Citation: northline_regulation_sp_policy.pdf, pages 7-7; section `17. Appendix A - Incident File Minimum Contents`; parent `Document`; path `17. Appendix A - Incident File Minimum Contents`.
 Hashes: stored source `7dce6f4d89abb84465546fae07568a2fc3d218b6390d15f6aa9606237cd78322`; recomputed `7dce6f4d89abb84465546fae07568a2fc3d218b6390d15f6aa9606237cd78322`; stored embedding input `6a44d45ae586bf804bbd0f1e3ef7098790d3219e198a5ce2daf345f834e3420f`.
