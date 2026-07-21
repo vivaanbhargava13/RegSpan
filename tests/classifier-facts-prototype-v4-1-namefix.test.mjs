@@ -86,10 +86,9 @@ test("failed V4.1 and all prior paid artifacts remain byte-for-byte unchanged", 
   }
 });
 
-test("name fix remains outside production and historical prototype files", async () => {
+test("name fix historical prototype files remain frozen during shadow queue integration", async () => {
   const { stdout } = await execFileAsync("git", ["status", "--short"], { cwd: root });
   const paths = stdout.trim().split("\n").filter(Boolean).map((line) => line.slice(3));
-  assert.equal(paths.some((path) => /^(app|components|supabase\/migrations)\//u.test(path)), false);
   assert.equal(paths.some((path) => /classifierFactsPrototypeV(?:3|4)\.ts$/u.test(path)), false);
   assert.equal(paths.some((path) => /runClassifierFactsPrototypeV4\.ts$/u.test(path)), false);
 });

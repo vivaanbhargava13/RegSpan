@@ -31,7 +31,12 @@ import {
   RequirementProcessingWatchdogTimeoutError,
   runWithRequirementProcessingWatchdog,
 } from "@/lib/requirementProcessingWatchdog";
-import { runClassifierFactsShadowFailOpen } from "@/lib/classifierFactsShadow";
+import {
+  buildClassifierFactsShadowJobSnapshots,
+  enqueueClassifierFactsShadowSnapshotsFailOpen,
+  isClassifierFactsShadowEnabled,
+  type ClassifierFactsShadowJobSnapshot,
+} from "@/lib/classifierFactsShadow";
 
 export const FINDINGS_GENERATION_TOP_K = 25;
 const EVALUATION_UNRESTRICTED_CONCURRENCY = 2_147_483_647;
@@ -528,6 +533,7 @@ export async function generateFindingsForWorkspace({
     );
     const generatedFindings: GeneratedRequirementFinding[] = [];
     const storedFindings: StoredFindingResult[] = [];
+    const shadowJobSnapshots: ClassifierFactsShadowJobSnapshot[] = [];
     const classifierSourceTextCache = createClassifierSourceTextCache();
     const evaluationCaseId = evaluationCaseIdForProgress(evaluationCaseIdByDocumentId);
     for (const requirement of requirements) {
@@ -635,21 +641,21 @@ export async function generateFindingsForWorkspace({
         }
         throw error;
       }
-      try {
-        await runClassifierFactsShadowFailOpen({
-          supabase,
-          workspaceId,
-          analysisRunId: analysisRun.id,
-          requirement,
-          candidates: requirementResult.shadowCandidates,
-          gradedCandidates: requirementResult.shadowGradedCandidates,
-          workspacePolicy: workspaceAiPolicy,
-        });
-      } catch (error) {
-        console.warn("[RegSpan shadow] Unexpected shadow failure was isolated from production analysis.", {
-          requirementId: requirement.id,
-          error: String(error),
-        });
+      if (isClassifierFactsShadowEnabled({ requirementId: requirement.id, workspacePolicy: workspaceAiPolicy })) {
+        try {
+          shadowJobSnapshots.push(...buildClassifierFactsShadowJobSnapshots({
+            workspaceId,
+            analysisRunId: analysisRun.id,
+            requirement,
+            candidates: requirementResult.shadowCandidates,
+            gradedCandidates: requirementResult.shadowGradedCandidates,
+          }));
+        } catch (error) {
+          console.warn("[RegSpan shadow] Snapshot creation failed without affecting production analysis.", {
+            requirementId: requirement.id,
+            error: String(error),
+          });
+        }
       }
       const { finding, storedFinding } = requirementResult;
       storedFindings.push(storedFinding);
@@ -663,6 +669,11 @@ export async function generateFindingsForWorkspace({
       workspaceId,
       analysisRunId: analysisRun.id,
       findingCount: generatedFindings.length,
+    });
+
+    await enqueueClassifierFactsShadowSnapshotsFailOpen({
+      supabase,
+      snapshots: shadowJobSnapshots,
     });
 
     return {

@@ -8,9 +8,10 @@ import {
   CLASSIFIER_CAPABILITY_FIXTURE_SCHEMA,
   type ClassifierCapabilityFixtureSuite,
 } from "./classifierCapabilityEval";
-import { CLASSIFIER_FACTS_MODEL } from "./classifierFactsPrototype";
+import { CLASSIFIER_FACTS_MODEL, segmentCandidate } from "./classifierFactsPrototype";
 import { mapV3Fact } from "./classifierFactsPrototypeV3";
 import {
+  CLASSIFIER_FACTS_V41_SCHEMA,
   buildV41ExtractionRequests,
   v41RequestHash,
   validateV41ExtractionResponse,
@@ -28,12 +29,50 @@ export const CLASSIFIER_FACTS_SHADOW_SUPPORTED_REQUIREMENTS = [
   "response_recovery_remediation_validation",
 ] as const;
 export const CLASSIFIER_FACTS_SHADOW_TIMEOUT_MS = 60_000;
+export const CLASSIFIER_FACTS_SHADOW_ENQUEUE_TIMEOUT_MS = 2_000;
 
 type SupportedRequirementId = typeof CLASSIFIER_FACTS_SHADOW_SUPPORTED_REQUIREMENTS[number];
 type ShadowStatus = "covered" | "partial" | "missing";
 type ShadowOutcome = "model_success" | "provider_failure" | "transport_failure" | "validation_failure";
 
+export type ClassifierFactsShadowCandidateSnapshot = RetrievedChunk & {
+  position: number;
+  units: ReturnType<typeof segmentCandidate>;
+};
+
+export type ClassifierFactsShadowJobSnapshot = {
+  workspace_id: string;
+  document_id: string;
+  analysis_run_id: string;
+  requirement_id: SupportedRequirementId;
+  requirement: RegSpRequirement;
+  current_status: FindingStatus;
+  current_elements: string[];
+  current_evidence: unknown[];
+  candidates: ClassifierFactsShadowCandidateSnapshot[];
+  candidate_ids: string[];
+  candidate_set_sha256: string;
+  model: typeof CLASSIFIER_FACTS_MODEL;
+  version_identity: typeof CLASSIFIER_FACTS_V41_SCHEMA;
+  created_at: string;
+};
+
+export type ClassifierFactsShadowJob = {
+  id: string;
+  workspace_id: string;
+  document_id: string;
+  analysis_run_id: string;
+  requirement_id: SupportedRequirementId;
+  status: "pending" | "running" | "completed" | "failed";
+  attempts: number;
+  snapshot: ClassifierFactsShadowJobSnapshot;
+  claimed_at: string | null;
+  completed_at: string | null;
+  last_error: string | null;
+};
+
 export type ClassifierFactsShadowResult = {
+  shadow_job_id?: string;
   workspace_id: string;
   document_id: string;
   analysis_run_id: string;
@@ -102,12 +141,20 @@ export function isClassifierFactsShadowEnabled({
     && configuredClassifierFactsShadowRequirements(environment).includes(requirementId as SupportedRequirementId);
 }
 
-export function classifierFactsCandidateSetHash(candidates: RetrievedChunk[]) {
+export function classifierFactsCandidateSetHash(candidates: Array<RetrievedChunk | ClassifierFactsShadowCandidateSnapshot>) {
   return sha256(JSON.stringify(candidates.map((candidate, position) => ({
     candidate_id: candidate.chunk_id,
     document_id: candidate.document_id,
     position,
-    content: candidate.content_preview,
+    filename: candidate.filename,
+    page_start: candidate.page_start,
+    page_end: candidate.page_end,
+    chunk_index: candidate.chunk_index,
+    section_path: candidate.section_path,
+    content_preview: candidate.content_preview,
+    source_type: candidate.source_type,
+    evidence_role: candidate.evidence_role,
+    units: "units" in candidate ? candidate.units : segmentCandidate(candidate.chunk_id, candidate.content_preview),
   }))));
 }
 
@@ -181,6 +228,52 @@ function currentSnapshot(requirement: RegSpRequirement, candidates: RetrievedChu
   return { status, currentElements, currentEvidence };
 }
 
+export function buildClassifierFactsShadowJobSnapshots({
+  workspaceId,
+  analysisRunId,
+  requirement,
+  candidates,
+  gradedCandidates,
+  createdAt = new Date().toISOString(),
+}: {
+  workspaceId: string;
+  analysisRunId: string;
+  requirement: RegSpRequirement;
+  candidates: RetrievedChunk[];
+  gradedCandidates: GradedEvidenceChunk[];
+  createdAt?: string;
+}) {
+  if (!CLASSIFIER_FACTS_SHADOW_SUPPORTED_REQUIREMENTS.includes(requirement.id as SupportedRequirementId)) return [];
+  const gradedById = new Map(gradedCandidates.map((item) => [item.chunk_id, item]));
+  const byDocument = new Map<string, RetrievedChunk[]>();
+  for (const candidate of candidates) byDocument.set(candidate.document_id, [...(byDocument.get(candidate.document_id) ?? []), candidate]);
+  return [...byDocument.entries()].map(([documentId, documentCandidates]): ClassifierFactsShadowJobSnapshot => {
+    const documentGraded = documentCandidates.map((candidate) => gradedById.get(candidate.chunk_id)).filter((item): item is GradedEvidenceChunk => Boolean(item));
+    const current = currentSnapshot(requirement, documentCandidates, documentGraded);
+    const frozenCandidates = documentCandidates.map((candidate, position) => ({
+      ...candidate,
+      position,
+      units: segmentCandidate(candidate.chunk_id, candidate.content_preview),
+    }));
+    return {
+      workspace_id: workspaceId,
+      document_id: documentId,
+      analysis_run_id: analysisRunId,
+      requirement_id: requirement.id as SupportedRequirementId,
+      requirement: structuredClone(requirement),
+      current_status: current.status,
+      current_elements: current.currentElements,
+      current_evidence: current.currentEvidence,
+      candidates: frozenCandidates,
+      candidate_ids: frozenCandidates.map((item) => item.chunk_id),
+      candidate_set_sha256: classifierFactsCandidateSetHash(frozenCandidates),
+      model: CLASSIFIER_FACTS_SHADOW_MODEL,
+      version_identity: CLASSIFIER_FACTS_V41_SCHEMA,
+      created_at: createdAt,
+    };
+  });
+}
+
 function providerMetadata(parsed: unknown) {
   const value = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
   const choices = Array.isArray(value.choices) ? value.choices : [];
@@ -195,8 +288,11 @@ export async function executeClassifierFactsShadow({
   analysisRunId,
   requirement,
   candidates,
-  gradedCandidates,
+  gradedCandidates = [],
   currentStatus,
+  currentElements,
+  currentEvidence,
+  shadowJobId,
   apiKey,
   fetchImpl = fetch,
   timeoutMs = CLASSIFIER_FACTS_SHADOW_TIMEOUT_MS,
@@ -206,15 +302,21 @@ export async function executeClassifierFactsShadow({
   analysisRunId: string;
   requirement: RegSpRequirement;
   candidates: RetrievedChunk[];
-  gradedCandidates: GradedEvidenceChunk[];
+  gradedCandidates?: GradedEvidenceChunk[];
   currentStatus?: FindingStatus;
+  currentElements?: string[];
+  currentEvidence?: unknown[];
+  shadowJobId?: string;
   apiKey: string;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
 }): Promise<ClassifierFactsShadowResult> {
   const request = buildClassifierFactsShadowRequest(requirement, candidates);
-  const snapshot = currentSnapshot(requirement, candidates, gradedCandidates);
+  const snapshot = currentElements && currentEvidence
+    ? { status: currentStatus ?? "missing", currentElements, currentEvidence }
+    : currentSnapshot(requirement, candidates, gradedCandidates);
   const base = {
+    ...(shadowJobId ? { shadow_job_id: shadowJobId } : {}),
     workspace_id: workspaceId, document_id: documentId, analysis_run_id: analysisRunId,
     requirement_id: requirement.id as SupportedRequirementId, current_status: currentStatus ?? snapshot.status,
     current_elements: snapshot.currentElements, candidate_ids: candidates.map((item) => item.chunk_id),
@@ -261,13 +363,15 @@ export async function executeClassifierFactsShadow({
 }
 
 export async function persistClassifierFactsShadowResult(supabase: SupabaseClient, result: ClassifierFactsShadowResult) {
-  const { error } = await supabase.from("classifier_facts_shadow_results").insert(result);
+  const { error } = await supabase.from("classifier_facts_shadow_results").upsert(result, {
+    onConflict: "analysis_run_id,document_id,requirement_id",
+  });
   if (error) throw new Error(`classifier_facts_shadow_persist_failed:${error.code ?? "unknown"}`);
 }
 
-export async function runClassifierFactsShadowFailOpen({
+export async function enqueueClassifierFactsShadowJobsFailOpen({
   supabase, workspaceId, analysisRunId, requirement, candidates, gradedCandidates, workspacePolicy,
-  environment = process.env, fetchImpl = fetch,
+  environment = process.env,
 }: {
   supabase: SupabaseClient;
   workspaceId: string;
@@ -277,26 +381,157 @@ export async function runClassifierFactsShadowFailOpen({
   gradedCandidates: GradedEvidenceChunk[];
   workspacePolicy: WorkspaceExternalAiProcessingPolicy;
   environment?: Record<string, string | undefined>;
-  fetchImpl?: typeof fetch;
 }) {
   if (!isClassifierFactsShadowEnabled({ requirementId: requirement.id, workspacePolicy, environment })) return [];
-  const apiKey = environment.REQUIREMENT_CLASSIFIER_API_KEY?.trim() || environment.OPENAI_API_KEY?.trim();
-  if (!apiKey) { console.warn("[RegSpan shadow] Facts-only shadow skipped: API key unavailable."); return []; }
-  const gradedById = new Map(gradedCandidates.map((item) => [item.chunk_id, item]));
-  const byDocument = new Map<string, RetrievedChunk[]>();
-  for (const candidate of candidates) byDocument.set(candidate.document_id, [...(byDocument.get(candidate.document_id) ?? []), candidate]);
-  const results: ClassifierFactsShadowResult[] = [];
-  for (const [documentId, documentCandidates] of byDocument) {
-    try {
-      const documentGraded = documentCandidates.map((candidate) => gradedById.get(candidate.chunk_id)).filter((item): item is GradedEvidenceChunk => Boolean(item));
-      const result = await executeClassifierFactsShadow({ workspaceId, documentId, analysisRunId, requirement, candidates: documentCandidates, gradedCandidates: documentGraded, apiKey, fetchImpl });
-      results.push(result);
-      await persistClassifierFactsShadowResult(supabase, result);
-    } catch (error) {
-      console.warn("[RegSpan shadow] Facts-only shadow failed without affecting production analysis.", { documentId, requirementId: requirement.id, error: String(error) });
+  const snapshots = buildClassifierFactsShadowJobSnapshots({ workspaceId, analysisRunId, requirement, candidates, gradedCandidates });
+  return enqueueClassifierFactsShadowSnapshotsFailOpen({ supabase, snapshots });
+}
+
+export async function enqueueClassifierFactsShadowSnapshotsFailOpen({
+  supabase,
+  snapshots,
+  timeoutMs = CLASSIFIER_FACTS_SHADOW_ENQUEUE_TIMEOUT_MS,
+}: {
+  supabase: SupabaseClient;
+  snapshots: ClassifierFactsShadowJobSnapshot[];
+  timeoutMs?: number;
+}) {
+  if (!snapshots.length) return [];
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+  try {
+    const rows = snapshots.map((snapshot) => ({
+      workspace_id: snapshot.workspace_id,
+      document_id: snapshot.document_id,
+      analysis_run_id: snapshot.analysis_run_id,
+      requirement_id: snapshot.requirement_id,
+      status: "pending",
+      snapshot,
+    }));
+    const operation = Promise.resolve(supabase.from("classifier_facts_shadow_jobs").upsert(rows, {
+      onConflict: "analysis_run_id,document_id,requirement_id", ignoreDuplicates: true,
+    }));
+    const deadline = new Promise<never>((_resolve, reject) => {
+      timeout = setTimeout(() => reject(new Error("classifier_facts_shadow_enqueue_timeout")), timeoutMs);
+    });
+    const { error } = await Promise.race([operation, deadline]);
+    if (error) throw new Error(`classifier_facts_shadow_enqueue_failed:${error.code ?? "unknown"}`);
+  } catch (error) {
+    console.warn("[RegSpan shadow] Enqueue failed without affecting production analysis.", {
+      analysisRunIds: [...new Set(snapshots.map((snapshot) => snapshot.analysis_run_id))],
+      requirementIds: [...new Set(snapshots.map((snapshot) => snapshot.requirement_id))],
+      error: String(error),
+    });
+    return [];
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+  return snapshots;
+}
+
+export function isClassifierFactsShadowWorkerEnabled(environment: Record<string, string | undefined> = process.env) {
+  return enabled(environment.CLASSIFIER_FACTS_SHADOW_ENABLED)
+    && enabled(environment.CLASSIFIER_FACTS_SHADOW_WORKER_ENABLED)
+    && enabled(environment.ENABLE_EXTERNAL_AI_PROCESSING)
+    && enabled(environment.ENABLE_EXTERNAL_AI_CLASSIFIER);
+}
+
+export function validateClassifierFactsShadowJobSnapshot(job: ClassifierFactsShadowJob) {
+  const snapshot = job.snapshot;
+  if (snapshot.workspace_id !== job.workspace_id || snapshot.document_id !== job.document_id
+    || snapshot.analysis_run_id !== job.analysis_run_id || snapshot.requirement_id !== job.requirement_id) {
+    throw new Error("classifier_facts_shadow_job_identity_mismatch");
+  }
+  if (snapshot.model !== CLASSIFIER_FACTS_SHADOW_MODEL || snapshot.version_identity !== CLASSIFIER_FACTS_V41_SCHEMA) {
+    throw new Error("classifier_facts_shadow_frozen_identity_mismatch");
+  }
+  if (snapshot.requirement.id !== snapshot.requirement_id) throw new Error("classifier_facts_shadow_requirement_mismatch");
+  if (snapshot.candidates.some((candidate, index) => candidate.position !== index || candidate.document_id !== snapshot.document_id)) {
+    throw new Error("classifier_facts_shadow_candidate_order_or_document_mismatch");
+  }
+  if (JSON.stringify(snapshot.candidate_ids) !== JSON.stringify(snapshot.candidates.map((item) => item.chunk_id))) {
+    throw new Error("classifier_facts_shadow_candidate_identity_mismatch");
+  }
+  for (const candidate of snapshot.candidates) {
+    if (JSON.stringify(candidate.units) !== JSON.stringify(segmentCandidate(candidate.chunk_id, candidate.content_preview))) {
+      throw new Error(`classifier_facts_shadow_source_unit_drift:${candidate.chunk_id}`);
     }
   }
-  return results;
+  if (snapshot.candidate_set_sha256 !== classifierFactsCandidateSetHash(snapshot.candidates)) {
+    throw new Error("classifier_facts_shadow_candidate_set_hash_mismatch");
+  }
+  return snapshot;
+}
+
+export async function claimClassifierFactsShadowJobs(supabase: SupabaseClient, limit: number, retryFailed = false) {
+  const { data, error } = await supabase.rpc("claim_classifier_facts_shadow_jobs_v1", {
+    p_limit: limit,
+    p_retry_failed: retryFailed,
+  });
+  if (error) throw new Error(`classifier_facts_shadow_claim_failed:${error.code ?? "unknown"}`);
+  return (data ?? []) as ClassifierFactsShadowJob[];
+}
+
+async function markClassifierFactsShadowJob(
+  supabase: SupabaseClient,
+  jobId: string,
+  status: "completed" | "failed",
+  lastError: string | null,
+) {
+  const { error } = await supabase.from("classifier_facts_shadow_jobs").update({
+    status,
+    completed_at: new Date().toISOString(),
+    last_error: lastError,
+  }).eq("id", jobId).eq("status", "running");
+  if (error) throw new Error(`classifier_facts_shadow_job_update_failed:${error.code ?? "unknown"}`);
+}
+
+export async function processClassifierFactsShadowJob({
+  supabase,
+  job,
+  apiKey,
+  fetchImpl = fetch,
+  timeoutMs = CLASSIFIER_FACTS_SHADOW_TIMEOUT_MS,
+}: {
+  supabase: SupabaseClient;
+  job: ClassifierFactsShadowJob;
+  apiKey: string;
+  fetchImpl?: typeof fetch;
+  timeoutMs?: number;
+}) {
+  try {
+    const snapshot = validateClassifierFactsShadowJobSnapshot(job);
+    const candidates = snapshot.candidates.map((frozenCandidate) => {
+      const candidate = { ...frozenCandidate } as Partial<ClassifierFactsShadowCandidateSnapshot>;
+      delete candidate.position;
+      delete candidate.units;
+      return candidate as RetrievedChunk;
+    });
+    const request = buildClassifierFactsShadowRequest(snapshot.requirement, candidates);
+    const generatedUnits = request.candidates.map((candidate) => candidate.units);
+    const frozenUnits = snapshot.candidates.map((candidate) => candidate.units);
+    if (JSON.stringify(generatedUnits) !== JSON.stringify(frozenUnits)) throw new Error("classifier_facts_shadow_worker_unit_drift");
+    const result = await executeClassifierFactsShadow({
+      shadowJobId: job.id,
+      workspaceId: snapshot.workspace_id,
+      documentId: snapshot.document_id,
+      analysisRunId: snapshot.analysis_run_id,
+      requirement: snapshot.requirement,
+      candidates,
+      currentStatus: snapshot.current_status,
+      currentElements: snapshot.current_elements,
+      currentEvidence: snapshot.current_evidence,
+      apiKey,
+      fetchImpl,
+      timeoutMs,
+    });
+    await persistClassifierFactsShadowResult(supabase, result);
+    if (result.valid) await markClassifierFactsShadowJob(supabase, job.id, "completed", null);
+    else await markClassifierFactsShadowJob(supabase, job.id, "failed", result.validation_errors[0] ?? result.outcome);
+    return result;
+  } catch (error) {
+    await markClassifierFactsShadowJob(supabase, job.id, "failed", String(error)).catch(() => undefined);
+    throw error;
+  }
 }
 
 export function categorizeClassifierFactsShadowDisagreement(row: Pick<ClassifierFactsShadowResult, "valid" | "current_status" | "shadow_status" | "current_elements" | "shadow_elements">): ClassifierFactsShadowDisagreementCategory {
@@ -328,5 +563,58 @@ export function classifierFactsShadowReportRow(row: ClassifierFactsShadowResult)
     potential_false_assurance: row.valid && ((row.current_status === "covered" && row.shadow_status !== "covered") || (row.current_status === "partial" && row.shadow_status === "missing")),
     candidate_ids: row.candidate_ids, source_unit_citations: row.source_unit_citations, validation_errors: row.validation_errors,
     latency_ms: row.latency_ms, calls: 1, prompt_tokens: row.prompt_tokens, completion_tokens: row.completion_tokens, total_tokens: row.total_tokens,
+  };
+}
+
+export function summarizeClassifierFactsShadowRows(rows: ClassifierFactsShadowResult[]) {
+  const details = rows.map(classifierFactsShadowReportRow);
+  const categories: ClassifierFactsShadowDisagreementCategory[] = [
+    "exact agreement", "same status, different evidence", "current covered, shadow partial",
+    "current covered, shadow missing", "current partial, shadow covered", "current partial, shadow missing",
+    "current missing, shadow covered", "current missing, shadow partial", "shadow invalid",
+  ];
+  const disagreementCounts = Object.fromEntries(categories.map((category) => [
+    category,
+    details.filter((item) => item.disagreement_category === category).length,
+  ]));
+  const numeric = (value: unknown) => {
+    if (value === null || value === undefined || value === "") return null;
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+  };
+  const latencies = rows.map((row) => numeric(row.latency_ms)).filter((value): value is number => value !== null);
+  const token = (key: "prompt_tokens" | "completion_tokens" | "total_tokens") => rows.reduce((sum, row) => {
+    const value = numeric(row[key]);
+    return sum + (value ?? 0);
+  }, 0);
+  const requirements = [...new Set(rows.map((row) => row.requirement_id))].sort();
+  return {
+    attempted: rows.length,
+    valid: rows.filter((row) => row.valid).length,
+    invalid_outcomes: rows.filter((row) => !row.valid).length,
+    status_agreement: rows.filter((row) => row.valid && row.current_status === row.shadow_status).length,
+    exact_agreement: disagreementCounts["exact agreement"],
+    same_status_evidence_disagreement: disagreementCounts["same status, different evidence"],
+    disagreement_counts: disagreementCounts,
+    latency_ms: {
+      total: latencies.reduce((sum, value) => sum + value, 0),
+      average: latencies.length ? latencies.reduce((sum, value) => sum + value, 0) / latencies.length : 0,
+      maximum: latencies.length ? Math.max(...latencies) : 0,
+    },
+    token_usage: { prompt: token("prompt_tokens"), completion: token("completion_tokens"), total: token("total_tokens") },
+    by_requirement: Object.fromEntries(requirements.map((requirementId) => {
+      const subset = rows.filter((row) => row.requirement_id === requirementId);
+      return [requirementId, {
+        attempted: subset.length,
+        valid: subset.filter((row) => row.valid).length,
+        status_agreement: subset.filter((row) => row.valid && row.current_status === row.shadow_status).length,
+        same_status_evidence_disagreement: subset.filter((row) => categorizeClassifierFactsShadowDisagreement(row) === "same status, different evidence").length,
+        latency_ms: subset.reduce((sum, row) => sum + (numeric(row.latency_ms) ?? 0), 0),
+        prompt_tokens: subset.reduce((sum, row) => sum + (numeric(row.prompt_tokens) ?? 0), 0),
+        completion_tokens: subset.reduce((sum, row) => sum + (numeric(row.completion_tokens) ?? 0), 0),
+        total_tokens: subset.reduce((sum, row) => sum + (numeric(row.total_tokens) ?? 0), 0),
+      }];
+    })),
+    details,
   };
 }
