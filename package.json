@@ -31,6 +31,10 @@
     "eval:classifier-facts:v4": "node --conditions=react-server --import ./scripts/registerServerTsLoader.mjs scripts/runClassifierFactsPrototypeV4.ts run",
     "eval:classifier-facts:v4:report": "node --conditions=react-server --import ./scripts/registerServerTsLoader.mjs scripts/runClassifierFactsPrototypeV4.ts report",
     "eval:classifier-facts:v4:replay": "node --conditions=react-server --import ./scripts/registerServerTsLoader.mjs scripts/runClassifierFactsPrototypeV4.ts replay",
+    "eval:classifier-facts:v4-1:dry": "node --conditions=react-server --import ./scripts/registerServerTsLoader.mjs scripts/runClassifierFactsPrototypeV41.ts dry",
+    "eval:classifier-facts:v4-1": "node --conditions=react-server --import ./scripts/registerServerTsLoader.mjs scripts/runClassifierFactsPrototypeV41.ts run",
+    "eval:classifier-facts:v4-1:report": "node --conditions=react-server --import ./scripts/registerServerTsLoader.mjs scripts/runClassifierFactsPrototypeV41.ts report",
+    "eval:classifier-facts:v4-1:replay": "node --conditions=react-server --import ./scripts/registerServerTsLoader.mjs scripts/runClassifierFactsPrototypeV41.ts replay",
     "eval:score-holdout": "node scripts/scoreBlindHoldout.mjs"
   },
   "dependencies": {
