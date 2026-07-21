@@ -15,6 +15,7 @@ import {
   buildV41ExtractionRequests,
   v41RequestHash,
   validateV41ExtractionResponse,
+  type V41Request,
 } from "./classifierFactsPrototypeV41";
 import { aggregateFindingForRequirement, type FindingStatus } from "./findingsAggregation";
 import type { GradedEvidenceChunk } from "./requirementMatching";
@@ -30,6 +31,7 @@ export const CLASSIFIER_FACTS_SHADOW_SUPPORTED_REQUIREMENTS = [
 ] as const;
 export const CLASSIFIER_FACTS_SHADOW_TIMEOUT_MS = 60_000;
 export const CLASSIFIER_FACTS_SHADOW_ENQUEUE_TIMEOUT_MS = 2_000;
+export const CLASSIFIER_FACTS_SHADOW_CANDIDATE_HASH_VERSION = "canonical-v2" as const;
 
 type SupportedRequirementId = typeof CLASSIFIER_FACTS_SHADOW_SUPPORTED_REQUIREMENTS[number];
 type ShadowStatus = "covered" | "partial" | "missing";
@@ -52,6 +54,7 @@ export type ClassifierFactsShadowJobSnapshot = {
   candidates: ClassifierFactsShadowCandidateSnapshot[];
   candidate_ids: string[];
   candidate_set_sha256: string;
+  candidate_set_hash_version?: typeof CLASSIFIER_FACTS_SHADOW_CANDIDATE_HASH_VERSION;
   model: typeof CLASSIFIER_FACTS_MODEL;
   version_identity: typeof CLASSIFIER_FACTS_V41_SCHEMA;
   created_at: string;
@@ -141,21 +144,45 @@ export function isClassifierFactsShadowEnabled({
     && configuredClassifierFactsShadowRequirements(environment).includes(requirementId as SupportedRequirementId);
 }
 
-export function classifierFactsCandidateSetHash(candidates: Array<RetrievedChunk | ClassifierFactsShadowCandidateSnapshot>) {
-  return sha256(JSON.stringify(candidates.map((candidate, position) => ({
+type CandidateHashVersion = "legacy-v1" | typeof CLASSIFIER_FACTS_SHADOW_CANDIDATE_HASH_VERSION;
+
+function classifierFactsShadowCandidateProjection(
+  candidates: Array<RetrievedChunk | ClassifierFactsShadowCandidateSnapshot>,
+  version: CandidateHashVersion,
+) {
+  const stable = <T>(value: T) => version === "legacy-v1" ? value : value ?? null;
+  return candidates.map((candidate, position) => ({
     candidate_id: candidate.chunk_id,
     document_id: candidate.document_id,
     position,
-    filename: candidate.filename,
-    page_start: candidate.page_start,
-    page_end: candidate.page_end,
-    chunk_index: candidate.chunk_index,
-    section_path: candidate.section_path,
+    filename: stable(candidate.filename),
+    page_start: stable(candidate.page_start),
+    page_end: stable(candidate.page_end),
+    chunk_index: stable(candidate.chunk_index),
+    section_path: stable(candidate.section_path),
     content_preview: candidate.content_preview,
-    source_type: candidate.source_type,
-    evidence_role: candidate.evidence_role,
-    units: "units" in candidate ? candidate.units : segmentCandidate(candidate.chunk_id, candidate.content_preview),
-  }))));
+    source_type: stable(candidate.source_type),
+    evidence_role: stable(candidate.evidence_role),
+    ...(version === "legacy-v1" ? {
+      units: ("units" in candidate ? candidate.units : segmentCandidate(candidate.chunk_id, candidate.content_preview))
+        .map((unit) => ({
+          unit_id: unit.unit_id,
+          candidate_id: unit.candidate_id,
+          ordinal: unit.ordinal,
+          start_offset: unit.start_offset,
+          end_offset: unit.end_offset,
+          text: unit.text,
+          text_sha256: unit.text_sha256,
+        })),
+    } : {}),
+  }));
+}
+
+export function computeClassifierFactsShadowCandidateSetHash(
+  candidates: Array<RetrievedChunk | ClassifierFactsShadowCandidateSnapshot>,
+  version: CandidateHashVersion = CLASSIFIER_FACTS_SHADOW_CANDIDATE_HASH_VERSION,
+) {
+  return sha256(JSON.stringify(classifierFactsShadowCandidateProjection(candidates, version)));
 }
 
 function placeholderField<T>(value: T) {
@@ -213,6 +240,62 @@ export function buildClassifierFactsShadowRequest(requirement: RegSpRequirement,
   return request;
 }
 
+function shadowRequestUserMessage(
+  requirement: RegSpRequirement,
+  candidates: ClassifierFactsShadowCandidateSnapshot[],
+) {
+  const source = candidates.map((candidate, index) => ({
+    case_id: `shadow-${index + 1}`,
+    source_candidate_id: candidate.chunk_id,
+    units: candidate.units.map((unit) => ({ unit_id: unit.unit_id, text: unit.text })),
+  }));
+  return [
+    `Factual extraction focus: ${requirement.title}.`,
+    "Account for every unit with facts or no_fact. Extract all relevant atomic operations without assessing sufficiency.",
+    JSON.stringify({ candidates: source }, null, 2),
+  ].join("\n\n");
+}
+
+export function buildClassifierFactsShadowRequestFromSnapshot(snapshot: ClassifierFactsShadowJobSnapshot): V41Request {
+  const templateCandidate: RetrievedChunk = {
+    ...snapshot.candidates[0],
+    chunk_id: "shadow-schema-template",
+    content_preview: "Schema template unit.",
+  };
+  const template = buildClassifierFactsShadowRequest(snapshot.requirement, [templateCandidate]);
+  const schema = structuredClone(template.body.response_format.json_schema.schema) as {
+    properties: { units: { properties: Record<string, unknown>; required: string[] } };
+  };
+  const unitTemplate = Object.values(schema.properties.units.properties)[0];
+  if (!unitTemplate) throw new Error("classifier_facts_shadow_unit_schema_template_missing");
+  const unitIds = snapshot.candidates.flatMap((candidate) => candidate.units.map((unit) => unit.unit_id));
+  schema.properties.units.properties = Object.fromEntries(
+    unitIds.map((unitId) => [unitId, structuredClone(unitTemplate)]),
+  );
+  schema.properties.units.required = unitIds;
+  const candidates = snapshot.candidates.map((candidate, index) => ({
+    case_id: `shadow-${index + 1}`,
+    candidate_id: candidate.chunk_id,
+    text: candidate.content_preview,
+    units: structuredClone(candidate.units),
+  }));
+  return {
+    ...template,
+    candidates,
+    body: {
+      ...template.body,
+      response_format: {
+        ...template.body.response_format,
+        json_schema: { ...template.body.response_format.json_schema, schema },
+      },
+      messages: [
+        template.body.messages[0],
+        { role: "user", content: shadowRequestUserMessage(snapshot.requirement, snapshot.candidates) },
+      ],
+    },
+  };
+}
+
 function deriveShadowStatus(requirement: RegSpRequirement, elements: string[]): ShadowStatus {
   if (requirement.requiredElementsForCovered.every((id) => elements.includes(id))) return "covered";
   return elements.length ? "partial" : "missing";
@@ -266,7 +349,8 @@ export function buildClassifierFactsShadowJobSnapshots({
       current_evidence: current.currentEvidence,
       candidates: frozenCandidates,
       candidate_ids: frozenCandidates.map((item) => item.chunk_id),
-      candidate_set_sha256: classifierFactsCandidateSetHash(frozenCandidates),
+      candidate_set_sha256: computeClassifierFactsShadowCandidateSetHash(frozenCandidates),
+      candidate_set_hash_version: CLASSIFIER_FACTS_SHADOW_CANDIDATE_HASH_VERSION,
       model: CLASSIFIER_FACTS_SHADOW_MODEL,
       version_identity: CLASSIFIER_FACTS_V41_SCHEMA,
       created_at: createdAt,
@@ -296,6 +380,8 @@ export async function executeClassifierFactsShadow({
   apiKey,
   fetchImpl = fetch,
   timeoutMs = CLASSIFIER_FACTS_SHADOW_TIMEOUT_MS,
+  frozenRequest,
+  frozenCandidateSetSha256,
 }: {
   workspaceId: string;
   documentId: string;
@@ -310,8 +396,10 @@ export async function executeClassifierFactsShadow({
   apiKey: string;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
+  frozenRequest?: V41Request;
+  frozenCandidateSetSha256?: string;
 }): Promise<ClassifierFactsShadowResult> {
-  const request = buildClassifierFactsShadowRequest(requirement, candidates);
+  const request = frozenRequest ?? buildClassifierFactsShadowRequest(requirement, candidates);
   const snapshot = currentElements && currentEvidence
     ? { status: currentStatus ?? "missing", currentElements, currentEvidence }
     : currentSnapshot(requirement, candidates, gradedCandidates);
@@ -320,7 +408,7 @@ export async function executeClassifierFactsShadow({
     workspace_id: workspaceId, document_id: documentId, analysis_run_id: analysisRunId,
     requirement_id: requirement.id as SupportedRequirementId, current_status: currentStatus ?? snapshot.status,
     current_elements: snapshot.currentElements, candidate_ids: candidates.map((item) => item.chunk_id),
-    candidate_set_sha256: classifierFactsCandidateSetHash(candidates), current_evidence: snapshot.currentEvidence,
+    candidate_set_sha256: frozenCandidateSetSha256 ?? computeClassifierFactsShadowCandidateSetHash(candidates), current_evidence: snapshot.currentEvidence,
     request_body: request.body, request_sha256: v41RequestHash(request), model: CLASSIFIER_FACTS_SHADOW_MODEL,
   };
   const controller = new AbortController();
@@ -451,12 +539,49 @@ export function validateClassifierFactsShadowJobSnapshot(job: ClassifierFactsSha
   if (JSON.stringify(snapshot.candidate_ids) !== JSON.stringify(snapshot.candidates.map((item) => item.chunk_id))) {
     throw new Error("classifier_facts_shadow_candidate_identity_mismatch");
   }
+  if (new Set(snapshot.candidate_ids).size !== snapshot.candidate_ids.length) {
+    throw new Error("classifier_facts_shadow_duplicate_candidate_id");
+  }
+  const unitIds = new Set<string>();
   for (const candidate of snapshot.candidates) {
-    if (JSON.stringify(candidate.units) !== JSON.stringify(segmentCandidate(candidate.chunk_id, candidate.content_preview))) {
-      throw new Error(`classifier_facts_shadow_source_unit_drift:${candidate.chunk_id}`);
+    if (!candidate.chunk_id?.trim() || typeof candidate.content_preview !== "string" || !candidate.units.length) {
+      throw new Error(`classifier_facts_shadow_candidate_content_mismatch:${candidate.chunk_id}`);
+    }
+    let priorEnd = 0;
+    for (const [index, unit] of candidate.units.entries()) {
+      if (unit.candidate_id !== candidate.chunk_id) {
+        throw new Error(`classifier_facts_shadow_unit_candidate_mismatch:${candidate.chunk_id}`);
+      }
+      if (unitIds.has(unit.unit_id)) throw new Error(`classifier_facts_shadow_duplicate_unit_id:${unit.unit_id}`);
+      unitIds.add(unit.unit_id);
+      if (unit.ordinal !== index + 1) {
+        throw new Error(`classifier_facts_shadow_unit_ordinal_mismatch:${candidate.chunk_id}`);
+      }
+      if (!Number.isInteger(unit.start_offset) || !Number.isInteger(unit.end_offset)
+        || unit.start_offset < priorEnd || unit.start_offset < 0
+        || unit.end_offset <= unit.start_offset || unit.end_offset > candidate.content_preview.length) {
+        throw new Error(`classifier_facts_shadow_unit_offset_mismatch:${unit.unit_id}`);
+      }
+      if (candidate.content_preview.slice(unit.start_offset, unit.end_offset) !== unit.text) {
+        throw new Error(`classifier_facts_shadow_unit_text_mismatch:${unit.unit_id}`);
+      }
+      const textSha256 = sha256(unit.text);
+      if (textSha256 !== unit.text_sha256) {
+        throw new Error(`classifier_facts_shadow_unit_hash_mismatch:${unit.unit_id}`);
+      }
+      const expectedUnitId = `${candidate.chunk_id}:u${String(unit.ordinal).padStart(3, "0")}:${textSha256.slice(0, 12)}`;
+      if (unit.unit_id !== expectedUnitId) {
+        throw new Error(`classifier_facts_shadow_unit_id_mismatch:${unit.unit_id}`);
+      }
+      priorEnd = unit.end_offset;
     }
   }
-  if (snapshot.candidate_set_sha256 !== classifierFactsCandidateSetHash(snapshot.candidates)) {
+  if (snapshot.candidate_set_hash_version !== undefined
+    && snapshot.candidate_set_hash_version !== CLASSIFIER_FACTS_SHADOW_CANDIDATE_HASH_VERSION) {
+    throw new Error("classifier_facts_shadow_candidate_set_hash_version_mismatch");
+  }
+  const hashVersion = snapshot.candidate_set_hash_version ?? "legacy-v1";
+  if (snapshot.candidate_set_sha256 !== computeClassifierFactsShadowCandidateSetHash(snapshot.candidates, hashVersion)) {
     throw new Error("classifier_facts_shadow_candidate_set_hash_mismatch");
   }
   return snapshot;
@@ -500,16 +625,13 @@ export async function processClassifierFactsShadowJob({
 }) {
   try {
     const snapshot = validateClassifierFactsShadowJobSnapshot(job);
+    const request = buildClassifierFactsShadowRequestFromSnapshot(snapshot);
     const candidates = snapshot.candidates.map((frozenCandidate) => {
       const candidate = { ...frozenCandidate } as Partial<ClassifierFactsShadowCandidateSnapshot>;
       delete candidate.position;
       delete candidate.units;
       return candidate as RetrievedChunk;
     });
-    const request = buildClassifierFactsShadowRequest(snapshot.requirement, candidates);
-    const generatedUnits = request.candidates.map((candidate) => candidate.units);
-    const frozenUnits = snapshot.candidates.map((candidate) => candidate.units);
-    if (JSON.stringify(generatedUnits) !== JSON.stringify(frozenUnits)) throw new Error("classifier_facts_shadow_worker_unit_drift");
     const result = await executeClassifierFactsShadow({
       shadowJobId: job.id,
       workspaceId: snapshot.workspace_id,
@@ -523,6 +645,8 @@ export async function processClassifierFactsShadowJob({
       apiKey,
       fetchImpl,
       timeoutMs,
+      frozenRequest: request,
+      frozenCandidateSetSha256: snapshot.candidate_set_sha256,
     });
     await persistClassifierFactsShadowResult(supabase, result);
     if (result.valid) await markClassifierFactsShadowJob(supabase, job.id, "completed", null);
