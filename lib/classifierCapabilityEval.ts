@@ -41,7 +41,7 @@ export type ClassifierCapabilityCandidateFixture = RetrievedChunk & {
   direct_support_recovery: ClassifierCapabilityExpectedField<boolean | null>;
   hard_negative: ClassifierCapabilityExpectedField<boolean | null>;
   source: {
-    kind: "committed_corpus" | "regression_diagnostic" | "retrieval_capture";
+    kind: "committed_corpus" | "regression_diagnostic" | "retrieval_capture" | "frozen_evaluation_pack";
     path: string;
     locator: string;
     content_sha256: string;
@@ -335,14 +335,34 @@ export function paidRunReadinessBlockers(fixtures: ClassifierCapabilityFixtureSu
   }
   const multi = fixtures.multi_candidate_review;
   const multiCase = multi.case_id ? fixtures.cases.find((item) => item.id === multi.case_id) : null;
+  const multiRequirement = multiCase
+    ? fixtures.requirements.find((requirement) => requirement.id === multiCase.requirement_id) ?? null
+    : null;
   const positiveCandidates = multiCase?.candidates.filter((candidate) =>
     candidate.expected_relationship.value === "supports" || candidate.expected_relationship.value === "partially_supports") ?? [];
-  const positiveElementSets = positiveCandidates.map((candidate) => new Set(candidate.expected_covered_elements.value ?? []));
-  const positiveElementUnion = new Set(positiveCandidates.flatMap((candidate) => candidate.expected_covered_elements.value ?? []));
+  const requiredElements = new Set(multiRequirement?.requiredElementsForCovered ?? []);
+  const caseSupportedRequiredElements = new Set(
+    (multiCase?.expected_supported_elements.value ?? []).filter((element) => requiredElements.has(element)),
+  );
+  const positiveElementSets = positiveCandidates.map((candidate) => new Set(
+    (candidate.expected_covered_elements.value ?? []).filter((element) => caseSupportedRequiredElements.has(element)),
+  ));
+  const positiveElementUnion = new Set(positiveElementSets.flatMap((elements) => [...elements]));
+  const everyPositiveContributesUniqueElement = positiveElementSets.every((elements, index) =>
+    [...elements].some((element) => positiveElementSets.every((other, otherIndex) =>
+      otherIndex === index || !other.has(element))));
+  const noIndividualCoversAll = positiveElementSets.every((elements) =>
+    [...caseSupportedRequiredElements].some((element) => !elements.has(element)));
   const complementarySupport = positiveCandidates.length >= 2
-    && positiveElementUnion.size > 0
-    && positiveElementSets.every((elements) => elements.size > 0 && elements.size < positiveElementUnion.size);
-  const hasHighSignalDistractor = multiCase?.candidates.some((candidate) => candidate.hard_negative.value) ?? false;
+    && requiredElements.size > 0
+    && [...requiredElements].every((element) => caseSupportedRequiredElements.has(element))
+    && [...caseSupportedRequiredElements].every((element) => positiveElementUnion.has(element))
+    && noIndividualCoversAll
+    && everyPositiveContributesUniqueElement;
+  const hasHighSignalDistractor = multiCase?.candidates.some((candidate) =>
+    candidate.hard_negative.value
+    && candidate.expected_relationship.value !== "supports"
+    && candidate.expected_relationship.value !== "partially_supports") ?? false;
   if (multi.status !== "confirmed" || !multiCase || multiCase.evaluation_role !== "scored"
     || multiCase.candidates.length < 3 || !caseHasConfirmedScoringFields(multiCase)
     || !complementarySupport || !hasHighSignalDistractor) {

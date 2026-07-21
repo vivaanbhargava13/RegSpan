@@ -18,7 +18,10 @@ const OUTPUT_PATH = "eval-fixtures/classifier-capability/fixtures.v2.json";
 const WORKSHEET_JSON_PATH = "eval-fixtures/classifier-capability/reviewer-worksheet.json";
 const WORKSHEET_MARKDOWN_PATH = "eval-fixtures/classifier-capability/reviewer-worksheet.md";
 const MULTI_CANDIDATE_CAPTURE_PATH = "eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json";
-const MULTI_CANDIDATE_CASE_ID = "recovery-remediation-validation-multi-candidate-review";
+const AGGREGATION_PACK_PATH = "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json";
+const DIAGNOSTIC_MULTI_CANDIDATE_CASE_ID = "recovery-remediation-validation-multi-candidate-review";
+const AGGREGATION_CASE_ID = "recovery-remediation-validation-cross-candidate-aggregation-review";
+const DIAGNOSTIC_MULTI_REVIEWED_AT = "2026-07-21T03:31:43.000Z";
 const FROZEN_BASELINE = "d59d1c914397206a7d72aa104edcf4aabcd04bfb";
 const FROZEN_UNCOMMITTED_SOURCE_HASHES: Record<string, string> = {
   "eval-results/requirement-eval-latest.json": "2d9796e2710198cd96efccd83dd304e41f603f4da4d9cf47b28ec1173db47eed",
@@ -43,8 +46,9 @@ const MULTI_CANDIDATE_ARTIFACTS_INSPECTED = [
   "eval-results/corpus-regspan-v1-isolated-*/results.{json,csv}",
   "eval-results/corpus-regspan-v2-realistic-company-policies-isolated-*/results.{json,csv}",
   MULTI_CANDIDATE_CAPTURE_PATH,
+  AGGREGATION_PACK_PATH,
 ];
-const MULTI_CANDIDATE_BLOCKER = `Multi-candidate case ${MULTI_CANDIDATE_CASE_ID} is source-complete but unresolved. Paid mode remains blocked until a reviewer manually adjudicates the final status, case-supported elements, and every candidate relationship, element, direct-support, and hard-negative field.`;
+const MULTI_CANDIDATE_BLOCKER = `Aggregation case ${AGGREGATION_CASE_ID} is source-complete but unresolved. Paid mode remains blocked until a reviewer manually adjudicates the final status, case-supported elements, and every candidate relationship, element, direct-support, and hard-negative field.`;
 
 type RetrievalCaptureCandidate = {
   candidate_id: string;
@@ -63,12 +67,7 @@ type RetrievalCaptureCandidate = {
   section_heading: string | null;
   parent_heading: string | null;
   section_path: string | null;
-  retrieval_selection_metadata: {
-    similarity: number;
-    evidence_reason: string;
-    rerank_score: number;
-    rerank_reason: string;
-  };
+  retrieval_selection_metadata: Record<string, unknown>;
   semantic_rank: number | null;
   keyword_rank: number | null;
   merged_rank: number | null;
@@ -76,9 +75,10 @@ type RetrievalCaptureCandidate = {
   source_artifact_locator: string;
 };
 
-type RetrievalCapture = {
+type SourceCompleteCandidatePack = {
   requirement_id: string;
-  order_kind: "newly_captured_retrieval_order";
+  order_kind: "newly_captured_retrieval_order" | "deterministic_stored_chunk_index_order";
+  ordering_method?: string;
   normalization_recipe: string;
   unconfirmed_review_aid: string;
   candidates: RetrievalCaptureCandidate[];
@@ -381,10 +381,14 @@ async function main() {
   const requirements = frozenRequirements();
   const retrievalCapture = JSON.parse(
     await readFile(resolve(MULTI_CANDIDATE_CAPTURE_PATH), "utf8"),
-  ) as RetrievalCapture;
+  ) as SourceCompleteCandidatePack;
+  const aggregationPack = JSON.parse(
+    await readFile(resolve(AGGREGATION_PACK_PATH), "utf8"),
+  ) as SourceCompleteCandidatePack;
   const sourcePaths = new Set([
     ...caseDrafts.flatMap((item) => item.candidates.map((candidate) => candidate.source.path)),
     MULTI_CANDIDATE_CAPTURE_PATH,
+    AGGREGATION_PACK_PATH,
   ]);
   const sourceHashes = new Map<string, string>();
   for (const path of sourcePaths) {
@@ -407,11 +411,16 @@ async function main() {
     source_hash: sourceHashes.get(path)!,
     normalization_recipe: null,
   });
-  const manual = (path: string, locator: string, normalizationRecipe: string | null): ClassifierCapabilityFieldProvenance => ({
+  const manual = (
+    path: string,
+    locator: string,
+    normalizationRecipe: string | null,
+    reviewedAt = MANUAL_REVIEWED_AT,
+  ): ClassifierCapabilityFieldProvenance => ({
     confirmed: true,
     source_type: "manual_adjudication",
     reviewer_id: MANUAL_REVIEWER_ID,
-    reviewed_at: MANUAL_REVIEWED_AT,
+    reviewed_at: reviewedAt,
     source_path: path,
     source_locator: locator,
     source_hash: sourceHashes.get(path)!,
@@ -470,33 +479,41 @@ async function main() {
     } as ClassifierCapabilityCaseFixture;
   });
 
-  if (retrievalCapture.requirement_id !== "response_recovery_remediation_validation"
-    || retrievalCapture.order_kind !== "newly_captured_retrieval_order"
-    || retrievalCapture.candidates.length < 3) {
-    throw new Error("The multi-candidate retrieval capture is incomplete or has the wrong requirement.");
-  }
-  const capturedIds = new Set<string>();
-  for (const [index, captured] of retrievalCapture.candidates.entries()) {
-    if (captured.original_position !== index + 1 || captured.merged_rank !== index + 1) {
-      throw new Error("The multi-candidate retrieval order changed.");
+  const validatePack = (
+    pack: SourceCompleteCandidatePack,
+    expectedOrder: SourceCompleteCandidatePack["order_kind"],
+  ) => {
+    if (pack.requirement_id !== "response_recovery_remediation_validation"
+      || pack.order_kind !== expectedOrder || pack.candidates.length < 3) {
+      throw new Error("A multi-candidate source pack is incomplete or has the wrong requirement.");
     }
-    if (!/^[0-9a-f]{8}-[0-9a-f-]{27}$/.test(captured.chunk_id)
-      || captured.candidate_id !== captured.chunk_id || capturedIds.has(captured.chunk_id)) {
-      throw new Error("The multi-candidate capture has a duplicate or invalid stored chunk id.");
+    const ids = new Set<string>();
+    for (const [index, captured] of pack.candidates.entries()) {
+      const ordered = captured.original_position === index + 1
+        && (expectedOrder !== "newly_captured_retrieval_order" || captured.merged_rank === index + 1)
+        && (expectedOrder !== "deterministic_stored_chunk_index_order"
+          || index === 0 || pack.candidates[index - 1].chunk_index < captured.chunk_index);
+      if (!ordered) throw new Error("A multi-candidate source-pack order changed.");
+      if (!/^[0-9a-f]{8}-[0-9a-f-]{27}$/.test(captured.chunk_id)
+        || captured.candidate_id !== captured.chunk_id || ids.has(captured.chunk_id)) {
+        throw new Error("A multi-candidate source pack has a duplicate or invalid stored chunk id.");
+      }
+      ids.add(captured.chunk_id);
+      const recomputed = sha256(captured.exact_stored_content);
+      if (captured.stored_content_sha256 !== recomputed
+        || captured.independently_recomputed_sha256 !== recomputed
+        || normalizeCapturedText(captured.exact_stored_content) !== captured.exact_stored_content) {
+        throw new Error(`Stored content verification failed for ${captured.chunk_id}.`);
+      }
     }
-    capturedIds.add(captured.chunk_id);
-    const recomputed = sha256(captured.exact_stored_content);
-    if (captured.stored_content_sha256 !== recomputed
-      || captured.independently_recomputed_sha256 !== recomputed
-      || normalizeCapturedText(captured.exact_stored_content) !== captured.exact_stored_content) {
-      throw new Error(`Stored content verification failed for ${captured.chunk_id}.`);
-    }
-  }
-  const unresolvedProvenance = (captured: RetrievalCaptureCandidate) => ({
-    ...inferred(captured.source_artifact_path, captured.source_artifact_locator),
-    normalization_recipe: retrievalCapture.normalization_recipe,
-  });
-  const capturedCandidates = retrievalCapture.candidates.map((captured) => ({
+  };
+  validatePack(retrievalCapture, "newly_captured_retrieval_order");
+  validatePack(aggregationPack, "deterministic_stored_chunk_index_order");
+
+  const sourceCandidate = (
+    captured: RetrievalCaptureCandidate,
+    pack: SourceCompleteCandidatePack,
+  ) => ({
     chunk_id: captured.chunk_id,
     rank: captured.merged_rank,
     document_id: captured.document_id,
@@ -506,23 +523,24 @@ async function main() {
     chunk_index: captured.chunk_index,
     section_path: captured.section_path,
     content_preview: captured.exact_stored_content,
-    similarity: captured.retrieval_selection_metadata.similarity,
-    evidence_reason: captured.retrieval_selection_metadata.evidence_reason,
+    similarity: typeof captured.retrieval_selection_metadata.similarity === "number"
+      ? captured.retrieval_selection_metadata.similarity : 0,
+    evidence_reason: typeof captured.retrieval_selection_metadata.evidence_reason === "string"
+      ? captured.retrieval_selection_metadata.evidence_reason : "frozen_evaluation_pack",
     embedding_input: null,
     source_type: "client_policy" as const,
     evidence_role: "organization_evidence" as const,
-    rerank_score: captured.retrieval_selection_metadata.rerank_score,
-    rerank_reason: captured.retrieval_selection_metadata.rerank_reason,
-    expected_relationship: { value: null, provenance: unresolvedProvenance(captured) },
-    expected_covered_elements: { value: null, provenance: unresolvedProvenance(captured) },
-    direct_support_recovery: { value: null, provenance: unresolvedProvenance(captured) },
-    hard_negative: { value: null, provenance: unresolvedProvenance(captured) },
+    rerank_score: typeof captured.retrieval_selection_metadata.rerank_score === "number"
+      ? captured.retrieval_selection_metadata.rerank_score : null,
+    rerank_reason: typeof captured.retrieval_selection_metadata.rerank_reason === "string"
+      ? captured.retrieval_selection_metadata.rerank_reason : pack.ordering_method ?? null,
     source: {
-      kind: "retrieval_capture" as const,
+      kind: pack.order_kind === "newly_captured_retrieval_order"
+        ? "retrieval_capture" as const : "frozen_evaluation_pack" as const,
       path: captured.source_artifact_path,
       locator: captured.source_artifact_locator,
       content_sha256: captured.stored_content_sha256,
-      normalization_recipe: retrievalCapture.normalization_recipe,
+      normalization_recipe: pack.normalization_recipe,
     },
     stored_provenance: {
       original_position: captured.original_position,
@@ -545,19 +563,76 @@ async function main() {
       merged_rank: captured.merged_rank,
       source_artifact_path: captured.source_artifact_path,
       source_artifact_locator: captured.source_artifact_locator,
-      normalization_recipe: retrievalCapture.normalization_recipe,
+      normalization_recipe: pack.normalization_recipe,
     },
-  }));
-  const caseProvenance = unresolvedProvenance(retrievalCapture.candidates[0]);
+  });
+
+  const diagnosticDecisions = [
+    { relationship: "supports" as const, elements: ["recovery_steps", "remediation_tracking", "validation_testing"], direct: true, hardNegative: false },
+    { relationship: "background_context" as const, elements: [], direct: false, hardNegative: true },
+    { relationship: "partially_supports" as const, elements: ["recovery_steps", "validation_testing"], direct: false, hardNegative: false },
+    { relationship: "background_context" as const, elements: [], direct: false, hardNegative: true },
+    { relationship: "background_context" as const, elements: [], direct: false, hardNegative: true },
+  ];
+  const diagnosticCandidates = retrievalCapture.candidates.map((captured, index) => {
+    const provenance = manual(
+      captured.source_artifact_path,
+      captured.source_artifact_locator,
+      retrievalCapture.normalization_recipe,
+      DIAGNOSTIC_MULTI_REVIEWED_AT,
+    );
+    const decision = diagnosticDecisions[index];
+    return {
+      ...sourceCandidate(captured, retrievalCapture),
+      expected_relationship: { value: decision.relationship, provenance },
+      expected_covered_elements: { value: decision.elements, provenance },
+      direct_support_recovery: { value: decision.direct, provenance },
+      hard_negative: { value: decision.hardNegative, provenance },
+    };
+  });
+  const diagnosticCaseProvenance = manual(
+    retrievalCapture.candidates[0].source_artifact_path,
+    retrievalCapture.candidates[0].source_artifact_locator,
+    retrievalCapture.normalization_recipe,
+    DIAGNOSTIC_MULTI_REVIEWED_AT,
+  );
   cases.push({
-    id: MULTI_CANDIDATE_CASE_ID,
+    id: DIAGNOSTIC_MULTI_CANDIDATE_CASE_ID,
     requirement_id: retrievalCapture.requirement_id,
     category: "recovery_remediation_validation",
+    evaluation_role: "diagnostic_only",
+    expected_status: { value: "covered", provenance: diagnosticCaseProvenance },
+    expected_supported_elements: {
+      value: ["recovery_steps", "remediation_tracking", "validation_testing"],
+      provenance: diagnosticCaseProvenance,
+    },
+    notes: "Diagnostic only: Candidate 1 alone covers all required elements, and its own stored embedding was used as the retrieval query vector. This case cannot satisfy the aggregation gate.",
+    candidates: diagnosticCandidates,
+  });
+
+  const aggregationCandidates = aggregationPack.candidates.map((captured) => {
+    const provenance = {
+      ...inferred(captured.source_artifact_path, captured.source_artifact_locator),
+      normalization_recipe: aggregationPack.normalization_recipe,
+    };
+    return {
+      ...sourceCandidate(captured, aggregationPack),
+      expected_relationship: { value: null, provenance },
+      expected_covered_elements: { value: null, provenance },
+      direct_support_recovery: { value: null, provenance },
+      hard_negative: { value: null, provenance },
+    };
+  });
+  const aggregationCaseProvenance = aggregationCandidates[0].expected_relationship.provenance;
+  cases.push({
+    id: AGGREGATION_CASE_ID,
+    requirement_id: aggregationPack.requirement_id,
+    category: "recovery_remediation_validation",
     evaluation_role: "unresolved",
-    expected_status: { value: null, provenance: caseProvenance },
-    expected_supported_elements: { value: null, provenance: caseProvenance },
-    notes: `Newly captured retrieval order. ${retrievalCapture.unconfirmed_review_aid}`,
-    candidates: capturedCandidates,
+    expected_status: { value: null, provenance: aggregationCaseProvenance },
+    expected_supported_elements: { value: null, provenance: aggregationCaseProvenance },
+    notes: `Frozen deterministic stored-chunk order. ${aggregationPack.unconfirmed_review_aid}`,
+    candidates: aggregationCandidates,
   });
   const suiteWithoutHash: Omit<ClassifierCapabilityFixtureSuite, "suite_hash"> = {
     schema_version: CLASSIFIER_CAPABILITY_FIXTURE_SCHEMA,
@@ -568,7 +643,7 @@ async function main() {
     requirement_sha256: Object.fromEntries(requirements.map((requirement) => [requirement.id, jsonHash(requirement)])),
     multi_candidate_review: {
       status: "unresolved",
-      case_id: MULTI_CANDIDATE_CASE_ID,
+      case_id: AGGREGATION_CASE_ID,
       blocker: MULTI_CANDIDATE_BLOCKER,
     },
     cases,
@@ -594,7 +669,7 @@ async function main() {
       },
       proposed_expected_status: fixtureCase.expected_status,
       proposed_expected_supported_elements: fixtureCase.expected_supported_elements,
-      reviewer_decisions: fixtureCase.id === MULTI_CANDIDATE_CASE_ID
+      reviewer_decisions: fixtureCase.id === AGGREGATION_CASE_ID
         ? { expected_status: null, case_supported_elements: null, reviewer_id: null, reviewed_at: null, notes: null }
         : { expected_status: null, expected_supported_elements: null, reviewer_id: null, reviewed_at: null, notes: null },
       candidates: fixtureCase.candidates.map((candidate, index) => ({
@@ -619,14 +694,14 @@ async function main() {
       })),
     };
   });
-  const multiCandidateWorksheetCase = worksheetCases.find((item) => item.case_id === MULTI_CANDIDATE_CASE_ID)!;
+  const multiCandidateWorksheetCase = worksheetCases.find((item) => item.case_id === AGGREGATION_CASE_ID)!;
   const worksheet = {
     schema_version: "classifier-capability-reviewer-worksheet/v1",
     fixture_suite_hash: suite.suite_hash,
     unresolved_multi_candidate_blocker: suite.multi_candidate_review.blocker,
     multi_candidate_artifacts_inspected: MULTI_CANDIDATE_ARTIFACTS_INSPECTED,
     multi_candidate_review_case: multiCandidateWorksheetCase,
-    cases: worksheetCases.filter((item) => item.case_id !== MULTI_CANDIDATE_CASE_ID),
+    cases: worksheetCases.filter((item) => item.case_id !== AGGREGATION_CASE_ID),
   };
   await writeFile(resolve(WORKSHEET_JSON_PATH), `${JSON.stringify(worksheet, null, 2)}\n`, "utf8");
   const markdown = [
@@ -645,7 +720,7 @@ async function main() {
     "The historical reports could not be reconstructed because their stored chunks no longer exist. The multi-candidate section below preserves a newly captured, document-scoped retrieval order and remains entirely unresolved.",
     "",
     ...[...worksheet.cases, worksheet.multi_candidate_review_case].flatMap((fixtureCase) => [
-      fixtureCase.case_id === MULTI_CANDIDATE_CASE_ID
+      fixtureCase.case_id === AGGREGATION_CASE_ID
         ? `## Multi-candidate review: ${fixtureCase.case_id}`
         : `## ${fixtureCase.case_id}`,
       "",
@@ -653,8 +728,8 @@ async function main() {
       `Requirement: **${fixtureCase.requirement.title}** (\`${fixtureCase.requirement.id}\`)`,
       fixtureCase.requirement.description,
       "",
-      ...(fixtureCase.case_id === MULTI_CANDIDATE_CASE_ID
-        ? ["Unconfirmed review aid only: Candidates 1 and 3 appear capable of complementary operative detail; Candidate 2 appears to be a high-signal inventory distractor; Candidate 5 may be a controls-context distractor.", ""]
+      ...(fixtureCase.case_id === AGGREGATION_CASE_ID
+        ? ["Unconfirmed review aid only: Candidates 1 and 2 appear capable of complementary operative detail; Candidate 3 appears to be a high-signal incident-file inventory distractor.", ""]
         : [
           `Proposed final status: \`${fixtureCase.proposed_expected_status.value}\``,
           `Proposed supported elements: \`${fixtureCase.proposed_expected_supported_elements.value?.join(", ") || "none"}\``,
@@ -673,7 +748,7 @@ async function main() {
         candidate.exact_candidate_text,
         "```",
         "",
-        ...(fixtureCase.case_id === MULTI_CANDIDATE_CASE_ID
+        ...(fixtureCase.case_id === AGGREGATION_CASE_ID
           ? []
           : [
             `Proposed: relationship \`${candidate.proposed_expected_relationship.value}\`; elements \`${candidate.proposed_expected_elements.value?.join(", ") || "none"}\`; direct-support \`${candidate.proposed_direct_support.value}\`; hard-negative \`${candidate.proposed_hard_negative.value}\`.`,

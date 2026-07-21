@@ -106,11 +106,15 @@ test("v2 fixtures validate imported adjudications, keep worksheets blank, and dr
   );
   assert.deepEqual(
     fixtures.cases.filter((item) => item.evaluation_role === "diagnostic_only").map((item) => item.id),
-    ["assessment-monitoring-escalation-partial", "preservation-log-procedure"],
+    [
+      "assessment-monitoring-escalation-partial",
+      "preservation-log-procedure",
+      "recovery-remediation-validation-multi-candidate-review",
+    ],
   );
   assert.equal(worksheet.cases.every((item) => item.reviewer_decisions.reviewer_id === null), true);
-  assert.equal(worksheet.multi_candidate_review_case.case_id, "recovery-remediation-validation-multi-candidate-review");
-  assert.match(worksheet.unresolved_multi_candidate_blocker, /source-complete but unresolved/);
+  assert.equal(worksheet.multi_candidate_review_case.case_id, "recovery-remediation-validation-cross-candidate-aggregation-review");
+  assert.match(worksheet.unresolved_multi_candidate_blocker, /Aggregation case.*source-complete but unresolved/);
   const approved = fixtures.cases.filter((item) => item.evaluation_role === "scored");
   for (const fixtureCase of approved) {
     const provenances = [
@@ -130,9 +134,41 @@ test("v2 fixtures validate imported adjudications, keep worksheets blank, and dr
   assert.equal(preservationInventory.expected_status.value, "partial");
   assert.deepEqual(preservationInventory.expected_supported_elements.value, ["incident_materials"]);
   assert.equal(preservationInventory.candidates[0].hard_negative.value, false);
-  for (const diagnostic of fixtures.cases.filter((item) => item.evaluation_role === "diagnostic_only")) {
+  for (const diagnostic of fixtures.cases.filter((item) =>
+    item.evaluation_role === "diagnostic_only"
+    && item.id !== "recovery-remediation-validation-multi-candidate-review")) {
     assert.equal(diagnostic.candidates.every((item) => item.expected_relationship.provenance.source_type === "diagnostic_artifact"), true);
   }
+  const adjudicatedDiagnostic = fixtures.cases.find((item) => item.id === "recovery-remediation-validation-multi-candidate-review");
+  assert.equal(adjudicatedDiagnostic.evaluation_role, "diagnostic_only");
+  assert.equal(adjudicatedDiagnostic.expected_status.value, "covered");
+  assert.deepEqual(adjudicatedDiagnostic.expected_supported_elements.value, ["recovery_steps", "remediation_tracking", "validation_testing"]);
+  assert.deepEqual(adjudicatedDiagnostic.candidates.map((item) => ({
+    relationship: item.expected_relationship.value,
+    elements: item.expected_covered_elements.value,
+    direct: item.direct_support_recovery.value,
+    hardNegative: item.hard_negative.value,
+  })), [
+    { relationship: "supports", elements: ["recovery_steps", "remediation_tracking", "validation_testing"], direct: true, hardNegative: false },
+    { relationship: "background_context", elements: [], direct: false, hardNegative: true },
+    { relationship: "partially_supports", elements: ["recovery_steps", "validation_testing"], direct: false, hardNegative: false },
+    { relationship: "background_context", elements: [], direct: false, hardNegative: true },
+    { relationship: "background_context", elements: [], direct: false, hardNegative: true },
+  ]);
+  const diagnosticProvenance = [
+    adjudicatedDiagnostic.expected_status.provenance,
+    adjudicatedDiagnostic.expected_supported_elements.provenance,
+    ...adjudicatedDiagnostic.candidates.flatMap((candidate) => [
+      candidate.expected_relationship.provenance,
+      candidate.expected_covered_elements.provenance,
+      candidate.direct_support_recovery.provenance,
+      candidate.hard_negative.provenance,
+    ]),
+  ];
+  assert.equal(diagnosticProvenance.every((item) =>
+    item.confirmed && item.source_type === "manual_adjudication"
+    && item.reviewer_id === "vivaan-bhargava"
+    && item.reviewed_at === "2026-07-21T03:31:43.000Z"), true);
   for (const fixtureCase of dry.cases) for (const request of fixtureCase.requests) {
     const baseline = structuredClone(request.baseline.request_body);
     const challenger = structuredClone(request.challenger.request_body);
@@ -152,26 +188,30 @@ test("paid gate rejects incomplete adjudication and missing multi-candidate cove
       ENABLE_EXTERNAL_AI_PROCESSING: "true", ENABLE_EXTERNAL_AI_CLASSIFIER: "true",
       REQUIREMENT_CLASSIFIER_API_KEY: "must-not-be-used",
     }),
-    /source-complete but unresolved/,
+    /Aggregation case.*source-complete but unresolved/,
   );
 });
 
-test("source-complete multi-candidate capture preserves order, stored ids, hashes, and normalized text", async () => {
+test("source-complete aggregation pack preserves deterministic order, stored ids, hashes, and blank decisions", async () => {
   const [fixtures, worksheet, capture] = await Promise.all([
     readFile(fixturePath, "utf8").then(JSON.parse),
     readFile("eval-fixtures/classifier-capability/reviewer-worksheet.json", "utf8").then(JSON.parse),
-    readFile("eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json", "utf8").then(JSON.parse),
+    readFile("eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json", "utf8").then(JSON.parse),
   ]);
-  const fixtureCase = fixtures.cases.find((item) => item.id === "recovery-remediation-validation-multi-candidate-review");
+  const fixtureCase = fixtures.cases.find((item) => item.id === "recovery-remediation-validation-cross-candidate-aggregation-review");
   const worksheetCase = worksheet.multi_candidate_review_case;
   const normalize = (value) => value.replace(/\r\n?/g, "\n").normalize("NFC");
   const hash = (value) => createHash("sha256").update(value, "utf8").digest("hex");
 
   assert.equal(fixtureCase.evaluation_role, "unresolved");
-  assert.equal(capture.order_kind, "newly_captured_retrieval_order");
+  assert.equal(capture.order_kind, "deterministic_stored_chunk_index_order");
+  assert.match(capture.ordering_method, /ascending chunk_index order; no query vector/);
+  assert.equal("query_vector_source" in capture, false);
+  assert.equal(hash(await readFile(capture.source_document.path)), capture.source_document.sha256);
   assert.deepEqual(fixtureCase.candidates.map((item) => item.chunk_id), capture.candidates.map((item) => item.chunk_id));
   assert.deepEqual(worksheetCase.candidates.map((item) => item.candidate_id), capture.candidates.map((item) => item.chunk_id));
-  assert.deepEqual(capture.candidates.map((item) => item.original_position), [1, 2, 3, 4, 5]);
+  assert.deepEqual(capture.candidates.map((item) => item.original_position), [1, 2, 3]);
+  assert.deepEqual(capture.candidates.map((item) => item.chunk_index), [3, 7, 16]);
   for (const [index, candidate] of fixtureCase.candidates.entries()) {
     const stored = capture.candidates[index];
     assert.match(candidate.chunk_id, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
@@ -181,7 +221,8 @@ test("source-complete multi-candidate capture preserves order, stored ids, hashe
     assert.equal(hash(candidate.content_preview), stored.stored_content_sha256);
     assert.equal(stored.stored_content_sha256, stored.independently_recomputed_sha256);
     assert.equal(normalize(candidate.content_preview), normalize(stored.exact_stored_content));
-    assert.equal(candidate.stored_provenance.merged_rank, index + 1);
+    assert.equal(candidate.stored_provenance.original_position, index + 1);
+    assert.equal(candidate.stored_provenance.merged_rank, null);
   }
   assert.equal(fixtureCase.expected_status.value, null);
   assert.equal(fixtureCase.expected_supported_elements.value, null);
@@ -190,6 +231,15 @@ test("source-complete multi-candidate capture preserves order, stored ids, hashe
     && item.expected_covered_elements.value === null
     && item.direct_support_recovery.value === null
     && item.hard_negative.value === null), true);
+  assert.deepEqual(worksheetCase.reviewer_decisions, {
+    expected_status: null,
+    case_supported_elements: null,
+    reviewer_id: null,
+    reviewed_at: null,
+    notes: null,
+  });
+  assert.equal(worksheetCase.candidates.every((item) =>
+    Object.values(item.reviewer_decisions).every((value) => value === null)), true);
 });
 
 test("duplicate multi-candidates are rejected and unresolved decisions cannot become scored", async () => {
@@ -197,7 +247,7 @@ test("duplicate multi-candidates are rejected and unresolved decisions cannot be
     import { readFile } from "node:fs/promises";
     import { classifierCapabilityFixtureSuiteHash, validateClassifierCapabilityFixtures } from "./lib/classifierCapabilityEval.ts";
     const fixtures = JSON.parse(await readFile(${JSON.stringify(fixturePath)}, "utf8"));
-    const multi = fixtures.cases.find((item) => item.id === "recovery-remediation-validation-multi-candidate-review");
+    const multi = fixtures.cases.find((item) => item.id === "recovery-remediation-validation-cross-candidate-aggregation-review");
     const duplicate = structuredClone(fixtures);
     const duplicateMulti = duplicate.cases.find((item) => item.id === multi.id);
     duplicateMulti.candidates.push(structuredClone(duplicateMulti.candidates[0]));
@@ -212,6 +262,68 @@ test("duplicate multi-candidates are rejected and unresolved decisions cannot be
     console.log(JSON.stringify({ duplicateRejected, scoringRejected }));
   `);
   assert.deepEqual(evaluated, { duplicateRejected: true, scoringRejected: true });
+});
+
+test("paid aggregation gate requires distributed unique coverage and a separate confirmed hard negative", async () => {
+  const evaluated = await runTsEval(`
+    import { readFile } from "node:fs/promises";
+    import { paidRunReadinessBlockers } from "./lib/classifierCapabilityEval.ts";
+    const fixtures = JSON.parse(await readFile(${JSON.stringify(fixturePath)}, "utf8"));
+    const caseId = "recovery-remediation-validation-cross-candidate-aggregation-review";
+    const confirm = (field) => ({ ...field, provenance: { ...field.provenance, confirmed:true, source_type:"manual_adjudication", reviewer_id:"reviewer", reviewed_at:"2026-07-21T04:00:00.000Z" } });
+    const adjudicate = (suite) => {
+      const c = suite.cases.find((item) => item.id === caseId);
+      c.evaluation_role = "scored";
+      c.expected_status = confirm({ ...c.expected_status, value:"covered" });
+      c.expected_supported_elements = confirm({ ...c.expected_supported_elements, value:["recovery_steps","remediation_tracking","validation_testing"] });
+      const decisions = [
+        { relationship:"partially_supports", elements:["recovery_steps","validation_testing"], direct:false, hard:false },
+        { relationship:"partially_supports", elements:["remediation_tracking"], direct:false, hard:false },
+        { relationship:"background_context", elements:[], direct:false, hard:true },
+      ];
+      c.candidates.forEach((candidate,index) => {
+        const d=decisions[index];
+        candidate.expected_relationship=confirm({ ...candidate.expected_relationship, value:d.relationship });
+        candidate.expected_covered_elements=confirm({ ...candidate.expected_covered_elements, value:d.elements });
+        candidate.direct_support_recovery=confirm({ ...candidate.direct_support_recovery, value:d.direct });
+        candidate.hard_negative=confirm({ ...candidate.hard_negative, value:d.hard });
+      });
+      suite.multi_candidate_review={status:"confirmed",case_id:caseId,blocker:null};
+      return c;
+    };
+    const valid=structuredClone(fixtures); adjudicate(valid);
+    const individual=structuredClone(fixtures); const individualCase=adjudicate(individual);
+    individualCase.candidates[0].expected_covered_elements.value.push("remediation_tracking");
+    const missingUnion=structuredClone(fixtures); const missingCase=adjudicate(missingUnion);
+    missingCase.candidates[1].expected_covered_elements.value=[];
+    const noUnique=structuredClone(fixtures); const noUniqueCase=adjudicate(noUnique);
+    const distractor=structuredClone(fixtures.cases.find((item)=>item.id==="recovery-remediation-validation-multi-candidate-review").candidates[3]);
+    noUniqueCase.candidates[2].expected_relationship=confirm({ ...noUniqueCase.candidates[2].expected_relationship, value:"partially_supports" });
+    noUniqueCase.candidates[2].expected_covered_elements=confirm({ ...noUniqueCase.candidates[2].expected_covered_elements, value:["recovery_steps"] });
+    noUniqueCase.candidates[2].hard_negative=confirm({ ...noUniqueCase.candidates[2].hard_negative, value:false });
+    noUniqueCase.candidates.push(distractor);
+    const noHardNegative=structuredClone(fixtures); const noHardCase=adjudicate(noHardNegative);
+    noHardCase.candidates[2].hard_negative.value=false;
+    const diagnostic=structuredClone(fixtures);
+    diagnostic.multi_candidate_review={status:"confirmed",case_id:"recovery-remediation-validation-multi-candidate-review",blocker:null};
+    const blocked = (suite) => paidRunReadinessBlockers(suite).length > 0;
+    console.log(JSON.stringify({
+      valid:paidRunReadinessBlockers(valid),
+      individualBlocked:blocked(individual),
+      missingUnionBlocked:blocked(missingUnion),
+      noUniqueBlocked:blocked(noUnique),
+      noHardNegativeBlocked:blocked(noHardNegative),
+      diagnosticBlocked:blocked(diagnostic),
+    }));
+  `);
+  assert.deepEqual(evaluated, {
+    valid: [],
+    individualBlocked: true,
+    missingUnionBlocked: true,
+    noUniqueBlocked: true,
+    noHardNegativeBlocked: true,
+    diagnosticBlocked: true,
+  });
 });
 
 test("fallback and deterministic guardrail candidates are excluded and status false assurance is ordered", async () => {

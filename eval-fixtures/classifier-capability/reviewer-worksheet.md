@@ -1,10 +1,10 @@
 # Classifier capability reviewer worksheet
 
-Fixture suite hash: `8b46bf196f5ca1745b5fb3cb792e1423c74e4db48e781e8c60dc09349bd28e96`
+Fixture suite hash: `0b03dee820b0be45a74fa87171e3b1700390551eef425f5c97d4647a70713a7a`
 
 ## Unresolved blocker
 
-Multi-candidate case recovery-remediation-validation-multi-candidate-review is source-complete but unresolved. Paid mode remains blocked until a reviewer manually adjudicates the final status, case-supported elements, and every candidate relationship, element, direct-support, and hard-negative field.
+Aggregation case recovery-remediation-validation-cross-candidate-aggregation-review is source-complete but unresolved. Paid mode remains blocked until a reviewer manually adjudicates the final status, case-supported elements, and every candidate relationship, element, direct-support, and hard-negative field.
 
 Artifacts inspected:
 
@@ -14,6 +14,7 @@ Artifacts inspected:
 - `eval-results/corpus-regspan-v1-isolated-*/results.{json,csv}`
 - `eval-results/corpus-regspan-v2-realistic-company-policies-isolated-*/results.{json,csv}`
 - `eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json`
+- `eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json`
 
 The historical reports could not be reconstructed because their stored chunks no longer exist. The multi-candidate section below preserves a newly captured, document-scoped retrieval order and remains entirely unresolved.
 
@@ -373,13 +374,14 @@ Reviewer direct-support designation: ____________________
 Reviewer hard-negative designation: ____________________
 Reviewer notes: ____________________
 
-## Multi-candidate review: recovery-remediation-validation-multi-candidate-review
+## recovery-remediation-validation-multi-candidate-review
 
-Role: `unresolved`
+Role: `diagnostic_only`
 Requirement: **Response recovery and remediation validation** (`response_recovery_remediation_validation`)
 The reviewed documents appear to define how the firm recovers from unauthorized access or use of customer information and validates remediation or corrective action.
 
-Unconfirmed review aid only: Candidates 1 and 3 appear capable of complementary operative detail; Candidate 2 appears to be a high-signal inventory distractor; Candidate 5 may be a controls-context distractor.
+Proposed final status: `covered`
+Proposed supported elements: `recovery_steps, remediation_tracking, validation_testing`
 
 
 Reviewer final status: ____________________
@@ -406,7 +408,9 @@ assigned owners and due dates and remain open until evidence of completion is re
 • obtain closure approval from the incident lead and Compliance.
 ```
 
-Provenance: `implementation_inference`, eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json, candidates[0].
+Proposed: relationship `supports`; elements `recovery_steps, remediation_tracking, validation_testing`; direct-support `true`; hard-negative `false`.
+
+Provenance: `manual_adjudication`, eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json, candidates[0].
 Stored row: workspace `af584c33-42fe-4ce4-b641-c3b381c98214`; document `0cca8649-fd13-42f1-b259-28e54d12fe37`; chunk `5e7de7c7-f2b1-4550-a35f-aabdf8289972`; index `13`; original position `1`.
 Citation: northline_regulation_sp_policy.pdf, pages 6-6; section `14. Recovery, Remediation, and Validation`; parent `Document`; path `14. Recovery, Remediation, and Validation`.
 Hashes: stored source `22613ed6414b147e970c986979c32578ff1deffd8146f7e5f5949e144d1942fc`; recomputed `22613ed6414b147e970c986979c32578ff1deffd8146f7e5f5949e144d1942fc`; stored embedding input `70eebb19c4f136173d33ed1ceb6d3c3bce2a3fd230556a95c0ac4ca646d54302`.
@@ -434,7 +438,9 @@ Reviewer notes: ____________________
 • corrective actions, validation results, post-incident findings, and closure approval.
 ```
 
-Provenance: `implementation_inference`, eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json, candidates[1].
+Proposed: relationship `background_context`; elements `none`; direct-support `false`; hard-negative `true`.
+
+Provenance: `manual_adjudication`, eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json, candidates[1].
 Stored row: workspace `af584c33-42fe-4ce4-b641-c3b381c98214`; document `0cca8649-fd13-42f1-b259-28e54d12fe37`; chunk `8c104761-0821-4330-9cfc-5b843b4d5175`; index `16`; original position `2`.
 Citation: northline_regulation_sp_policy.pdf, pages 7-7; section `17. Appendix A - Incident File Minimum Contents`; parent `Document`; path `17. Appendix A - Incident File Minimum Contents`.
 Hashes: stored source `7dce6f4d89abb84465546fae07568a2fc3d218b6390d15f6aa9606237cd78322`; recomputed `7dce6f4d89abb84465546fae07568a2fc3d218b6390d15f6aa9606237cd78322`; stored embedding input `6a44d45ae586bf804bbd0f1e3ef7098790d3219e198a5ce2daf345f834e3420f`.
@@ -469,7 +475,9 @@ reports.
 post-incident review.
 ```
 
-Provenance: `implementation_inference`, eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json, candidates[2].
+Proposed: relationship `partially_supports`; elements `recovery_steps, validation_testing`; direct-support `false`; hard-negative `false`.
+
+Provenance: `manual_adjudication`, eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json, candidates[2].
 Stored row: workspace `af584c33-42fe-4ce4-b641-c3b381c98214`; document `0cca8649-fd13-42f1-b259-28e54d12fe37`; chunk `f67e4e3d-d73a-4cc8-a331-04bb9f2c1b6e`; index `3`; original position `3`.
 Citation: northline_regulation_sp_policy.pdf, pages 3-3; section `4. Cyber Incident Response Governance`; parent `Document`; path `4. Cyber Incident Response Governance`.
 Hashes: stored source `ad8d9652a9012326951de4e989cfc0b4c04765b63ca80b5fc50268247ec3156b`; recomputed `ad8d9652a9012326951de4e989cfc0b4c04765b63ca80b5fc50268247ec3156b`; stored embedding input `4942e75572bf3038dac556b87c6924105cba6694a4c45902dc90b43e1653024b`.
@@ -496,7 +504,9 @@ source, collection time, custodian, and integrity information when material to t
 shortened while an incident, investigation, examination, or legal hold is open.
 ```
 
-Provenance: `implementation_inference`, eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json, candidates[3].
+Proposed: relationship `background_context`; elements `none`; direct-support `false`; hard-negative `true`.
+
+Provenance: `manual_adjudication`, eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json, candidates[3].
 Stored row: workspace `af584c33-42fe-4ce4-b641-c3b381c98214`; document `0cca8649-fd13-42f1-b259-28e54d12fe37`; chunk `88ca5971-6e57-4aa1-998b-658eb2482105`; index `11`; original position `4`.
 Citation: northline_regulation_sp_policy.pdf, pages 6-6; section `12. Logging and Investigation Records`; parent `Document`; path `12. Logging and Investigation Records`.
 Hashes: stored source `bcee3ecee0a117407c150a303e6a1e85fbdb6321af473644f97bd37337af037a`; recomputed `bcee3ecee0a117407c150a303e6a1e85fbdb6321af473644f97bd37337af037a`; stored embedding input `1783c179d965521c4407a379b2c6c51eb6011a2f8e597a7b7733346b785925f5`.
@@ -528,11 +538,127 @@ endpoint protection, vulnerability management, secure configuration, logging, mo
 transport, clean-desk expectations, and destruction controls for paper and media.
 ```
 
-Provenance: `implementation_inference`, eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json, candidates[4].
+Proposed: relationship `background_context`; elements `none`; direct-support `false`; hard-negative `true`.
+
+Provenance: `manual_adjudication`, eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json, candidates[4].
 Stored row: workspace `af584c33-42fe-4ce4-b641-c3b381c98214`; document `0cca8649-fd13-42f1-b259-28e54d12fe37`; chunk `db0f84c9-17e5-4a41-a6e9-a79f444859fd`; index `8`; original position `5`.
 Citation: northline_regulation_sp_policy.pdf, pages 5-5; section `9. Customer Information Security Controls`; parent `Document`; path `9. Customer Information Security Controls`.
 Hashes: stored source `05ccf1538fcfc6bce219215dddce251b2063b8d405e1291573347b1f1b5fd917`; recomputed `05ccf1538fcfc6bce219215dddce251b2063b8d405e1291573347b1f1b5fd917`; stored embedding input `21ffefee1018e949a82c46c46afa53d816ecd4c55ebe5e7e7d9f34b0434b881f`.
 Ranks: semantic `unavailable`; keyword `unavailable`; merged `5`. Retrieval selection: `{"similarity":0.756843237649262,"evidence_reason":"substantive_requirement_or_procedure","rerank_score":109.68,"rerank_reason":"semantic 75.7; action signals: test; topic signals: vulnerability, appear, unauthorized; section/path signals: customer; role organization_evidence; source client_policy; classifier substantive requirement or procedure"}`.
+Normalization: Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace.
+
+
+Reviewer relationship: ____________________
+Reviewer elements: ____________________
+Reviewer direct-support designation: ____________________
+Reviewer hard-negative designation: ____________________
+Reviewer notes: ____________________
+
+## Multi-candidate review: recovery-remediation-validation-cross-candidate-aggregation-review
+
+Role: `unresolved`
+Requirement: **Response recovery and remediation validation** (`response_recovery_remediation_validation`)
+The reviewed documents appear to define how the firm recovers from unauthorized access or use of customer information and validates remediation or corrective action.
+
+Unconfirmed review aid only: Candidates 1 and 2 appear capable of complementary operative detail; Candidate 3 appears to be a high-signal incident-file inventory distractor.
+
+
+Reviewer final status: ____________________
+Reviewer case-supported elements: ____________________
+Reviewer ID: ____________________
+Reviewed at: ____________________
+
+### Candidate 1: f67e4e3d-d73a-4cc8-a331-04bb9f2c1b6e
+
+```text
+4. Cyber Incident Response Governance
+
+Northline Brokerage Services, Inc. maintains this written incident response program as part of its customer information
+safeguards framework. The program is reasonably designed to detect, respond to, and recover from unauthorized
+access to or use of customer information. It applies to customer information in paper, electronic, and other forms,
+including information maintained by service providers on the firm's behalf.
+The program begins when monitoring, employee reporting, a service-provider notice, or another reliable source indicates
+that unauthorized access or use has occurred or is reasonably likely to have occurred. The Incident Response Lead
+opens a case, assigns severity, preserves relevant records, and coordinates assessment, containment, customer-notice
+analysis, recovery, and closure.
+
+• Detect: monitor security alerts, access anomalies, customer complaints, lost devices, vendor notices, and misuse
+reports.
+• Respond: investigate, contain, control, communicate, and document decisions.
+• Recover: restore approved services, remediate root causes, validate controls and access, and complete a
+post-incident review.
+```
+
+Provenance: `implementation_inference`, eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json, candidates[0].
+Stored row: workspace `af584c33-42fe-4ce4-b641-c3b381c98214`; document `0cca8649-fd13-42f1-b259-28e54d12fe37`; chunk `f67e4e3d-d73a-4cc8-a331-04bb9f2c1b6e`; index `3`; original position `1`.
+Citation: northline_regulation_sp_policy.pdf, pages 3-3; section `4. Cyber Incident Response Governance`; parent `Document`; path `4. Cyber Incident Response Governance`.
+Hashes: stored source `ad8d9652a9012326951de4e989cfc0b4c04765b63ca80b5fc50268247ec3156b`; recomputed `ad8d9652a9012326951de4e989cfc0b4c04765b63ca80b5fc50268247ec3156b`; stored embedding input `4942e75572bf3038dac556b87c6924105cba6694a4c45902dc90b43e1653024b`.
+Ranks: semantic `unavailable`; keyword `unavailable`; merged `unavailable`. Retrieval selection: `{"selection_method":"frozen_evaluation_pack","order_key":"chunk_index","order_value":3}`.
+Normalization: Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace.
+
+
+Reviewer relationship: ____________________
+Reviewer elements: ____________________
+Reviewer direct-support designation: ____________________
+Reviewer hard-negative designation: ____________________
+Reviewer notes: ____________________
+
+### Candidate 2: 5479d864-f145-4454-b00f-b8e572a20ac7
+
+```text
+8. Service Provider Oversight
+
+The firm maintains and enforces written procedures for due diligence and ongoing monitoring of service providers that
+receive, maintain, process, or are permitted access to customer information. Reviews consider security controls,
+incident-response capability, subcontractor use, independent assurance reports, material changes, and known control
+failures.
+Oversight is reasonably designed to ensure that service providers protect against unauthorized access to or use of
+customer information and notify the firm as soon as possible, but no later than 72 hours after becoming aware that a
+breach in security resulted in unauthorized access to a customer information system maintained by the provider.
+Upon receipt of a qualifying provider notice, or upon independent detection of the incident, the firm immediately initiates
+its incident response program. A provider may deliver customer notices under a written agreement, but the firm remains
+responsible for ensuring that each required notice satisfies the firm's obligations and is timely delivered.
+
+• document initial and periodic due diligence;
+• track identified risks and remediation;
+
+• maintain provider breach notices and related communications;
+• verify completion and delivery when a provider sends customer notices on the firm's behalf.
+```
+
+Provenance: `implementation_inference`, eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json, candidates[1].
+Stored row: workspace `af584c33-42fe-4ce4-b641-c3b381c98214`; document `0cca8649-fd13-42f1-b259-28e54d12fe37`; chunk `5479d864-f145-4454-b00f-b8e572a20ac7`; index `7`; original position `2`.
+Citation: northline_regulation_sp_policy.pdf, pages 4-5; section `8. Service Provider Oversight`; parent `Document`; path `8. Service Provider Oversight`.
+Hashes: stored source `69f597b46d36a061eb76c3d271de3525907d2671d2f3fc4def76dd67758d99ce`; recomputed `69f597b46d36a061eb76c3d271de3525907d2671d2f3fc4def76dd67758d99ce`; stored embedding input `019a2957594c418f03d53d8a6342360f1ce2e0b9877c81e895f3130cf72b21fc`.
+Ranks: semantic `unavailable`; keyword `unavailable`; merged `unavailable`. Retrieval selection: `{"selection_method":"frozen_evaluation_pack","order_key":"chunk_index","order_value":7}`.
+Normalization: Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace.
+
+
+Reviewer relationship: ____________________
+Reviewer elements: ____________________
+Reviewer direct-support designation: ____________________
+Reviewer hard-negative designation: ____________________
+Reviewer notes: ____________________
+
+### Candidate 3: 8c104761-0821-4330-9cfc-5b843b4d5175
+
+```text
+17. Appendix A - Incident File Minimum Contents
+
+• incident identifier, discovery date, and awareness date;
+• affected systems, business processes, customer information types, and individuals;
+• investigation timeline, containment actions, and recovery steps;
+• notification analysis, decision, approvals, and copies of notices;
+• service-provider notices, contracts, communications, and remediation;
+• logs, exports, screenshots, evidence sources, and preservation details;
+• corrective actions, validation results, post-incident findings, and closure approval.
+```
+
+Provenance: `implementation_inference`, eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json, candidates[2].
+Stored row: workspace `af584c33-42fe-4ce4-b641-c3b381c98214`; document `0cca8649-fd13-42f1-b259-28e54d12fe37`; chunk `8c104761-0821-4330-9cfc-5b843b4d5175`; index `16`; original position `3`.
+Citation: northline_regulation_sp_policy.pdf, pages 7-7; section `17. Appendix A - Incident File Minimum Contents`; parent `Document`; path `17. Appendix A - Incident File Minimum Contents`.
+Hashes: stored source `7dce6f4d89abb84465546fae07568a2fc3d218b6390d15f6aa9606237cd78322`; recomputed `7dce6f4d89abb84465546fae07568a2fc3d218b6390d15f6aa9606237cd78322`; stored embedding input `6a44d45ae586bf804bbd0f1e3ef7098790d3219e198a5ce2daf345f834e3420f`.
+Ranks: semantic `unavailable`; keyword `unavailable`; merged `unavailable`. Retrieval selection: `{"selection_method":"frozen_evaluation_pack","order_key":"chunk_index","order_value":16}`.
 Normalization: Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace.
 
 

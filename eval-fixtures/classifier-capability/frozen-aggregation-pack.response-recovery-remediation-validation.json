@@ -1,0 +1,106 @@
+{
+  "schema_version": "classifier-capability-frozen-aggregation-pack/v1",
+  "created_at": "2026-07-21T03:31:43.000Z",
+  "order_kind": "deterministic_stored_chunk_index_order",
+  "ordering_method": "Freeze the three explicitly selected existing document_chunks rows in ascending chunk_index order; no query vector, similarity, classifier output, or embedding-based ordering is used.",
+  "source_evaluation_artifact": {
+    "path": "eval-results/corpus-regspan-v2-realistic-company-policies-isolated-098041de-f87b-4b04-9c4b-8b2876ff0d1f/results.json",
+    "locator": "cases.northline-brokerage-services",
+    "workspace_id": "af584c33-42fe-4ce4-b641-c3b381c98214",
+    "document_id": "0cca8649-fd13-42f1-b259-28e54d12fe37",
+    "analysis_run_id": "352c459a-c8ce-4f62-9fce-cee77c906199"
+  },
+  "source_document": {
+    "path": "eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf",
+    "sha256": "8540c08a73b48ffd40d51a96a9a0b2328653be4193f7b62d36a9e5a981786ab8"
+  },
+  "requirement_id": "response_recovery_remediation_validation",
+  "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace.",
+  "unconfirmed_review_aid": "Candidates 1 and 2 appear capable of supplying complementary required elements: Candidate 1 describes recovery and validation activity, while Candidate 2 tracks identified risks and remediation. Candidate 3 appears to be a high-signal incident-file inventory distractor rather than an operative procedure. These observations are not reviewer decisions or labels.",
+  "candidates": [
+    {
+      "candidate_id": "f67e4e3d-d73a-4cc8-a331-04bb9f2c1b6e",
+      "original_position": 1,
+      "workspace_id": "af584c33-42fe-4ce4-b641-c3b381c98214",
+      "document_id": "0cca8649-fd13-42f1-b259-28e54d12fe37",
+      "chunk_id": "f67e4e3d-d73a-4cc8-a331-04bb9f2c1b6e",
+      "chunk_index": 3,
+      "exact_stored_content": "4. Cyber Incident Response Governance\n\nNorthline Brokerage Services, Inc. maintains this written incident response program as part of its customer information\nsafeguards framework. The program is reasonably designed to detect, respond to, and recover from unauthorized\naccess to or use of customer information. It applies to customer information in paper, electronic, and other forms,\nincluding information maintained by service providers on the firm's behalf.\nThe program begins when monitoring, employee reporting, a service-provider notice, or another reliable source indicates\nthat unauthorized access or use has occurred or is reasonably likely to have occurred. The Incident Response Lead\nopens a case, assigns severity, preserves relevant records, and coordinates assessment, containment, customer-notice\nanalysis, recovery, and closure.\n\n• Detect: monitor security alerts, access anomalies, customer complaints, lost devices, vendor notices, and misuse\nreports.\n• Respond: investigate, contain, control, communicate, and document decisions.\n• Recover: restore approved services, remediate root causes, validate controls and access, and complete a\npost-incident review.",
+      "stored_content_sha256": "ad8d9652a9012326951de4e989cfc0b4c04765b63ca80b5fc50268247ec3156b",
+      "independently_recomputed_sha256": "ad8d9652a9012326951de4e989cfc0b4c04765b63ca80b5fc50268247ec3156b",
+      "stored_embedding_input_sha256": "4942e75572bf3038dac556b87c6924105cba6694a4c45902dc90b43e1653024b",
+      "filename": "northline_regulation_sp_policy.pdf",
+      "page_start": 3,
+      "page_end": 3,
+      "section_heading": "4. Cyber Incident Response Governance",
+      "parent_heading": "Document",
+      "section_path": "4. Cyber Incident Response Governance",
+      "retrieval_selection_metadata": {
+        "selection_method": "frozen_evaluation_pack",
+        "order_key": "chunk_index",
+        "order_value": 3
+      },
+      "semantic_rank": null,
+      "keyword_rank": null,
+      "merged_rank": null,
+      "source_artifact_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
+      "source_artifact_locator": "candidates[0]"
+    },
+    {
+      "candidate_id": "5479d864-f145-4454-b00f-b8e572a20ac7",
+      "original_position": 2,
+      "workspace_id": "af584c33-42fe-4ce4-b641-c3b381c98214",
+      "document_id": "0cca8649-fd13-42f1-b259-28e54d12fe37",
+      "chunk_id": "5479d864-f145-4454-b00f-b8e572a20ac7",
+      "chunk_index": 7,
+      "exact_stored_content": "8. Service Provider Oversight\n\nThe firm maintains and enforces written procedures for due diligence and ongoing monitoring of service providers that\nreceive, maintain, process, or are permitted access to customer information. Reviews consider security controls,\nincident-response capability, subcontractor use, independent assurance reports, material changes, and known control\nfailures.\nOversight is reasonably designed to ensure that service providers protect against unauthorized access to or use of\ncustomer information and notify the firm as soon as possible, but no later than 72 hours after becoming aware that a\nbreach in security resulted in unauthorized access to a customer information system maintained by the provider.\nUpon receipt of a qualifying provider notice, or upon independent detection of the incident, the firm immediately initiates\nits incident response program. A provider may deliver customer notices under a written agreement, but the firm remains\nresponsible for ensuring that each required notice satisfies the firm's obligations and is timely delivered.\n\n• document initial and periodic due diligence;\n• track identified risks and remediation;\n\n• maintain provider breach notices and related communications;\n• verify completion and delivery when a provider sends customer notices on the firm's behalf.",
+      "stored_content_sha256": "69f597b46d36a061eb76c3d271de3525907d2671d2f3fc4def76dd67758d99ce",
+      "independently_recomputed_sha256": "69f597b46d36a061eb76c3d271de3525907d2671d2f3fc4def76dd67758d99ce",
+      "stored_embedding_input_sha256": "019a2957594c418f03d53d8a6342360f1ce2e0b9877c81e895f3130cf72b21fc",
+      "filename": "northline_regulation_sp_policy.pdf",
+      "page_start": 4,
+      "page_end": 5,
+      "section_heading": "8. Service Provider Oversight",
+      "parent_heading": "Document",
+      "section_path": "8. Service Provider Oversight",
+      "retrieval_selection_metadata": {
+        "selection_method": "frozen_evaluation_pack",
+        "order_key": "chunk_index",
+        "order_value": 7
+      },
+      "semantic_rank": null,
+      "keyword_rank": null,
+      "merged_rank": null,
+      "source_artifact_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
+      "source_artifact_locator": "candidates[1]"
+    },
+    {
+      "candidate_id": "8c104761-0821-4330-9cfc-5b843b4d5175",
+      "original_position": 3,
+      "workspace_id": "af584c33-42fe-4ce4-b641-c3b381c98214",
+      "document_id": "0cca8649-fd13-42f1-b259-28e54d12fe37",
+      "chunk_id": "8c104761-0821-4330-9cfc-5b843b4d5175",
+      "chunk_index": 16,
+      "exact_stored_content": "17. Appendix A - Incident File Minimum Contents\n\n• incident identifier, discovery date, and awareness date;\n• affected systems, business processes, customer information types, and individuals;\n• investigation timeline, containment actions, and recovery steps;\n• notification analysis, decision, approvals, and copies of notices;\n• service-provider notices, contracts, communications, and remediation;\n• logs, exports, screenshots, evidence sources, and preservation details;\n• corrective actions, validation results, post-incident findings, and closure approval.",
+      "stored_content_sha256": "7dce6f4d89abb84465546fae07568a2fc3d218b6390d15f6aa9606237cd78322",
+      "independently_recomputed_sha256": "7dce6f4d89abb84465546fae07568a2fc3d218b6390d15f6aa9606237cd78322",
+      "stored_embedding_input_sha256": "6a44d45ae586bf804bbd0f1e3ef7098790d3219e198a5ce2daf345f834e3420f",
+      "filename": "northline_regulation_sp_policy.pdf",
+      "page_start": 7,
+      "page_end": 7,
+      "section_heading": "17. Appendix A - Incident File Minimum Contents",
+      "parent_heading": "Document",
+      "section_path": "17. Appendix A - Incident File Minimum Contents",
+      "retrieval_selection_metadata": {
+        "selection_method": "frozen_evaluation_pack",
+        "order_key": "chunk_index",
+        "order_value": 16
+      },
+      "semantic_rank": null,
+      "keyword_rank": null,
+      "merged_rank": null,
+      "source_artifact_path": "eval-fixtures/classifier-capability/frozen-aggregation-pack.response-recovery-remediation-validation.json",
+      "source_artifact_locator": "candidates[2]"
+    }
+  ]
+}
