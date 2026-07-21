@@ -37,6 +37,16 @@ export type V41Result = Omit<V4Result, "schema_version" | "extraction_outcomes">
   extraction_outcomes: V41ExtractionOutcome[];
 };
 
+export type V41SchemaMetrics = {
+  literal_enum_property_count: number;
+  total_literal_enum_values: number;
+  total_const_values: number;
+  ref_count: number;
+  definition_count: number;
+  total_object_property_count: number;
+  maximum_nesting_depth: number;
+};
+
 function sha256(value: string) {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
@@ -60,13 +70,14 @@ function dynamicResponseSchema(baseRequest: V4Request) {
     properties: { units: { items: { properties: { facts: { items: Record<string, unknown> } } } } };
   };
   const fact = generic.properties.units.items.properties.facts.items;
+  const factReference = { $ref: "#/$defs/fact" };
   const factsBranch = {
     type: "object",
     additionalProperties: false,
     required: ["disposition", "facts", "no_fact_reason"],
     properties: {
       disposition: { type: "string", enum: ["facts"] },
-      facts: { type: "array", minItems: 1, items: fact },
+      facts: { type: "array", minItems: 1, items: factReference },
       no_fact_reason: { type: "null" },
     },
   };
@@ -76,7 +87,7 @@ function dynamicResponseSchema(baseRequest: V4Request) {
     required: ["disposition", "facts", "no_fact_reason"],
     properties: {
       disposition: { type: "string", enum: ["no_fact"] },
-      facts: { type: "array", maxItems: 0, items: fact },
+      facts: { type: "array", maxItems: 0, items: factReference },
       no_fact_reason: { type: "string", minLength: 1 },
     },
   };
@@ -85,6 +96,7 @@ function dynamicResponseSchema(baseRequest: V4Request) {
     type: "object",
     additionalProperties: false,
     required: ["units"],
+    $defs: { fact },
     properties: {
       units: {
         type: "object",
@@ -94,6 +106,50 @@ function dynamicResponseSchema(baseRequest: V4Request) {
       },
     },
   };
+}
+
+export function inspectV41Schema(schema: unknown): V41SchemaMetrics {
+  const metrics: V41SchemaMetrics = {
+    literal_enum_property_count: 0,
+    total_literal_enum_values: 0,
+    total_const_values: 0,
+    ref_count: 0,
+    definition_count: 0,
+    total_object_property_count: 0,
+    maximum_nesting_depth: 0,
+  };
+  const walk = (value: unknown, depth: number) => {
+    metrics.maximum_nesting_depth = Math.max(metrics.maximum_nesting_depth, depth);
+    if (Array.isArray(value)) {
+      for (const item of value) walk(item, depth + 1);
+      return;
+    }
+    if (!value || typeof value !== "object") return;
+    const object = value as Record<string, unknown>;
+    if (Array.isArray(object.enum)) {
+      metrics.literal_enum_property_count += 1;
+      metrics.total_literal_enum_values += object.enum.length;
+    }
+    if (Object.hasOwn(object, "const")) metrics.total_const_values += 1;
+    if (typeof object.$ref === "string") metrics.ref_count += 1;
+    if (object.$defs && typeof object.$defs === "object" && !Array.isArray(object.$defs)) {
+      metrics.definition_count += Object.keys(object.$defs).length;
+    }
+    if (object.properties && typeof object.properties === "object" && !Array.isArray(object.properties)) {
+      metrics.total_object_property_count += Object.keys(object.properties).length;
+    }
+    for (const child of Object.values(object)) walk(child, depth + 1);
+  };
+  walk(schema, 0);
+  return metrics;
+}
+
+export function resolveV41FactReference(schema: unknown, reference = "#/$defs/fact") {
+  assertObject(schema, "V4.1 schema");
+  if (reference !== "#/$defs/fact") throw new Error(`Unsupported V4.1 local reference: ${reference}.`);
+  assertObject(schema.$defs, "V4.1 schema definitions");
+  if (!Object.hasOwn(schema.$defs, "fact")) throw new Error("V4.1 schema fact definition is missing.");
+  return schema.$defs.fact;
 }
 
 export function buildV41ExtractionRequests(fixtures: ClassifierCapabilityFixtureSuite): V41Request[] {
@@ -118,7 +174,41 @@ export function buildV41ExtractionRequests(fixtures: ClassifierCapabilityFixture
     if (name !== v41SchemaName(requests[index].requirement_id)) throw new Error(`V4.1 schema name is not deterministic for ${requests[index].requirement_id}.`);
   }
   if (new Set(names).size !== names.length) throw new Error("V4.1 schema names must be unique across the request plan.");
+  for (const request of requests) {
+    const metrics = inspectV41Schema(request.body.response_format.json_schema.schema);
+    if (metrics.total_literal_enum_values >= 900) {
+      throw new Error(`V4.1 schema enum budget lacks safety margin for ${request.requirement_id}: ${metrics.total_literal_enum_values}.`);
+    }
+    if (metrics.definition_count !== 1) throw new Error(`V4.1 schema must contain exactly one definition for ${request.requirement_id}.`);
+  }
   return requests;
+}
+
+export function v41PaidStartLines(requestCount: number, resultPath: string, reportPath: string) {
+  return [
+    "V4.1 paid run starting",
+    `Request count: ${requestCount}`,
+    `Output result path: ${resultPath}`,
+    `Output report path: ${reportPath}`,
+  ];
+}
+
+export function v41PaidOutcomeLine(outcome: V41ExtractionOutcome) {
+  const requestId = outcome.raw_provider_exchange_id ?? "none";
+  const failure = outcome.outcome === "model_success" ? "none" : outcome.validation_errors.join("; ") || outcome.outcome;
+  return `${outcome.requirement_id}: outcome=${outcome.outcome}; provider_request_id=${requestId}; failure=${failure}`;
+}
+
+export function v41PaidCompletionLines(result: V41Result, resultPath: string, reportPath: string) {
+  return [
+    `Run valid: ${result.valid ? "yes" : "no"}`,
+    `Unit accountability complete: ${result.unit_accountability_complete ? "yes" : "no"}`,
+    `Result path: ${resultPath}`,
+    `Report path: ${reportPath}`,
+    result.valid
+      ? "Exit status: 0 — run valid."
+      : "Exit status: 1 — run invalid; quality conclusions are suppressed.",
+  ];
 }
 
 export function v41SchemaName(requirementId: string) {

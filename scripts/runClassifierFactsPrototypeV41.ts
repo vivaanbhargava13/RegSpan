@@ -8,10 +8,14 @@ import {
   CLASSIFIER_FACTS_V41_DRY_SCHEMA,
   CLASSIFIER_FACTS_V41_SCHEMA,
   formatV41Markdown,
+  inspectV41Schema,
   scoreV41Prototype,
   v41RequestHash,
   v41SchemaHash,
   validateV41ExtractionResponse,
+  v41PaidCompletionLines,
+  v41PaidOutcomeLine,
+  v41PaidStartLines,
   type V41ExtractionOutcome,
   type V41ReplayExchange,
   type V41Request,
@@ -20,11 +24,12 @@ import {
 import { validateClassifierCapabilityFixtures } from "../lib/classifierCapabilityEval";
 
 const FIXTURES = "eval-fixtures/classifier-capability/fixtures.v2.json";
-const DRY = "eval-results/classifier-facts-prototype/v4-1-namefix/dry-run.json";
-const RESULT = "eval-results/classifier-facts-prototype/v4-1-namefix/results.json";
-const REPORT = "eval-results/classifier-facts-prototype/v4-1-namefix/results.md";
-const REPLAY_RESULT = "eval-results/classifier-facts-prototype/v4-1-namefix-replay/results.json";
-const REPLAY_REPORT = "eval-results/classifier-facts-prototype/v4-1-namefix-replay/results.md";
+const DRY = "eval-results/classifier-facts-prototype/v4-1-enumfix/dry-run.json";
+const RESULT = "eval-results/classifier-facts-prototype/v4-1-enumfix/results.json";
+const REPORT = "eval-results/classifier-facts-prototype/v4-1-enumfix/results.md";
+const REPLAY_RESULT = "eval-results/classifier-facts-prototype/v4-1-enumfix-replay/results.json";
+const REPLAY_REPORT = "eval-results/classifier-facts-prototype/v4-1-enumfix-replay/results.md";
+const PRIOR_DRY = "eval-results/classifier-facts-prototype/v4-1-namefix/dry-run.json";
 const CONFIRMATION = "CLASSIFIER_FACTS_PROTOTYPE_V4_1";
 
 type Mode = "dry" | "run" | "report" | "replay";
@@ -158,18 +163,27 @@ export function processV41Exchange(request: V41Request, rawHttp: string, parsedT
 async function runDry(fixturesPath: string, output: string) {
   const fixtures = await loadFixtures(fixturesPath);
   const requests = buildV41ExtractionRequests(fixtures);
+  const priorDry = JSON.parse(await readFile(resolve(PRIOR_DRY), "utf8")) as {
+    requests: Array<{ requirement_id: string; request_body: V41Request["body"] }>;
+  };
   const summaries = requests.map((request) => {
     const schema = request.body.response_format.json_schema.schema as { properties: { units: { required: string[] } } };
-    const oldSchemaName = `unit_accountable_operational_facts_v4_1_${request.requirement_id}`;
-    const newSchemaName = request.body.response_format.json_schema.name;
+    const priorRequest = priorDry.requests.find((item) => item.requirement_id === request.requirement_id);
+    if (!priorRequest) throw new Error(`Prior name-fixed request is missing ${request.requirement_id}.`);
+    const priorMetrics = inspectV41Schema(priorRequest.request_body.response_format.json_schema.schema);
+    const metrics = inspectV41Schema(schema);
     return {
       requirement_id: request.requirement_id,
-      old_schema_name: oldSchemaName,
-      old_schema_name_length: oldSchemaName.length,
-      new_schema_name: newSchemaName,
-      new_schema_name_length: newSchemaName.length,
       required_unit_property_count: schema.properties.units.required.length,
-      required_unit_ids: [...schema.properties.units.required].sort(),
+      schema_name: request.body.response_format.json_schema.name,
+      prior_literal_enum_value_count: priorMetrics.total_literal_enum_values,
+      new_literal_enum_value_count: metrics.total_literal_enum_values,
+      literal_enum_property_count: metrics.literal_enum_property_count,
+      total_const_values: metrics.total_const_values,
+      definition_count: metrics.definition_count,
+      reference_count: metrics.ref_count,
+      total_object_property_count: metrics.total_object_property_count,
+      maximum_nesting_depth: metrics.maximum_nesting_depth,
       response_schema_sha256: v41SchemaHash(request),
       prompt_sha256: sha256(JSON.stringify(request.body.messages)),
       request_sha256: v41RequestHash(request),
@@ -187,7 +201,7 @@ async function runDry(fixturesPath: string, output: string) {
     request_plan_sha256: sha256(JSON.stringify(requests.map((request) => request.body))), requests: summaries,
   });
   console.log(`Serialized ${requests.length} V4.1 exact-unit requests with zero network calls.`);
-  for (const item of summaries) console.log(`${item.requirement_id}: ${item.old_schema_name} (${item.old_schema_name_length}) -> ${item.new_schema_name} (${item.new_schema_name_length}), request ${item.request_sha256}`);
+  for (const item of summaries) console.log(`${item.requirement_id}: enum values ${item.prior_literal_enum_value_count} -> ${item.new_literal_enum_value_count}, definitions ${item.definition_count}, refs ${item.reference_count}, request ${item.request_sha256}`);
   console.log(`Dry artifact: ${output}`);
 }
 
@@ -225,10 +239,16 @@ async function execute(request: V41Request, key: string) {
 
 async function runPaid(fixturesPath: string, output: string, report: string, confirmation: string) {
   const fixtures = await loadFixtures(fixturesPath), requests = buildV41ExtractionRequests(fixtures), key = paidKey(confirmation);
+  for (const line of v41PaidStartLines(requests.length, output, report)) console.log(line);
   const outcomes: V41ExtractionOutcome[] = [];
-  for (const request of requests) outcomes.push(await execute(request, key));
+  for (const request of requests) {
+    const outcome = await execute(request, key);
+    outcomes.push(outcome);
+    console.log(v41PaidOutcomeLine(outcome));
+  }
   const result = scoreV41Prototype(fixtures, requests, outcomes);
   await writeJson(output, result); await mkdir(dirname(report), { recursive: true }); await writeFile(report, formatV41Markdown(result), "utf8");
+  for (const line of v41PaidCompletionLines(result, output, report)) console.log(line);
   if (!result.valid) process.exitCode = 1;
 }
 
