@@ -22,6 +22,11 @@
     "eval:classifier-facts:v2:dry": "node --conditions=react-server --import ./scripts/registerServerTsLoader.mjs scripts/runClassifierFactsPrototype.ts dry",
     "eval:classifier-facts:v2": "node --conditions=react-server --import ./scripts/registerServerTsLoader.mjs scripts/runClassifierFactsPrototype.ts run",
     "eval:classifier-facts:v2:report": "node --conditions=react-server --import ./scripts/registerServerTsLoader.mjs scripts/runClassifierFactsPrototype.ts report",
+    "eval:classifier-facts:v2:replay": "node --conditions=react-server --import ./scripts/registerServerTsLoader.mjs scripts/runClassifierFactsPrototype.ts replay",
+    "eval:classifier-facts:v3:dry": "node --conditions=react-server --import ./scripts/registerServerTsLoader.mjs scripts/runClassifierFactsPrototypeV3.ts dry",
+    "eval:classifier-facts:v3": "node --conditions=react-server --import ./scripts/registerServerTsLoader.mjs scripts/runClassifierFactsPrototypeV3.ts run",
+    "eval:classifier-facts:v3:report": "node --conditions=react-server --import ./scripts/registerServerTsLoader.mjs scripts/runClassifierFactsPrototypeV3.ts report",
+    "eval:classifier-facts:v3:replay": "node --conditions=react-server --import ./scripts/registerServerTsLoader.mjs scripts/runClassifierFactsPrototypeV3.ts replay",
     "eval:score-holdout": "node scripts/scoreBlindHoldout.mjs"
   },
   "dependencies": {

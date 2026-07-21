@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { createHash } from "node:crypto";
+import { mkdtemp, readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import test from "node:test";
 import { promisify } from "node:util";
 
@@ -60,7 +62,7 @@ test("response validation rejects invented, repeated, noncontiguous, and conclus
     const valid=validateFactsExtractionResponse(request,{facts:[base]}).facts[0];
     const rejected={};
     for(const [name,fact] of Object.entries({invented:{...base,source_unit_ids:["invented-unit"]},repeated:{...base,source_unit_ids:[candidate.units[0].unit_id,candidate.units[0].unit_id]},noncontiguous:{...base,source_unit_ids:[candidate.units[0].unit_id,candidate.units[2].unit_id]},conclusion:{...base,covered_elements:["assesses_scope"]},unsupportedAction:{...base,action:"approve_as_validation"}})){
-      try{validateFactsExtractionResponse(request,{facts:[fact]});rejected[name]=false;}catch{rejected[name]=true;}
+      const result=validateFactsExtractionResponse(request,{facts:[fact]});rejected[name]=result.rejectedFacts.length===1&&result.facts.length===0;
     }
     console.log(JSON.stringify({quote:valid.reconstructed_quote,hashes:valid.source_unit_sha256.length,rejected}));
   `);
@@ -76,15 +78,15 @@ test("deterministic mapper rejects adjacent workflows, inventories, optional lan
     import { validateClassifierCapabilityFixtures } from "./lib/classifierCapabilityEval.ts";
     const fixtures=validateClassifierCapabilityFixtures(JSON.parse(await readFile(${JSON.stringify(fixturePath)},"utf8")));
     const requests=buildFactsExtractionRequests(fixtures);
-    const facts=[];
+    const facts=[]; const rejectedFacts=[];
     let id=1;
-    const add=(request,caseId,overrides)=>{const candidate=request.candidates.find(x=>x.case_id===caseId);const unit=candidate.units[overrides.unit??0];const raw={fact_id:'fact-'+String(id++).padStart(3,'0'),source_candidate_id:candidate.candidate_id,source_unit_ids:[unit.unit_id],actor:null,action:null,action_text:null,object:null,object_text:null,workflow_scope:"incident_response",condition_or_trigger:null,modality:"operative",tracking_details:null,validation_activity:null,record_or_material:null,preservation_method:null,...overrides};delete raw.unit;facts.push(...validateFactsExtractionResponse(request,{facts:[raw]}).facts);};
+    const add=(request,caseId,overrides)=>{const candidate=request.candidates.find(x=>x.case_id===caseId);const unit=candidate.units[overrides.unit??0];const raw={fact_id:'fact-'+String(id++).padStart(3,'0'),source_candidate_id:candidate.candidate_id,source_unit_ids:[unit.unit_id],actor:null,action:null,action_text:null,object:null,object_text:null,workflow_scope:"incident_response",condition_or_trigger:null,modality:"operative",tracking_details:null,validation_activity:null,record_or_material:null,preservation_method:null,...overrides};delete raw.unit;const result=validateFactsExtractionResponse(request,{facts:[raw]});facts.push(...result.facts);rejectedFacts.push(...result.rejectedFacts);};
     add(requests[0],"assessment-incident-history-negative",{unit:1,action:"record",action_text:"entered",object:"incident_materials",object_text:"incident history",workflow_scope:"general_governance"});
     add(requests[1],"preservation-optional-language-negative",{unit:1,action:"retain",action_text:"retain",object:"logs",object_text:"log source",workflow_scope:"incident_response",modality:"optional",record_or_material:"logs",preservation_method:"retention_hold"});
     add(requests[2],"recovery-corrective-ownership-negative",{unit:2,action:"remediate",action_text:"corrective action",object:"remediation_item",object_text:"corrective action",workflow_scope:"contract_management",tracking_details:{owner_assigned:true,due_date_assigned:null,status_monitored:true,open_until_evidence_review:null}});
     add(requests[2],"recovery-appendix-inventory-negative",{action:"inventory",action_text:"Contents",object:"record_contents",object_text:"Incident File Minimum Contents",workflow_scope:"records_inventory",validation_activity:"generic_validation"});
     const ids=["assessment-incident-history-negative","preservation-optional-language-negative","recovery-corrective-ownership-negative","recovery-appendix-inventory-negative"];
-    const results=ids.map(caseId=>deriveCase(fixtures,fixtures.cases.find(x=>x.id===caseId),facts));
+    const results=ids.map(caseId=>deriveCase(fixtures,fixtures.cases.find(x=>x.id===caseId),facts,rejectedFacts));
     console.log(JSON.stringify(results.map(x=>({id:x.case_id,status:x.status,elements:x.supported_elements,reasons:x.deterministic_rejection_reasons}))));
   `);
   assert.equal(evaluated.every((item) => item.status === "missing" && item.elements.length === 0), true);
@@ -108,9 +110,9 @@ test("v2 modalities accept required and operative policy actions but reject expl
       fact("fact-003",5,"operative","isolate","isolate","compromised_asset","compromised hosts"),
       fact("fact-004",8,"optional","other","search","compromised_asset","affected systems"),
     ];
-    const facts=validateFactsExtractionResponse(request,{facts:raw}).facts;
-    const derived=deriveCase(fixtures,fixtures.cases.find(x=>x.id==="assessment-full-operative-procedure"),facts);
-    console.log(JSON.stringify({status:derived.status,elements:derived.supported_elements,optional:derived.fact_ledger.find(x=>x.fact_id==="fact-004").deterministic_rejections}));
+    const validated=validateFactsExtractionResponse(request,{facts:raw});
+    const derived=deriveCase(fixtures,fixtures.cases.find(x=>x.id==="assessment-full-operative-procedure"),validated.facts,validated.rejectedFacts);
+    console.log(JSON.stringify({status:derived.status,elements:derived.supported_elements,optional:derived.rejected_fact_ledger.find(x=>x.fact_id==="fact-004").rejection_codes}));
   `);
   assert.equal(evaluated.status, "covered");
   assert.deepEqual(evaluated.elements, ["assesses_scope", "customer_information_systems", "containment_control"]);
@@ -149,14 +151,87 @@ test("semantic grounding rejects unsupported action families and closure approva
     const c=request.candidates.find(x=>x.case_id==="recovery-full-operative-procedure");
     const closure=c.units[8];
     const raw={fact_id:"fact-001",source_candidate_id:c.candidate_id,source_unit_ids:[closure.unit_id],actor:"incident lead",action:"validate",action_text:"approval",object:"incident_materials",object_text:"closure",workflow_scope:"incident_response",condition_or_trigger:null,modality:"required",tracking_details:null,validation_activity:"generic_validation",record_or_material:null,preservation_method:null};
-    const fact=validateFactsExtractionResponse(request,{facts:[raw]}).facts[0];
-    const derived=deriveCase(fixtures,fixtures.cases.find(x=>x.id==="recovery-full-operative-procedure"),[fact]);
-    console.log(JSON.stringify({grounding:fact.semantic_grounding_rejections,status:derived.status,elements:derived.supported_elements,rejections:derived.deterministic_rejection_reasons}));
+    const validated=validateFactsExtractionResponse(request,{facts:[raw]});
+    const rejected=validated.rejectedFacts[0];
+    const derived=deriveCase(fixtures,fixtures.cases.find(x=>x.id==="recovery-full-operative-procedure"),validated.facts,validated.rejectedFacts);
+    console.log(JSON.stringify({grounding:rejected.rejection_codes,status:derived.status,elements:derived.supported_elements,rejections:derived.deterministic_rejection_reasons}));
   `);
   assert.match(evaluated.grounding.join(" "), /action_family_mismatch:validate/);
   assert.equal(evaluated.status, "missing");
   assert.deepEqual(evaluated.elements, []);
   assert.match(evaluated.rejections.join(" "), /action_family_mismatch:validate/);
+});
+
+test("one semantically invalid fact is rejected without erasing its valid sibling", async () => {
+  const evaluated = await runTsEval(`
+    import { readFile } from "node:fs/promises";
+    import { buildFactsExtractionRequests, validateFactsExtractionResponse } from "./lib/classifierFactsPrototype.ts";
+    import { validateClassifierCapabilityFixtures } from "./lib/classifierCapabilityEval.ts";
+    const fixtures=validateClassifierCapabilityFixtures(JSON.parse(await readFile(${JSON.stringify(fixturePath)},"utf8")));
+    const request=buildFactsExtractionRequests(fixtures)[0]; const c=request.candidates[0]; const unit=c.units[0];
+    const base={source_candidate_id:c.candidate_id,source_unit_ids:[unit.unit_id],actor:"response team",action:"assess",action_text:"assesses",object:"incident_nature_and_scope",workflow_scope:"incident_response",condition_or_trigger:null,modality:"operative",tracking_details:null,validation_activity:null,record_or_material:null,preservation_method:null};
+    const result=validateFactsExtractionResponse(request,{facts:[{...base,fact_id:"fact-001",object_text:"nature and scope"},{...base,fact_id:"fact-002",object_text:"incident_nature_and_scope"}]});
+    console.log(JSON.stringify({returned:result.factsReturned,accepted:result.facts.map(x=>x.fact_id),rejected:result.rejectedFacts.map(x=>({id:x.fact_id,codes:x.rejection_codes,excluded:x.excluded_before_mapping}))}));
+  `);
+  assert.deepEqual(evaluated, {
+    returned: 2,
+    accepted: ["fact-001"],
+    rejected: [{ id: "fact-002", codes: ["object_text_not_exact_source_substring:incident_nature_and_scope"], excluded: true }],
+  });
+});
+
+test("all-invalid facts still form a valid scored request with zero accepted facts", async () => {
+  const evaluated = await runTsEval(`
+    import { readFile } from "node:fs/promises";
+    import { buildFactsExtractionRequests, scoreFactsPrototype, validateFactsExtractionResponse } from "./lib/classifierFactsPrototype.ts";
+    import { validateClassifierCapabilityFixtures } from "./lib/classifierCapabilityEval.ts";
+    const fixtures=validateClassifierCapabilityFixtures(JSON.parse(await readFile(${JSON.stringify(fixturePath)},"utf8")));
+    const requests=buildFactsExtractionRequests(fixtures);
+    const outcomes=requests.map((request,index)=>{const c=request.candidates[0],unit=c.units[0];const raw={fact_id:"fact-00"+(index+1),source_candidate_id:c.candidate_id,source_unit_ids:[unit.unit_id],actor:null,action:"validate",action_text:unit.text.includes("approval")?"approval":unit.text.slice(0,5),object:null,object_text:null,workflow_scope:"incident_response",condition_or_trigger:null,modality:"operative",tracking_details:null,validation_activity:null,record_or_material:null,preservation_method:null};const v=validateFactsExtractionResponse(request,{facts:[raw]});return {requirement_id:request.requirement_id,outcome:"model_success",raw_provider_exchange:{},raw_model_content:JSON.stringify({facts:[raw]}),facts:v.facts,rejected_facts:v.rejectedFacts,facts_returned:v.factsReturned,validation_errors:[],selected_unit_reference_count:v.selectedUnitReferenceCount,invalid_unit_reference_count:0};});
+    const result=scoreFactsPrototype(fixtures,outcomes,"2026-07-21T00:00:00.000Z");
+    console.log(JSON.stringify({valid:result.valid,accepted:result.metrics.facts_accepted,rejected:result.metrics.facts_rejected,failures:result.metrics.extraction_failures}));
+  `);
+  assert.deepEqual(evaluated, { valid: true, accepted: 0, rejected: 3, failures: 0 });
+});
+
+test("top-level schema and cross-case references remain request-fatal", async () => {
+  const evaluated = await runTsEval(`
+    import { readFile } from "node:fs/promises";
+    import { buildFactsExtractionRequests, validateFactsExtractionResponse } from "./lib/classifierFactsPrototype.ts";
+    import { validateClassifierCapabilityFixtures } from "./lib/classifierCapabilityEval.ts";
+    const fixtures=validateClassifierCapabilityFixtures(JSON.parse(await readFile(${JSON.stringify(fixturePath)},"utf8")));
+    const requests=buildFactsExtractionRequests(fixtures); let malformed=false,crossCase=false;
+    try{validateFactsExtractionResponse(requests[0],{facts:"not-an-array"});}catch{malformed=true;}
+    const foreign=requests[1].candidates[0];const unit=foreign.units[0];
+    const fact={fact_id:"fact-001",source_candidate_id:foreign.candidate_id,source_unit_ids:[unit.unit_id],actor:null,action:null,action_text:null,object:null,object_text:null,workflow_scope:"incident_response",condition_or_trigger:null,modality:"unknown",tracking_details:null,validation_activity:null,record_or_material:null,preservation_method:null};
+    try{validateFactsExtractionResponse(requests[0],{facts:[fact]});}catch(error){crossCase=/source isolation failure/.test(String(error));}
+    console.log(JSON.stringify({malformed,crossCase}));
+  `);
+  assert.deepEqual(evaluated, { malformed: true, crossCase: true });
+});
+
+test("generic containment actions and fixed incident-record retention map narrowly", async () => {
+  const evaluated = await runTsEval(`
+    import { readFile } from "node:fs/promises";
+    import { buildFactsExtractionRequests, deriveCase, validateFactsExtractionResponse } from "./lib/classifierFactsPrototype.ts";
+    import { validateClassifierCapabilityFixtures } from "./lib/classifierCapabilityEval.ts";
+    const fixtures=validateClassifierCapabilityFixtures(JSON.parse(await readFile(${JSON.stringify(fixturePath)},"utf8")));const requests=buildFactsExtractionRequests(fixtures);
+    const a=requests[0].candidates.find(x=>x.case_id==="assessment-full-operative-procedure");const common={source_candidate_id:a.candidate_id,actor:null,workflow_scope:"incident_response",condition_or_trigger:null,modality:"operative",tracking_details:null,validation_activity:null,record_or_material:null,preservation_method:null};
+    const containment=[
+      {...common,fact_id:"fact-001",source_unit_ids:[a.units[5].unit_id],action:"disable",action_text:"disable",object:"credentials",object_text:"credentials"},
+      {...common,fact_id:"fact-002",source_unit_ids:[a.units[6].unit_id],action:"block",action_text:"block",object:"other",object_text:"malicious infrastructure"},
+      {...common,fact_id:"fact-003",source_unit_ids:[a.units[8].unit_id],action:"coordinate",action_text:"coordinate",object:"other",object_text:"controlled shutdowns"},
+    ];
+    const av=validateFactsExtractionResponse(requests[0],{facts:containment});
+    const assessment=deriveCase(fixtures,fixtures.cases.find(x=>x.id==="assessment-full-operative-procedure"),av.facts,av.rejectedFacts);
+    const p=requests[1].candidates.find(x=>x.case_id==="preservation-records-inventory-partial"),u=p.units[2];
+    const retention={fact_id:"fact-004",source_candidate_id:p.candidate_id,source_unit_ids:[u.unit_id],actor:null,action:"preserve",action_text:"preserved",object:"investigation_records",object_text:"records",workflow_scope:"incident_response",condition_or_trigger:null,modality:"required",tracking_details:null,validation_activity:null,record_or_material:"notification_records",preservation_method:"fixed_retention_period"};
+    const pv=validateFactsExtractionResponse(requests[1],{facts:[retention]});
+    const preservation=deriveCase(fixtures,fixtures.cases.find(x=>x.id==="preservation-records-inventory-partial"),pv.facts,pv.rejectedFacts);
+    console.log(JSON.stringify({containment:assessment.fact_ledger.map(x=>x.mapped_elements),preservation:{status:preservation.status,elements:preservation.supported_elements}}));
+  `);
+  assert.deepEqual(evaluated.containment, [["containment_control"], ["containment_control"], ["containment_control"]]);
+  assert.deepEqual(evaluated.preservation, { status: "partial", elements: ["incident_materials"] });
 });
 
 test("validated atomic facts reproduce all nine reviewed case derivations without using fixture labels as model output", async () => {
@@ -188,7 +263,7 @@ test("validated atomic facts reproduce all nine reviewed case derivations withou
     add(recover,"recovery-corrective-ownership-negative",3,{action:"remediate",action_text:"corrective action",object:"remediation_item",object_text:"corrective action",workflow_scope:"contract_management",tracking_details:{owner_assigned:true,due_date_assigned:null,status_monitored:true,open_until_evidence_review:null}});
     add(recover,"recovery-appendix-inventory-negative",1,{action:"inventory",action_text:"Contents",object:"record_contents",object_text:"Incident File Minimum Contents",workflow_scope:"records_inventory",validation_activity:"generic_validation"});
     add(recover,"recovery-restoration-monitoring-partial",1,{action:"restore",action_text:"returns systems to service",object:"system",object_text:"systems",modality:"conditional_operative"});
-    const outcomes=requests.map(request=>{const validated=validateFactsExtractionResponse(request,{facts:rawByRequirement.get(request.requirement_id)});return {requirement_id:request.requirement_id,outcome:"model_success",raw_provider_exchange:{test:true},raw_model_content:JSON.stringify({facts:rawByRequirement.get(request.requirement_id)}),facts:validated.facts,validation_errors:[],selected_unit_reference_count:validated.selectedUnitReferenceCount,invalid_unit_reference_count:0};});
+    const outcomes=requests.map(request=>{const validated=validateFactsExtractionResponse(request,{facts:rawByRequirement.get(request.requirement_id)});return {requirement_id:request.requirement_id,outcome:"model_success",raw_provider_exchange:{test:true},raw_model_content:JSON.stringify({facts:rawByRequirement.get(request.requirement_id)}),facts:validated.facts,rejected_facts:validated.rejectedFacts,facts_returned:validated.factsReturned,validation_errors:[],selected_unit_reference_count:validated.selectedUnitReferenceCount,invalid_unit_reference_count:0};});
     const result=scoreFactsPrototype(fixtures,outcomes,"2026-07-21T00:00:00.000Z");
     const report=formatFactsPrototypeMarkdown(result);
     console.log(JSON.stringify({valid:result.valid,metrics:result.metrics,cases:result.cases.map(x=>({id:x.case_id,status:x.status,elements:x.supported_elements})),reportHasLedger:report.includes("## Per-case fact ledger and derivation"),reportHasRejections:report.includes("workflow_scope_mismatch:contract_management")}));
@@ -243,4 +318,31 @@ test("v1 paid artifacts remain separate and available for offline comparison", a
   assert.equal(v1.fixture_suite_hash, v2Dry.fixture_suite_hash);
   assert.equal(v1.metrics.element_recall.rate, 4 / 11);
   assert.equal(v1.metrics.false_assurance.count, 0);
+});
+
+test("offline paid-v2 replay makes zero network calls and preserves original bytes", async () => {
+  const source = resolve("eval-results/classifier-facts-prototype/v2/results.json");
+  const before = await readFile(source);
+  const beforeHash = createHash("sha256").update(before).digest("hex");
+  const directory = await mkdtemp(join(tmpdir(), "classifier-facts-replay-"));
+  const output = join(directory, "results.json");
+  const report = join(directory, "results.md");
+  const { stdout } = await execFileAsync(process.execPath, [...harnessArgs, "replay", "--input", source, "--output", output, "--report-output", report], {
+    cwd: root,
+    env: {
+      ...process.env,
+      OPENAI_API_KEY: "",
+      REQUIREMENT_CLASSIFIER_API_KEY: "",
+      ENABLE_EXTERNAL_AI_PROCESSING: "false",
+      ENABLE_EXTERNAL_AI_CLASSIFIER: "false",
+    },
+  });
+  const replay = JSON.parse(await readFile(output, "utf8"));
+  const afterHash = createHash("sha256").update(await readFile(source)).digest("hex");
+  assert.match(stdout, /zero network calls/);
+  assert.equal(replay.valid, true);
+  assert.equal(replay.replay.network_calls, 0);
+  assert.equal(replay.replay.original_artifact_unchanged, true);
+  assert.equal(beforeHash, "9833b6e12251fed98bf604a2fb844dbae30670212d5c9daf7d1ddaed3da68a89");
+  assert.equal(afterHash, beforeHash);
 });

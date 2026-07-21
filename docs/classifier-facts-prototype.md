@@ -79,10 +79,21 @@ an API key, and the literal paid confirmation `CLASSIFIER_FACTS_PROTOTYPE_V2`.
    object, and relevant detail fields satisfy a narrow rule.
 7. Code derives `covered`, `partial`, or `missing` from required-element coverage.
 
-Any provider, transport, parse, or validation failure is an extraction failure.
-No fallback is produced or counted as model success. A failed extraction makes
+Any provider, transport, parse, top-level, or source-isolation failure is an
+extraction failure. No fallback is produced or counted as model success. A failed extraction makes
 the run invalid and suppresses aggregate metrics, while the raw provider exchange
 and categorized outcome remain available for diagnosis.
+
+Request validity and fact validity are separate. Provider/transport failure,
+malformed model JSON, a top-level response that prevents enumerating `facts`, an
+unknown or cross-requirement candidate reference, a cross-candidate unit
+reference, or deterministic replay corruption is request-fatal. Once facts can
+be safely enumerated within the request’s source boundary, each fact is validated
+independently. Fact-local schema, source-unit, exact-text, semantic-family,
+workflow, and modality failures create rejected ledger entries and do not erase
+valid sibling facts. These rejections measure extraction quality, not operational
+availability, so a request containing rejected facts can remain `model_success`
+and the run can remain valid and scored.
 
 ## Deterministic rejection boundaries
 
@@ -130,9 +141,21 @@ source does not ground a value:
 - `tracking_details`, `validation_activity`, `record_or_material`, and
   `preservation_method`.
 
-The validator adds only deterministic fields: `reconstructed_quote`, selected
-source-unit hashes, and `semantic_grounding_rejections`. Mapping then adds
-`mapped_elements` and `deterministic_rejections` to the evaluation ledger.
+The validator adds only deterministic fields: `reconstructed_quote` and selected
+source-unit hashes for accepted facts, or staged rejection codes for rejected
+facts. Mapping then adds `mapped_elements` and `deterministic_rejections` to the
+accepted-fact evaluation ledger.
+
+`action` and `object` are normalized controlled ontology values. `action_text`
+and `object_text` are exact source phrases, not alternate ontology fields. For
+example, normalized object `remediation_item` may use exact source text
+`Remediation items`; returning literal `remediation_item` as `object_text` is
+invalid unless that underscore-delimited text actually appears in the source.
+The validator never case-folds, normalizes, or silently repairs these fields.
+
+Rejected facts retain the original model object, resolvable source units and
+quote, rejection stage/codes, an explicit pre-mapping exclusion flag, and a raw
+provider-response index. Rejected facts cannot map to elements.
 
 ## Commands
 
@@ -146,6 +169,13 @@ Regenerate a Markdown report from a stored result without provider access:
 
 ```bash
 npm run eval:classifier-facts:v2:report
+```
+
+Replay the preserved paid v2 provider exchanges without network access or
+overwriting the original artifact:
+
+```bash
+npm run eval:classifier-facts:v2:replay
 ```
 
 The eventual paid command is intentionally separate and must not be run during
@@ -164,6 +194,14 @@ failures, deterministic rejection reasons, and each case’s fact ledger and fin
 derivation. Offline report regeneration revalidates raw model content and
 recomputes facts, mapping, status, and metrics rather than trusting stored
 aggregates.
+
+The paid v2 preservation response returned four facts, all for the full
+preservation candidate. It returned no fact—accepted or rejected—for
+`preservation-records-inventory-partial`. The paid prompt included that candidate
+and did not prohibit fixed retention; therefore the miss was extraction omission,
+not mapper or validator loss. Future instructions now state generically that an
+explicit incident-record retention operation must be extracted separately from
+an adjacent descriptive inventory. Replay does not fabricate the missing fact.
 
 The focused tests use explicitly constructed source-grounded fact responses to
 exercise all nine reviewed derivations and the known false-positive patterns.

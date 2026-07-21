@@ -1,0 +1,36 @@
+{
+  "schema_version": "classifier-facts-prototype-artifact-baselines/v3",
+  "recorded_before_v3_implementation": true,
+  "artifacts": [
+    {
+      "version": "v1-paid",
+      "path": "eval-results/classifier-facts-prototype/runs/20260721-010647/results.json",
+      "sha256": "5d32b988f90e94e8304d41013214e0ba29fc5fcb0f6d546c1968a4e114de2847"
+    },
+    {
+      "version": "v1-paid-report",
+      "path": "eval-results/classifier-facts-prototype/runs/20260721-010647/results.md",
+      "sha256": "fa1fb6f7e536992a56f6173e093004eba2b2ce1aa7e87bfd1bfc5a9dbbb7075b"
+    },
+    {
+      "version": "v2-paid",
+      "path": "eval-results/classifier-facts-prototype/v2/results.json",
+      "sha256": "9833b6e12251fed98bf604a2fb844dbae30670212d5c9daf7d1ddaed3da68a89"
+    },
+    {
+      "version": "v2-paid-report",
+      "path": "eval-results/classifier-facts-prototype/v2/results.md",
+      "sha256": "01839f92420ab18b0d3f548e0542e14da2871b2b5e85b92825fe4f48cb5e2f13"
+    },
+    {
+      "version": "v2-replay",
+      "path": "eval-results/classifier-facts-prototype/v2-replay/results.json",
+      "sha256": "df5b25c1a2999358364ae30af35c132a6c63c408bf1d0e9b7b5d65707740b0b8"
+    },
+    {
+      "version": "v2-replay-report",
+      "path": "eval-results/classifier-facts-prototype/v2-replay/results.md",
+      "sha256": "643d6b7c45d3644dd367ea57af53689b1d64c60c9229ea021c01703976156338"
+    }
+  ]
+}

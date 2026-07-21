@@ -118,7 +118,25 @@ export type FactsExtractionRequest = {
 export type ValidatedFact = ExtractedOperationalFact & {
   reconstructed_quote: string;
   source_unit_sha256: string[];
-  semantic_grounding_rejections: string[];
+};
+
+export type RejectedFact = {
+  fact_index: number;
+  fact_id: string | null;
+  original_model_fact: unknown;
+  source_candidate_id: string | null;
+  source_unit_ids: string[];
+  resolved_source_units: Array<{ unit_id: string; text: string; text_sha256: string }>;
+  reconstructed_quote: string | null;
+  rejection_stage: "fact_schema" | "source_grounding" | "semantic_grounding" | "mapping_eligibility";
+  rejection_codes: string[];
+  excluded_before_mapping: true;
+  raw_provider_response_linkage: {
+    requirement_id: string;
+    fact_index: number;
+    provider_exchange_id: string | null;
+    raw_model_content_sha256: string | null;
+  };
 };
 
 export type FactLedgerEntry = ValidatedFact & {
@@ -131,6 +149,7 @@ export type CaseDerivation = {
   requirement_id: string;
   candidate_ids: string[];
   fact_ledger: FactLedgerEntry[];
+  rejected_fact_ledger: RejectedFact[];
   supported_elements: string[];
   status: "covered" | "partial" | "missing";
   deterministic_rejection_reasons: string[];
@@ -138,10 +157,13 @@ export type CaseDerivation = {
 
 export type ExtractionOutcome = {
   requirement_id: string;
-  outcome: "model_success" | "provider_error" | "transport_error" | "validation_error";
+  outcome: "model_success" | "provider_error" | "transport_error" | "malformed_model_json"
+    | "top_level_schema_error" | "source_isolation_error" | "replay_corruption";
   raw_provider_exchange: unknown;
   raw_model_content: string | null;
   facts: ValidatedFact[];
+  rejected_facts: RejectedFact[];
+  facts_returned: number;
   validation_errors: string[];
   selected_unit_reference_count: number;
   invalid_unit_reference_count: number;
@@ -156,6 +178,13 @@ export type PrototypeMetrics = {
   hard_negative_rejection: { numerator: number; denominator: number; rate: number | null };
   exact_source_unit_validity: { numerator: number; denominator: number; rate: number | null };
   extraction_failures: number;
+  facts_returned: number;
+  facts_accepted: number;
+  facts_rejected: number;
+  fact_acceptance_rate: number | null;
+  fact_rejections_by_reason: Record<string, number>;
+  requirements_with_rejected_facts: number;
+  accepted_facts_per_requirement: Record<string, number>;
 };
 
 export type PrototypeResult = {
@@ -306,8 +335,10 @@ function extractionSystemPrompt() {
     "Use source units from only one candidate per fact. Cite contiguous units in source order.",
     "Return one separate fact for every distinct actor-action-object operation, even when one sentence contains several operations.",
     "Generic example: if a policy says a team opens a case, assigns an owner, and tracks completion, return three facts citing the same unit.",
-    "action_text and object_text must copy the shortest exact contiguous source substring grounding the selected action or object. Use null when action or object is null.",
+    "action and object are normalized controlled ontology values; action_text and object_text are different fields that must copy the shortest exact contiguous source phrases grounding them.",
+    "Never copy an ontology label into action_text or object_text unless that label literally occurs in the cited source. Use null when action or object is null.",
     "Do not infer an action from a list of records expected in a file. Classify such lists as records_inventory.",
+    "An explicit required or operative retention statement for incident records is an operational retention fact even when it follows an inventory; extract the retention operation separately from the descriptive inventory.",
     "Classify provider oversight and procurement/contract corrective action in their own workflow scopes, never incident_response.",
     "Modality required means explicit must, shall, required, or an equivalent obligation.",
     "Modality operative means present-tense policy or procedure language stating that an actor performs an action; lack of must or shall does not make it optional.",
@@ -469,63 +500,148 @@ function validateFactShape(value: unknown, index: number): ExtractedOperationalF
   };
 }
 
+function factSchemaRejectionCode(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.includes(".action is invalid")) return "unsupported_action_family";
+  if (message.includes(".object is invalid")) return "unsupported_object_family";
+  if (message.includes(".workflow_scope is invalid")) return "invalid_workflow_scope";
+  if (message.includes(".modality is invalid")) return "invalid_modality";
+  return "invalid_fact_schema";
+}
+
+function rawSourceFields(rawFact: unknown) {
+  if (!rawFact || typeof rawFact !== "object" || Array.isArray(rawFact)) {
+    return { factId: null, candidateId: null, unitIds: [] as string[] };
+  }
+  const value = rawFact as Record<string, unknown>;
+  return {
+    factId: typeof value.fact_id === "string" ? value.fact_id : null,
+    candidateId: typeof value.source_candidate_id === "string" ? value.source_candidate_id : null,
+    unitIds: Array.isArray(value.source_unit_ids) ? value.source_unit_ids.filter((item): item is string => typeof item === "string") : [],
+  };
+}
+
+function rejectedFact(input: {
+  request: FactsExtractionRequest;
+  rawFact: unknown;
+  index: number;
+  stage: RejectedFact["rejection_stage"];
+  codes: string[];
+  candidate?: PrototypeCandidate;
+  units?: CandidateUnit[];
+  quote?: string | null;
+}): RejectedFact {
+  const source = rawSourceFields(input.rawFact);
+  const units = input.units ?? [];
+  return {
+    fact_index: input.index,
+    fact_id: source.factId,
+    original_model_fact: input.rawFact,
+    source_candidate_id: source.candidateId,
+    source_unit_ids: source.unitIds,
+    resolved_source_units: units.map((unit) => ({ unit_id: unit.unit_id, text: unit.text, text_sha256: unit.text_sha256 })),
+    reconstructed_quote: input.quote ?? null,
+    rejection_stage: input.stage,
+    rejection_codes: [...new Set(input.codes)],
+    excluded_before_mapping: true,
+    raw_provider_response_linkage: {
+      requirement_id: input.request.requirement_id,
+      fact_index: input.index,
+      provider_exchange_id: null,
+      raw_model_content_sha256: null,
+    },
+  };
+}
+
+function mappingEligibilityRejections(fact: ExtractedOperationalFact) {
+  if (fact.workflow_scope !== "incident_response") return [`workflow_scope_mismatch:${fact.workflow_scope}`];
+  if (fact.modality === "optional") return ["optional_modality"];
+  if (fact.modality === "descriptive" || fact.modality === "unknown") return [`non_operational_modality:${fact.modality}`];
+  return [];
+}
+
 export function validateFactsExtractionResponse(request: FactsExtractionRequest, response: unknown) {
   assertPlainObject(response, "Extraction response");
   exactKeys(response, ["facts"], "Extraction response");
   if (!Array.isArray(response.facts)) throw new Error("Extraction response facts must be an array.");
   const seenFacts = new Set<string>();
   const candidateById = new Map(request.candidates.map((candidate) => [candidate.candidate_id, candidate]));
+  const allRequestUnitIds = new Set(request.candidates.flatMap((candidate) => candidate.units.map((unit) => unit.unit_id)));
   let selectedUnitReferenceCount = 0;
-  const facts = response.facts.map((rawFact, index): ValidatedFact => {
-    const fact = validateFactShape(rawFact, index);
-    if (seenFacts.has(fact.fact_id)) throw new Error(`Duplicate fact ID ${fact.fact_id}.`);
+  const facts: ValidatedFact[] = [];
+  const rejectedFacts: RejectedFact[] = [];
+
+  for (const [index, rawFact] of response.facts.entries()) {
+    let fact: ExtractedOperationalFact;
+    try {
+      fact = validateFactShape(rawFact, index);
+    } catch (error) {
+      rejectedFacts.push(rejectedFact({ request, rawFact, index, stage: "fact_schema", codes: [factSchemaRejectionCode(error)] }));
+      continue;
+    }
+    if (seenFacts.has(fact.fact_id)) {
+      rejectedFacts.push(rejectedFact({ request, rawFact, index, stage: "fact_schema", codes: ["duplicate_fact_id"] }));
+      continue;
+    }
     seenFacts.add(fact.fact_id);
     const candidate = candidateById.get(fact.source_candidate_id);
-    if (!candidate) throw new Error(`Fact ${fact.fact_id} references unknown candidate ${fact.source_candidate_id}.`);
-    const positions = fact.source_unit_ids.map((unitId) => candidate.units.findIndex((unit) => unit.unit_id === unitId));
-    selectedUnitReferenceCount += positions.length;
-    if (positions.some((position) => position < 0)) throw new Error(`Fact ${fact.fact_id} references an unknown source unit.`);
-    if (new Set(fact.source_unit_ids).size !== fact.source_unit_ids.length) throw new Error(`Fact ${fact.fact_id} repeats a source unit.`);
-    for (let position = 1; position < positions.length; position += 1) {
-      if (positions[position] !== positions[position - 1] + 1) {
-        throw new Error(`Fact ${fact.fact_id} source units must be contiguous and ordered.`);
-      }
+    if (!candidate) {
+      throw new Error(`Request source isolation failure: fact ${fact.fact_id} references unknown or cross-requirement candidate ${fact.source_candidate_id}.`);
     }
-    const first = candidate.units[positions[0]];
-    const last = candidate.units[positions[positions.length - 1]];
-    const reconstructedQuote = candidate.text.slice(first.start_offset, last.end_offset);
-    if (!reconstructedQuote || !candidate.text.includes(reconstructedQuote)) throw new Error(`Fact ${fact.fact_id} quote reconstruction failed.`);
-    const groundingRejections = semanticGroundingRejections(fact, reconstructedQuote);
-    const sourceSubstringFailure = groundingRejections.find((reason) => reason.includes("_not_exact_source_substring"));
-    if (sourceSubstringFailure) throw new Error(`Fact ${fact.fact_id} failed exact semantic grounding: ${sourceSubstringFailure}.`);
-    return {
+    const positions = fact.source_unit_ids.map((unitId) => candidate.units.findIndex((unit) => unit.unit_id === unitId));
+    if (positions.some((position) => position < 0)) {
+      const crossCandidateUnit = fact.source_unit_ids.find((unitId) => allRequestUnitIds.has(unitId)
+        || (!unitId.startsWith(`${candidate.candidate_id}:`) && unitId.includes(":u")));
+      if (crossCandidateUnit) {
+        throw new Error(`Request source isolation failure: fact ${fact.fact_id} references a cross-candidate source unit ${crossCandidateUnit}.`);
+      }
+      rejectedFacts.push(rejectedFact({ request, rawFact, index, stage: "source_grounding", codes: ["invalid_source_unit_id"], candidate }));
+      continue;
+    }
+    const units = positions.map((position) => candidate.units[position]);
+    if (new Set(fact.source_unit_ids).size !== fact.source_unit_ids.length) {
+      rejectedFacts.push(rejectedFact({ request, rawFact, index, stage: "source_grounding", codes: ["duplicate_source_unit_id"], candidate, units }));
+      continue;
+    }
+    if (positions.slice(1).some((position, offset) => position !== positions[offset] + 1)) {
+      rejectedFacts.push(rejectedFact({ request, rawFact, index, stage: "source_grounding", codes: ["noncontiguous_or_unordered_source_units"], candidate, units }));
+      continue;
+    }
+    const reconstructedQuote = candidate.text.slice(units[0].start_offset, units[units.length - 1].end_offset);
+    if (!reconstructedQuote || !candidate.text.includes(reconstructedQuote)) {
+      throw new Error(`Request replay corruption: fact ${fact.fact_id} quote reconstruction failed.`);
+    }
+    const semanticRejections = semanticGroundingRejections(fact, reconstructedQuote);
+    if (semanticRejections.length > 0) {
+      rejectedFacts.push(rejectedFact({ request, rawFact, index, stage: "semantic_grounding", codes: semanticRejections, candidate, units, quote: reconstructedQuote }));
+      continue;
+    }
+    const eligibilityRejections = mappingEligibilityRejections(fact);
+    if (eligibilityRejections.length > 0) {
+      rejectedFacts.push(rejectedFact({ request, rawFact, index, stage: "mapping_eligibility", codes: eligibilityRejections, candidate, units, quote: reconstructedQuote }));
+      continue;
+    }
+    facts.push({
       ...fact,
       reconstructed_quote: reconstructedQuote,
-      source_unit_sha256: positions.map((position) => candidate.units[position].text_sha256),
-      semantic_grounding_rejections: groundingRejections,
-    };
-  });
-  return { facts, selectedUnitReferenceCount, invalidUnitReferenceCount: 0 };
+      source_unit_sha256: units.map((unit) => unit.text_sha256),
+    });
+    selectedUnitReferenceCount += units.length;
+  }
+  return {
+    facts,
+    rejectedFacts,
+    factsReturned: response.facts.length,
+    selectedUnitReferenceCount,
+    invalidUnitReferenceCount: 0,
+  };
 }
 
 function mapFact(requirementId: string, fact: ValidatedFact) {
   const mapped: string[] = [];
-  const rejected = [...fact.semantic_grounding_rejections];
-  if (rejected.length > 0) return { mapped, rejected };
+  const rejected: string[] = [];
   if (fact.action === null) {
     rejected.push("null_action_not_mappable");
-    return { mapped, rejected };
-  }
-  if (fact.workflow_scope !== "incident_response") {
-    rejected.push(`workflow_scope_mismatch:${fact.workflow_scope}`);
-    return { mapped, rejected };
-  }
-  if (fact.modality === "optional") {
-    rejected.push("optional_modality");
-    return { mapped, rejected };
-  }
-  if (fact.modality === "descriptive" || fact.modality === "unknown") {
-    rejected.push(`non_operational_modality:${fact.modality}`);
     return { mapped, rejected };
   }
   if (fact.action === "inventory" || (fact.object === "record_contents" && fact.action === "record")) {
@@ -538,8 +654,12 @@ function mapFact(requirementId: string, fact: ValidatedFact) {
     if (fact.action === "identify" && (fact.object === "customer_information_system" || fact.object === "customer_information")) {
       mapped.push("customer_information_systems");
     }
-    if (["contain", "isolate", "disable", "block", "shutdown"].includes(fact.action)
-      && ["compromised_asset", "system", "unauthorized_access_path"].includes(fact.object ?? "")) {
+    const containmentObject = ["compromised_asset", "system", "unauthorized_access_path", "credentials"].includes(fact.object ?? "");
+    const blocksScopedTarget = fact.action === "block" && fact.object !== null;
+    const coordinatesControlledShutdown = fact.action === "coordinate"
+      && /\bcontrolled\s+shutdowns?\b/iu.test(fact.object_text ?? "");
+    if ((["contain", "isolate", "disable", "shutdown"].includes(fact.action) && containmentObject)
+      || blocksScopedTarget || coordinatesControlledShutdown) {
       mapped.push("containment_control");
     }
   } else if (requirementId === "incident_evidence_log_preservation") {
@@ -580,6 +700,7 @@ export function deriveCase(
   fixtures: ClassifierCapabilityFixtureSuite,
   fixtureCase: ClassifierCapabilityCaseFixture,
   facts: ValidatedFact[],
+  rejectedFacts: RejectedFact[] = [],
 ): CaseDerivation {
   const candidateIds = fixtureCase.candidates.map((candidate) => candidate.chunk_id);
   const ledger = facts.filter((fact) => candidateIds.includes(fact.source_candidate_id)).map((fact): FactLedgerEntry => {
@@ -591,14 +712,20 @@ export function deriveCase(
   if (!requirement) throw new Error(`Unknown requirement ${fixtureCase.requirement_id}.`);
   const orderedSupported = requirement.coverageElements.map((item) => item.id).filter((id) => supported.includes(id));
   const covered = requirement.requiredElementsForCovered.every((id) => supported.includes(id));
+  const rejectedFactLedger = rejectedFacts.filter((fact) => fact.source_candidate_id !== null
+    && candidateIds.includes(fact.source_candidate_id));
   return {
     case_id: fixtureCase.id,
     requirement_id: fixtureCase.requirement_id,
     candidate_ids: candidateIds,
     fact_ledger: ledger,
+    rejected_fact_ledger: rejectedFactLedger,
     supported_elements: orderedSupported,
     status: covered ? "covered" : orderedSupported.length > 0 ? "partial" : "missing",
-    deterministic_rejection_reasons: [...new Set(ledger.flatMap((fact) => fact.deterministic_rejections))],
+    deterministic_rejection_reasons: [...new Set([
+      ...ledger.flatMap((fact) => fact.deterministic_rejections),
+      ...rejectedFactLedger.flatMap((fact) => fact.rejection_codes),
+    ])],
   };
 }
 
@@ -617,8 +744,9 @@ export function scoreFactsPrototype(
 ): PrototypeResult {
   const failures = outcomes.filter((item) => item.outcome !== "model_success");
   const facts = outcomes.flatMap((item) => item.facts);
+  const rejectedFacts = outcomes.flatMap((item) => item.rejected_facts ?? []);
   const scoredCases = fixtures.cases.filter((item) => item.evaluation_role === "scored");
-  const cases = scoredCases.map((fixtureCase) => deriveCase(fixtures, fixtureCase, facts));
+  const cases = scoredCases.map((fixtureCase) => deriveCase(fixtures, fixtureCase, facts, rejectedFacts));
   let truePositive = 0;
   let predictedPositive = 0;
   let expectedPositive = 0;
@@ -643,6 +771,14 @@ export function scoreFactsPrototype(
   const recall = ratio(truePositive, expectedPositive);
   const unitDenominator = outcomes.reduce((sum, item) => sum + item.selected_unit_reference_count, 0);
   const invalidUnits = outcomes.reduce((sum, item) => sum + item.invalid_unit_reference_count, 0);
+  const factsReturned = outcomes.reduce((sum, item) => sum + (item.facts_returned ?? item.facts.length + (item.rejected_facts?.length ?? 0)), 0);
+  const factsAccepted = outcomes.reduce((sum, item) => sum + item.facts.length, 0);
+  const factsRejected = outcomes.reduce((sum, item) => sum + (item.rejected_facts?.length ?? 0), 0);
+  const factRejectionsByReason: Record<string, number> = {};
+  for (const fact of rejectedFacts) {
+    for (const reason of fact.rejection_codes) factRejectionsByReason[reason] = (factRejectionsByReason[reason] ?? 0) + 1;
+  }
+  const acceptedFactsPerRequirement = Object.fromEntries(outcomes.map((item) => [item.requirement_id, item.facts.length]));
   const metrics: PrototypeMetrics | null = failures.length > 0 ? null : {
     element_precision: { numerator: truePositive, denominator: predictedPositive, rate: precision },
     element_recall: { numerator: truePositive, denominator: expectedPositive, rate: recall },
@@ -652,6 +788,13 @@ export function scoreFactsPrototype(
     hard_negative_rejection: { numerator: hardNegativeCorrect, denominator: hardNegativeTotal, rate: ratio(hardNegativeCorrect, hardNegativeTotal) },
     exact_source_unit_validity: { numerator: unitDenominator - invalidUnits, denominator: unitDenominator, rate: ratio(unitDenominator - invalidUnits, unitDenominator) },
     extraction_failures: 0,
+    facts_returned: factsReturned,
+    facts_accepted: factsAccepted,
+    facts_rejected: factsRejected,
+    fact_acceptance_rate: ratio(factsAccepted, factsReturned),
+    fact_rejections_by_reason: factRejectionsByReason,
+    requirements_with_rejected_facts: outcomes.filter((item) => (item.rejected_facts?.length ?? 0) > 0).length,
+    accepted_facts_per_requirement: acceptedFactsPerRequirement,
   };
   return {
     schema_version: CLASSIFIER_FACTS_PROTOTYPE_SCHEMA,
@@ -696,6 +839,13 @@ export function formatFactsPrototypeMarkdown(result: PrototypeResult) {
       `- Hard-negative rejection: ${percent(result.metrics.hard_negative_rejection.rate)} (${result.metrics.hard_negative_rejection.numerator}/${result.metrics.hard_negative_rejection.denominator})`,
       `- Exact source-unit validity: ${percent(result.metrics.exact_source_unit_validity.rate)} (${result.metrics.exact_source_unit_validity.numerator}/${result.metrics.exact_source_unit_validity.denominator})`,
       `- Extraction failures: ${result.metrics.extraction_failures}`,
+      `- Facts returned: ${result.metrics.facts_returned}`,
+      `- Facts accepted: ${result.metrics.facts_accepted}`,
+      `- Facts rejected: ${result.metrics.facts_rejected}`,
+      `- Fact acceptance rate: ${percent(result.metrics.fact_acceptance_rate)}`,
+      `- Requirements containing rejected facts: ${result.metrics.requirements_with_rejected_facts}`,
+      `- Accepted facts per requirement: ${JSON.stringify(result.metrics.accepted_facts_per_requirement)}`,
+      `- Fact rejections by reason: ${JSON.stringify(result.metrics.fact_rejections_by_reason)}`,
       "",
     );
   }
@@ -721,6 +871,15 @@ export function formatFactsPrototypeMarkdown(result: PrototypeResult) {
         `  - Quote: ${JSON.stringify(fact.reconstructed_quote)}`,
         `  - Mapped: ${fact.mapped_elements.length ? fact.mapped_elements.join(", ") : "none"}`,
         `  - Rejected: ${fact.deterministic_rejections.length ? fact.deterministic_rejections.join(", ") : "none"}`,
+      );
+    }
+    for (const fact of item.rejected_fact_ledger) {
+      lines.push(
+        `- REJECTED \`${fact.fact_id ?? `fact-index-${fact.fact_index}`}\` — stage ${fact.rejection_stage}`,
+        `  - Units: ${fact.source_unit_ids.length ? fact.source_unit_ids.map((id) => `\`${id}\``).join(", ") : "unresolved"}`,
+        `  - Quote: ${fact.reconstructed_quote === null ? "unresolved" : JSON.stringify(fact.reconstructed_quote)}`,
+        `  - Rejection codes: ${fact.rejection_codes.join(", ")}`,
+        "  - Excluded before mapping: yes",
       );
     }
     lines.push("");

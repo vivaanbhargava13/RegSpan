@@ -1,0 +1,30 @@
+{
+  "schema_version": "classifier-facts-prototype-paid-baseline/v2",
+  "model": "gpt-4o-mini-2024-07-18",
+  "fixture_suite_hash": "2d867460a314063bef3aeec81d95952922476b4d8bbfa1b9bbe7a4ff8bffc73a",
+  "source_result_path": "eval-results/classifier-facts-prototype/v2/results.json",
+  "source_result_sha256": "9833b6e12251fed98bf604a2fb844dbae30670212d5c9daf7d1ddaed3da68a89",
+  "source_dry_run_path": "eval-results/classifier-facts-prototype/v2/dry-run.json",
+  "source_dry_run_sha256": "dcdaca9d99e7905314617c59542b8ab8a7c26ae8c6ee6bb78b1e6f5033d1d27c",
+  "request_plan_sha256": "2c6d5c990ed3ecb9abdc82935fda62538d6d1a0e4843b2be68085c217ae5e955",
+  "requests": [
+    {
+      "requirement_id": "incident_assessment_containment_control",
+      "request_sha256": "241626edab6799bfc9837173ffe930ac093b1e5377db1a9e4a6811f0ed8dfc40",
+      "raw_provider_exchange_sha256": "da4c0a5f980a80f4d0611794980f001f999dfbe0a3fadec6f2537c376a284c53",
+      "raw_model_content_sha256": "e4d905d1d215ca53b431da459aa2b4a91a040da8f4286d966529bba8d22f0b46"
+    },
+    {
+      "requirement_id": "incident_evidence_log_preservation",
+      "request_sha256": "ef77237485bfd54a576e1a5bf4af14228f0957d701043321cfcc390fdbf21678",
+      "raw_provider_exchange_sha256": "5504f70641651e0bfa4b011be14e780b843c142b6c7e564e47c24c90a9cea937",
+      "raw_model_content_sha256": "a46707c0a7a7613d8d456ae98b1a7aa19c8ddd02d1d9a67163939fb31f897a3d"
+    },
+    {
+      "requirement_id": "response_recovery_remediation_validation",
+      "request_sha256": "419a6dbc54931918f461fc0dc80e670eee36e1eef87e9ae7e8a14e1748c933ef",
+      "raw_provider_exchange_sha256": "e9dd66e43e45e586bb43cdbcad0b8f96991f56b541c80ddd789b7470502aad09",
+      "raw_model_content_sha256": "5902dad4f3ae2969b8af992b13c77f4a797e7a0a459de9136464d9312f3e6220"
+    }
+  ]
+}
