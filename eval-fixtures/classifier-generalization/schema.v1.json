@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "classifier-generalization-holdout/v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "fixture_hash", "development_canary_suite_hash", "source_corpus", "requirements", "candidate_sets", "cases"],
+  "properties": {
+    "schema_version": { "const": "classifier-generalization-holdout/v1" },
+    "fixture_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "development_canary_suite_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "source_corpus": { "type": "object" },
+    "requirements": { "type": "array", "minItems": 3, "maxItems": 3 },
+    "candidate_sets": { "type": "array", "minItems": 1 },
+    "cases": { "type": "array", "minItems": 30, "maxItems": 50 }
+  },
+  "$defs": {
+    "review": {
+      "type": "object",
+      "required": ["reviewer_id", "reviewed_at", "expected_elements", "expected_status", "support_kind", "hard_negative_category", "supporting_unit_ids", "unit_element_support", "rationale"]
+    },
+    "candidate": {
+      "type": "object",
+      "required": ["candidate_id", "position", "text", "content_sha256", "units", "provenance"]
+    }
+  }
+}

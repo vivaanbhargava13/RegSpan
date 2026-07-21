@@ -1,0 +1,18 @@
+{
+  "schema_version": "classifier-generalization-artifact-baselines/v1",
+  "artifacts": [
+    { "path": "eval-fixtures/classifier-generalization/holdout.v1.json", "sha256": "b5f75d2f31e55510536d23c472a318faf2cc35cdc18871649201de7276c8fcad" },
+    { "path": "eval-fixtures/classifier-generalization/reviewer-worksheet.json", "sha256": "80224fdaf72167436d5bae9fbf54df83396a0b51363fef3c05a475f6a594ebc8" },
+    { "path": "eval-fixtures/classifier-generalization/reviewer-worksheet.md", "sha256": "f7d3a30e0d2c975b2c410b4b725a2020b20cb4dcee64c6b3afec0d61dc6518e4" },
+    { "path": "eval-fixtures/classifier-generalization/schema.v1.json", "sha256": "08ec9c2581d711c36ec34ec6b4bb80417146783857b568f9fb3018557f669a0a" },
+    { "path": "eval-fixtures/classifier-generalization/reviewer-worksheet.schema.v1.json", "sha256": "172294f5ace47f410d9337921bc2ea149be506fe7929d55d9ddb054ad07eba73" },
+    { "path": "eval-fixtures/classifier-facts-prototype/artifact-baselines.v4-1-enumfix.json", "sha256": "2e64389df93172e74955580d096bea84103eeebf9ba44f9d61c708e00809309f" },
+    { "path": "eval-results/classifier-facts-prototype/v4-1-enumfix/results.json", "sha256": "9c3508bfdc39d6f43a5246e3593eb53a1c279981df35b707a3c60b46c145f4b7" },
+    { "path": "eval-results/classifier-facts-prototype/v4-1-enumfix/results.md", "sha256": "15afe16c80e98fa098632989d3bbee96657058391043df1cf9d249b7ecaca762" },
+    { "path": "eval-fixtures/classifier-capability/fixtures.v2.json", "sha256": "663c72200b083e5cfc499e0a8729210754270208be8ccfc74265f6e6d3fd5846" },
+    { "path": "lib/classifierFactsPrototypeV41.ts", "sha256": "d2507a9840b61b4826c1391e6aacb249fff643ccc0f0067a89f4386c84d34b84" },
+    { "path": "lib/classifierFactsPrototypeV4.ts", "sha256": "33a750aef26625ef0118dd7c9c6e2f361022a8657b1e77103bd20f05ebca59d5" },
+    { "path": "lib/classifierFactsPrototypeV3.ts", "sha256": "212fb2a2f6685d51e52dc845054ded4264cb90b2c6489d24715763b2bdf9df8e" },
+    { "path": "lib/requirementEvidenceClassifier.ts", "sha256": "531518e9898824b75bb4a1d719903603d9cfa231c118de38f8bda11b3775094f" }
+  ]
+}

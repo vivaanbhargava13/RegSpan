@@ -35,6 +35,14 @@
     "eval:classifier-facts:v4-1": "node --conditions=react-server --import ./scripts/registerServerTsLoader.mjs scripts/runClassifierFactsPrototypeV41.ts run",
     "eval:classifier-facts:v4-1:report": "node --conditions=react-server --import ./scripts/registerServerTsLoader.mjs scripts/runClassifierFactsPrototypeV41.ts report",
     "eval:classifier-facts:v4-1:replay": "node --conditions=react-server --import ./scripts/registerServerTsLoader.mjs scripts/runClassifierFactsPrototypeV41.ts replay",
+    "eval:classifier-generalization:fixtures": "node --conditions=react-server --import ./scripts/registerServerTsLoader.mjs scripts/buildClassifierGeneralizationHoldout.ts",
+    "eval:classifier-generalization:dry": "node --conditions=react-server --import ./scripts/registerServerTsLoader.mjs scripts/runClassifierGeneralizationEval.ts dry",
+    "eval:classifier-generalization:readiness": "node --conditions=react-server --import ./scripts/registerServerTsLoader.mjs scripts/runClassifierGeneralizationEval.ts readiness",
+    "eval:classifier-generalization": "node --conditions=react-server --import ./scripts/registerServerTsLoader.mjs scripts/runClassifierGeneralizationEval.ts run",
+    "eval:classifier-generalization:replay": "node --conditions=react-server --import ./scripts/registerServerTsLoader.mjs scripts/runClassifierGeneralizationEval.ts replay",
+    "eval:classifier-generalization:report": "node --conditions=react-server --import ./scripts/registerServerTsLoader.mjs scripts/runClassifierGeneralizationEval.ts report",
+    "classifier:facts-shadow:mock": "node --conditions=react-server --import ./scripts/registerServerTsLoader.mjs scripts/runClassifierFactsShadow.ts mock",
+    "classifier:facts-shadow:report": "node --conditions=react-server --import ./scripts/registerServerTsLoader.mjs scripts/runClassifierFactsShadow.ts report",
     "eval:score-holdout": "node scripts/scoreBlindHoldout.mjs"
   },
   "dependencies": {

@@ -31,6 +31,7 @@ import {
   RequirementProcessingWatchdogTimeoutError,
   runWithRequirementProcessingWatchdog,
 } from "@/lib/requirementProcessingWatchdog";
+import { runClassifierFactsShadowFailOpen } from "@/lib/classifierFactsShadow";
 
 export const FINDINGS_GENERATION_TOP_K = 25;
 const EVALUATION_UNRESTRICTED_CONCURRENCY = 2_147_483_647;
@@ -536,7 +537,12 @@ export async function generateFindingsForWorkspace({
         phase: "requirement_started",
         timestamp: new Date().toISOString(),
       });
-      let requirementResult: { finding: GeneratedRequirementFinding; storedFinding: StoredFindingResult };
+      let requirementResult: {
+        finding: GeneratedRequirementFinding;
+        storedFinding: StoredFindingResult;
+        shadowCandidates: RetrievedChunk[];
+        shadowGradedCandidates: GradedEvidenceChunk[];
+      };
       try {
         requirementResult = await runWithRequirementProcessingWatchdog({
           requirementId: requirement.id,
@@ -595,9 +601,10 @@ export async function generateFindingsForWorkspace({
               phase: "classification_complete",
               timestamp: new Date().toISOString(),
             });
+            const gradedCandidates = allGradedChunks(match) as GradedEvidenceChunk[];
             const finding = aggregateFindingForRequirement(
               requirement,
-              allGradedChunks(match) as GradedEvidenceChunk[],
+              gradedCandidates,
             );
             const storedFinding = await storeFinding({
               supabase,
@@ -611,7 +618,12 @@ export async function generateFindingsForWorkspace({
               phase: "finding_persisted",
               timestamp: new Date().toISOString(),
             });
-            return { finding, storedFinding };
+            return {
+              finding,
+              storedFinding,
+              shadowCandidates: classifierCandidates,
+              shadowGradedCandidates: gradedCandidates,
+            };
           },
         });
       } catch (error) {
@@ -622,6 +634,22 @@ export async function generateFindingsForWorkspace({
           );
         }
         throw error;
+      }
+      try {
+        await runClassifierFactsShadowFailOpen({
+          supabase,
+          workspaceId,
+          analysisRunId: analysisRun.id,
+          requirement,
+          candidates: requirementResult.shadowCandidates,
+          gradedCandidates: requirementResult.shadowGradedCandidates,
+          workspacePolicy: workspaceAiPolicy,
+        });
+      } catch (error) {
+        console.warn("[RegSpan shadow] Unexpected shadow failure was isolated from production analysis.", {
+          requirementId: requirement.id,
+          error: String(error),
+        });
       }
       const { finding, storedFinding } = requirementResult;
       storedFindings.push(storedFinding);

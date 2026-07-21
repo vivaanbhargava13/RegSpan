@@ -73,6 +73,8 @@ They never require n8n credential rotation.
 | `ENABLE_INTERNAL_DEBUG_ROUTES` | Optional; false production | Server | Boolean | No | Yes | Runtime |
 | `ENABLE_EXTERNAL_AI_PROCESSING` | Optional; false default | Server | Boolean | Possibly | Yes | Runtime |
 | `ENABLE_EXTERNAL_AI_CLASSIFIER` | Optional; false default | Server | Boolean; requires processing flag | Possibly | Yes | Runtime |
+| `CLASSIFIER_FACTS_SHADOW_ENABLED` | Optional; false default | Server | Boolean; also requires both external-AI flags and workspace consent | Possibly | Yes | Runtime |
+| `CLASSIFIER_FACTS_SHADOW_REQUIREMENTS` | Required when shadow enabled | Server | Comma-separated supported requirement IDs | Possibly | Yes | Runtime |
 
 ## External AI configuration
 

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "classifier-generalization-reviewer-worksheet/v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "fixture_hash", "instructions", "requirements", "cases"],
+  "properties": {
+    "schema_version": { "const": "classifier-generalization-reviewer-worksheet/v1" },
+    "fixture_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "instructions": { "type": "object" },
+    "requirements": { "type": "array", "minItems": 3, "maxItems": 3 },
+    "cases": { "type": "array", "minItems": 30, "maxItems": 50 }
+  }
+}

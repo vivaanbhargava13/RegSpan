@@ -143,10 +143,10 @@ test("V1 through invalid V4 artifacts remain byte-for-byte immutable", async () 
   }
 });
 
-test("V4.1 is isolated from production, V4 prompts, and V3/V4 mapping code", async () => {
+test("V4.1 frozen implementation remains unchanged during shadow integration", async () => {
   const { stdout } = await execFileAsync("git", ["status", "--short"], { cwd: root });
   const paths = stdout.trim().split("\n").filter(Boolean).map((line) => line.slice(3));
-  assert.equal(paths.some((path) => /^(app|components|supabase\/migrations)\//u.test(path)), false);
   assert.equal(paths.some((path) => /classifierFactsPrototypeV(?:3|4)\.ts$/u.test(path)), false);
   assert.equal(paths.some((path) => /runClassifierFactsPrototypeV(?:3|4)\.ts$/u.test(path)), false);
+  assert.equal(createHash("sha256").update(await readFile(resolve("lib/classifierFactsPrototypeV41.ts"))).digest("hex"), "d2507a9840b61b4826c1391e6aacb249fff643ccc0f0067a89f4386c84d34b84");
 });
