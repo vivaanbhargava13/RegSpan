@@ -73,7 +73,7 @@ function resultFromDry(fixtures, dry, candidateMutator = (value) => value) {
   };
 }
 
-test("v2 fixtures validate, worksheets are blank, and dry requests differ only by model", async () => {
+test("v2 fixtures validate imported adjudications, keep worksheets blank, and dry requests differ only by model", async () => {
   const directory = await mkdtemp(join(tmpdir(), "classifier-capability-dry-"));
   const output = join(directory, "dry.json");
   const { stdout } = await runHarness([
@@ -89,12 +89,49 @@ test("v2 fixtures validate, worksheets are blank, and dry requests differ only b
   assert.equal(dry.network_calls, 0);
   assert.equal(dry.fixture_suite_hash, fixtures.suite_hash);
   assert.equal(fixtures.schema_version, "classifier-capability-fixtures/v2");
-  assert.equal(fixtures.cases.filter((item) => item.evaluation_role === "scored").length, 0);
+  assert.deepEqual(
+    fixtures.cases.filter((item) => item.evaluation_role === "scored").map((item) => item.id),
+    [
+      "assessment-full-operative-procedure",
+      "assessment-incident-history-negative",
+      "preservation-full-operative-procedure",
+      "preservation-records-inventory-partial",
+      "preservation-optional-language-negative",
+      "recovery-full-operative-procedure",
+      "recovery-corrective-ownership-negative",
+      "recovery-appendix-inventory-negative",
+      "recovery-restoration-monitoring-partial",
+    ],
+  );
   assert.deepEqual(
     fixtures.cases.filter((item) => item.evaluation_role === "diagnostic_only").map((item) => item.id),
     ["assessment-monitoring-escalation-partial", "preservation-log-procedure"],
   );
   assert.equal(worksheet.cases.every((item) => item.reviewer_decisions.reviewer_id === null), true);
+  assert.equal(worksheet.multi_candidate_review_case, null);
+  assert.match(worksheet.unresolved_multi_candidate_blocker, /omit original candidate chunk IDs/);
+  const approved = fixtures.cases.filter((item) => item.evaluation_role === "scored");
+  for (const fixtureCase of approved) {
+    const provenances = [
+      fixtureCase.expected_status.provenance,
+      fixtureCase.expected_supported_elements.provenance,
+      ...fixtureCase.candidates.flatMap((candidate) => [
+        candidate.expected_relationship.provenance,
+        candidate.expected_covered_elements.provenance,
+        candidate.direct_support_recovery.provenance,
+        candidate.hard_negative.provenance,
+      ]),
+    ];
+    assert.equal(provenances.every((item) => item.confirmed && item.source_type === "manual_adjudication"), true);
+    assert.equal(provenances.every((item) => item.reviewer_id === "vivaan-bhargava" && item.reviewed_at), true);
+  }
+  const preservationInventory = fixtures.cases.find((item) => item.id === "preservation-records-inventory-partial");
+  assert.equal(preservationInventory.expected_status.value, "partial");
+  assert.deepEqual(preservationInventory.expected_supported_elements.value, ["incident_materials"]);
+  assert.equal(preservationInventory.candidates[0].hard_negative.value, false);
+  for (const diagnostic of fixtures.cases.filter((item) => item.evaluation_role === "diagnostic_only")) {
+    assert.equal(diagnostic.candidates.every((item) => item.expected_relationship.provenance.source_type === "diagnostic_artifact"), true);
+  }
   for (const fixtureCase of dry.cases) for (const request of fixtureCase.requests) {
     const baseline = structuredClone(request.baseline.request_body);
     const challenger = structuredClone(request.challenger.request_body);
@@ -114,7 +151,7 @@ test("paid gate rejects incomplete adjudication and missing multi-candidate cove
       ENABLE_EXTERNAL_AI_PROCESSING: "true", ENABLE_EXTERNAL_AI_CLASSIFIER: "true",
       REQUIREMENT_CLASSIFIER_API_KEY: "must-not-be-used",
     }),
-    /No independently confirmed scored fixtures|No existing reviewer artifact/,
+    /No suitable frozen local artifact/,
   );
 });
 
@@ -145,7 +182,7 @@ test("fallback and deterministic guardrail candidates are excluded and status fa
   assert.equal(evaluated.guardrail.model_success_candidate_count, 0);
   assert.equal(evaluated.guardrail.excluded_candidates[0].reason, "deterministic_guardrail");
   assert.equal(evaluated.success.false_assurance.count, 1);
-  assert.equal(evaluated.success.false_assurance.denominator, 1);
+  assert.equal(evaluated.success.false_assurance.denominator, 9);
 });
 
 test("invalid arm report suppresses comparative conclusions and shows a warning", async () => {

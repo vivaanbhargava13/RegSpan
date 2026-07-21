@@ -1,26 +1,70 @@
 {
   "schema_version": "classifier-capability-reviewer-worksheet/v1",
-  "fixture_suite_hash": "55fbc31f73e71563165867b2ad3b33bfc7aa2911714c36d4bef7fbfe3bd49ddf",
-  "unresolved_multi_candidate_blocker": "No existing reviewer artifact provides a case with complementary support across at least two candidates, one high-signal distractor, original order, expected final status, and expected supported elements.",
+  "fixture_suite_hash": "9870600f6a6a01d586f3da0de52a5c97a830c3e81a5f5fc4b6879b63a292c8a9",
+  "unresolved_multi_candidate_blocker": "No suitable frozen local artifact was found. The requirement and retrieval reports preserve ordered candidate text, document IDs, and chunk indexes, but omit original candidate chunk IDs and exact candidate-text hashes; the isolated corpus results contain case summaries rather than ordered candidates. A review case cannot be created without fabricating identity or provenance.",
+  "multi_candidate_artifacts_inspected": [
+    "eval-results/requirement-eval-latest.json",
+    "eval-results/retrieval-eval-latest.json",
+    "eval-results/classifier-capability/dry-run.json",
+    "eval-results/corpus-regspan-v1-isolated-*/results.{json,csv}",
+    "eval-results/corpus-regspan-v2-realistic-company-policies-isolated-*/results.{json,csv}"
+  ],
+  "multi_candidate_review_case": null,
   "cases": [
     {
       "case_id": "assessment-full-operative-procedure",
-      "evaluation_role": "unresolved",
+      "evaluation_role": "scored",
       "requirement": {
         "id": "incident_assessment_containment_control",
         "title": "Incident assessment, containment, and control",
-        "description": "The reviewed documents appear to define how the firm assesses the nature and scope of unauthorized access or use of customer information and takes steps to contain and control the incident."
+        "description": "The reviewed documents appear to define how the firm assesses the nature and scope of unauthorized access or use of customer information and takes steps to contain and control the incident.",
+        "element_definitions": [
+          {
+            "id": "assesses_scope",
+            "label": "Assesses the nature and scope of unauthorized access or use",
+            "requiredForCovered": true,
+            "signals": [
+              "assess the nature and scope",
+              "assessment of unauthorized access",
+              "assess unauthorized access",
+              "incident scope assessment"
+            ]
+          },
+          {
+            "id": "customer_information_systems",
+            "label": "Identifies affected customer information systems or information types",
+            "requiredForCovered": true,
+            "signals": [
+              "affected customer information systems",
+              "affected customer information",
+              "information types affected",
+              "affected sensitive customer information"
+            ]
+          },
+          {
+            "id": "containment_control",
+            "label": "Requires containment or control steps",
+            "requiredForCovered": true,
+            "signals": [
+              "contain and control",
+              "containment steps",
+              "isolate affected systems",
+              "block unauthorized access",
+              "reset credentials"
+            ]
+          }
+        ]
       },
       "proposed_expected_status": {
         "value": "covered",
         "provenance": {
           "confirmed": true,
-          "source_type": "reviewer_answer_key",
-          "reviewer_id": null,
-          "reviewed_at": null,
-          "source_path": "eval/corpora/regspan-v2-realistic-corpus/answer_key.csv",
-          "source_locator": "answer_key.csv row 25: northline-brokerage-services / incident_assessment_containment_control / covered",
-          "source_hash": "fec13c8972f87da4b17c23a963e7f0fa4e0035add3b14bda307fbaae0d3b8abd",
+          "source_type": "manual_adjudication",
+          "reviewer_id": "vivaan-bhargava",
+          "reviewed_at": "2026-07-21T02:57:36.000Z",
+          "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf",
+          "source_locator": "PDF page 3, section 5",
+          "source_hash": "8540c08a73b48ffd40d51a96a9a0b2328653be4193f7b62d36a9e5a981786ab8",
           "normalization_recipe": null
         }
       },
@@ -31,10 +75,10 @@
           "containment_control"
         ],
         "provenance": {
-          "confirmed": false,
-          "source_type": "implementation_inference",
-          "reviewer_id": null,
-          "reviewed_at": null,
+          "confirmed": true,
+          "source_type": "manual_adjudication",
+          "reviewer_id": "vivaan-bhargava",
+          "reviewed_at": "2026-07-21T02:57:36.000Z",
           "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf",
           "source_locator": "PDF page 3, section 5",
           "source_hash": "8540c08a73b48ffd40d51a96a9a0b2328653be4193f7b62d36a9e5a981786ab8",
@@ -56,10 +100,10 @@
           "proposed_expected_relationship": {
             "value": "supports",
             "provenance": {
-              "confirmed": false,
-              "source_type": "implementation_inference",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T02:57:36.000Z",
               "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf",
               "source_locator": "PDF page 3, section 5",
               "source_hash": "8540c08a73b48ffd40d51a96a9a0b2328653be4193f7b62d36a9e5a981786ab8",
@@ -73,10 +117,10 @@
               "containment_control"
             ],
             "provenance": {
-              "confirmed": false,
-              "source_type": "implementation_inference",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T02:57:36.000Z",
               "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf",
               "source_locator": "PDF page 3, section 5",
               "source_hash": "8540c08a73b48ffd40d51a96a9a0b2328653be4193f7b62d36a9e5a981786ab8",
@@ -86,10 +130,10 @@
           "proposed_direct_support": {
             "value": true,
             "provenance": {
-              "confirmed": false,
-              "source_type": "implementation_inference",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T02:57:36.000Z",
               "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf",
               "source_locator": "PDF page 3, section 5",
               "source_hash": "8540c08a73b48ffd40d51a96a9a0b2328653be4193f7b62d36a9e5a981786ab8",
@@ -99,10 +143,10 @@
           "proposed_hard_negative": {
             "value": false,
             "provenance": {
-              "confirmed": false,
-              "source_type": "implementation_inference",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T02:57:36.000Z",
               "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf",
               "source_locator": "PDF page 3, section 5",
               "source_hash": "8540c08a73b48ffd40d51a96a9a0b2328653be4193f7b62d36a9e5a981786ab8",
@@ -130,19 +174,55 @@
     },
     {
       "case_id": "assessment-incident-history-negative",
-      "evaluation_role": "unresolved",
+      "evaluation_role": "scored",
       "requirement": {
         "id": "incident_assessment_containment_control",
         "title": "Incident assessment, containment, and control",
-        "description": "The reviewed documents appear to define how the firm assesses the nature and scope of unauthorized access or use of customer information and takes steps to contain and control the incident."
+        "description": "The reviewed documents appear to define how the firm assesses the nature and scope of unauthorized access or use of customer information and takes steps to contain and control the incident.",
+        "element_definitions": [
+          {
+            "id": "assesses_scope",
+            "label": "Assesses the nature and scope of unauthorized access or use",
+            "requiredForCovered": true,
+            "signals": [
+              "assess the nature and scope",
+              "assessment of unauthorized access",
+              "assess unauthorized access",
+              "incident scope assessment"
+            ]
+          },
+          {
+            "id": "customer_information_systems",
+            "label": "Identifies affected customer information systems or information types",
+            "requiredForCovered": true,
+            "signals": [
+              "affected customer information systems",
+              "affected customer information",
+              "information types affected",
+              "affected sensitive customer information"
+            ]
+          },
+          {
+            "id": "containment_control",
+            "label": "Requires containment or control steps",
+            "requiredForCovered": true,
+            "signals": [
+              "contain and control",
+              "containment steps",
+              "isolate affected systems",
+              "block unauthorized access",
+              "reset credentials"
+            ]
+          }
+        ]
       },
       "proposed_expected_status": {
         "value": "missing",
         "provenance": {
-          "confirmed": false,
-          "source_type": "implementation_inference",
-          "reviewer_id": null,
-          "reviewed_at": null,
+          "confirmed": true,
+          "source_type": "manual_adjudication",
+          "reviewer_id": "vivaan-bhargava",
+          "reviewed_at": "2026-07-21T02:57:36.000Z",
           "source_path": "tests/requirement-debug.test.mjs",
           "source_locator": "negative fixture near line 349",
           "source_hash": "23512acd4941a7263421b3bdc22c1322bf5ea8a43c2aa205c8b8f5111842a221",
@@ -152,10 +232,10 @@
       "proposed_expected_supported_elements": {
         "value": [],
         "provenance": {
-          "confirmed": false,
-          "source_type": "implementation_inference",
-          "reviewer_id": null,
-          "reviewed_at": null,
+          "confirmed": true,
+          "source_type": "manual_adjudication",
+          "reviewer_id": "vivaan-bhargava",
+          "reviewed_at": "2026-07-21T02:57:36.000Z",
           "source_path": "tests/requirement-debug.test.mjs",
           "source_locator": "negative fixture near line 349",
           "source_hash": "23512acd4941a7263421b3bdc22c1322bf5ea8a43c2aa205c8b8f5111842a221",
@@ -177,10 +257,10 @@
           "proposed_expected_relationship": {
             "value": "irrelevant",
             "provenance": {
-              "confirmed": false,
-              "source_type": "diagnostic_artifact",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T02:57:36.000Z",
               "source_path": "tests/requirement-debug.test.mjs",
               "source_locator": "negative fixture near line 349",
               "source_hash": "23512acd4941a7263421b3bdc22c1322bf5ea8a43c2aa205c8b8f5111842a221",
@@ -190,10 +270,10 @@
           "proposed_expected_elements": {
             "value": [],
             "provenance": {
-              "confirmed": false,
-              "source_type": "diagnostic_artifact",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T02:57:36.000Z",
               "source_path": "tests/requirement-debug.test.mjs",
               "source_locator": "negative fixture near line 349",
               "source_hash": "23512acd4941a7263421b3bdc22c1322bf5ea8a43c2aa205c8b8f5111842a221",
@@ -203,10 +283,10 @@
           "proposed_direct_support": {
             "value": false,
             "provenance": {
-              "confirmed": false,
-              "source_type": "diagnostic_artifact",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T02:57:36.000Z",
               "source_path": "tests/requirement-debug.test.mjs",
               "source_locator": "negative fixture near line 349",
               "source_hash": "23512acd4941a7263421b3bdc22c1322bf5ea8a43c2aa205c8b8f5111842a221",
@@ -216,10 +296,10 @@
           "proposed_hard_negative": {
             "value": true,
             "provenance": {
-              "confirmed": false,
-              "source_type": "diagnostic_artifact",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T02:57:36.000Z",
               "source_path": "tests/requirement-debug.test.mjs",
               "source_locator": "negative fixture near line 349",
               "source_hash": "23512acd4941a7263421b3bdc22c1322bf5ea8a43c2aa205c8b8f5111842a221",
@@ -251,7 +331,43 @@
       "requirement": {
         "id": "incident_assessment_containment_control",
         "title": "Incident assessment, containment, and control",
-        "description": "The reviewed documents appear to define how the firm assesses the nature and scope of unauthorized access or use of customer information and takes steps to contain and control the incident."
+        "description": "The reviewed documents appear to define how the firm assesses the nature and scope of unauthorized access or use of customer information and takes steps to contain and control the incident.",
+        "element_definitions": [
+          {
+            "id": "assesses_scope",
+            "label": "Assesses the nature and scope of unauthorized access or use",
+            "requiredForCovered": true,
+            "signals": [
+              "assess the nature and scope",
+              "assessment of unauthorized access",
+              "assess unauthorized access",
+              "incident scope assessment"
+            ]
+          },
+          {
+            "id": "customer_information_systems",
+            "label": "Identifies affected customer information systems or information types",
+            "requiredForCovered": true,
+            "signals": [
+              "affected customer information systems",
+              "affected customer information",
+              "information types affected",
+              "affected sensitive customer information"
+            ]
+          },
+          {
+            "id": "containment_control",
+            "label": "Requires containment or control steps",
+            "requiredForCovered": true,
+            "signals": [
+              "contain and control",
+              "containment steps",
+              "isolate affected systems",
+              "block unauthorized access",
+              "reset credentials"
+            ]
+          }
+        ]
       },
       "proposed_expected_status": {
         "value": "partial",
@@ -368,22 +484,67 @@
     },
     {
       "case_id": "preservation-full-operative-procedure",
-      "evaluation_role": "unresolved",
+      "evaluation_role": "scored",
       "requirement": {
         "id": "incident_evidence_log_preservation",
         "title": "Incident evidence and log preservation",
-        "description": "The reviewed documents appear to preserve logs, records, forensic evidence, and other incident materials that support investigation and later compliance documentation."
+        "description": "The reviewed documents appear to preserve logs, records, forensic evidence, and other incident materials that support investigation and later compliance documentation.",
+        "element_definitions": [
+          {
+            "id": "incident_materials",
+            "label": "Preserves or captures relevant logs, communications, evidence, or investigation records",
+            "requiredForCovered": true,
+            "signals": [
+              "preserve logs",
+              "logs are preserved",
+              "retain incident logs",
+              "incident materials retained",
+              "preserve evidence",
+              "incident records",
+              "investigation records",
+              "investigation notes",
+              "forensic evidence",
+              "security console exports",
+              "volatile information",
+              "log retention"
+            ]
+          },
+          {
+            "id": "integrity_or_chain_of_custody",
+            "label": "Maintains evidence integrity or chain of custody",
+            "requiredForCovered": false,
+            "signals": [
+              "chain of custody",
+              "records integrity",
+              "provenance",
+              "custody"
+            ]
+          },
+          {
+            "id": "preservation_process",
+            "label": "Defines an owner-directed or controlled-storage process for preserving relevant logs or evidence",
+            "requiredForCovered": true,
+            "signals": [
+              "procedure requires preserving",
+              "preservation process",
+              "preserve relevant logs",
+              "retain logs for investigation",
+              "evidence retention requirements",
+              "chain of custody"
+            ]
+          }
+        ]
       },
       "proposed_expected_status": {
         "value": "covered",
         "provenance": {
           "confirmed": true,
-          "source_type": "reviewer_answer_key",
-          "reviewer_id": null,
-          "reviewed_at": null,
-          "source_path": "eval/corpora/regspan-v2-realistic-corpus/answer_key.csv",
-          "source_locator": "answer_key.csv row 32: northline-brokerage-services / incident_evidence_log_preservation / covered",
-          "source_hash": "fec13c8972f87da4b17c23a963e7f0fa4e0035add3b14bda307fbaae0d3b8abd",
+          "source_type": "manual_adjudication",
+          "reviewer_id": "vivaan-bhargava",
+          "reviewed_at": "2026-07-21T02:57:36.000Z",
+          "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf",
+          "source_locator": "PDF page 6, section 12",
+          "source_hash": "8540c08a73b48ffd40d51a96a9a0b2328653be4193f7b62d36a9e5a981786ab8",
           "normalization_recipe": null
         }
       },
@@ -394,10 +555,10 @@
           "preservation_process"
         ],
         "provenance": {
-          "confirmed": false,
-          "source_type": "implementation_inference",
-          "reviewer_id": null,
-          "reviewed_at": null,
+          "confirmed": true,
+          "source_type": "manual_adjudication",
+          "reviewer_id": "vivaan-bhargava",
+          "reviewed_at": "2026-07-21T02:57:36.000Z",
           "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf",
           "source_locator": "PDF page 6, section 12",
           "source_hash": "8540c08a73b48ffd40d51a96a9a0b2328653be4193f7b62d36a9e5a981786ab8",
@@ -419,10 +580,10 @@
           "proposed_expected_relationship": {
             "value": "supports",
             "provenance": {
-              "confirmed": false,
-              "source_type": "implementation_inference",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T02:57:36.000Z",
               "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf",
               "source_locator": "PDF page 6, section 12",
               "source_hash": "8540c08a73b48ffd40d51a96a9a0b2328653be4193f7b62d36a9e5a981786ab8",
@@ -436,10 +597,10 @@
               "preservation_process"
             ],
             "provenance": {
-              "confirmed": false,
-              "source_type": "implementation_inference",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T02:57:36.000Z",
               "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf",
               "source_locator": "PDF page 6, section 12",
               "source_hash": "8540c08a73b48ffd40d51a96a9a0b2328653be4193f7b62d36a9e5a981786ab8",
@@ -449,10 +610,10 @@
           "proposed_direct_support": {
             "value": true,
             "provenance": {
-              "confirmed": false,
-              "source_type": "implementation_inference",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T02:57:36.000Z",
               "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf",
               "source_locator": "PDF page 6, section 12",
               "source_hash": "8540c08a73b48ffd40d51a96a9a0b2328653be4193f7b62d36a9e5a981786ab8",
@@ -462,10 +623,10 @@
           "proposed_hard_negative": {
             "value": false,
             "provenance": {
-              "confirmed": false,
-              "source_type": "implementation_inference",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T02:57:36.000Z",
               "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf",
               "source_locator": "PDF page 6, section 12",
               "source_hash": "8540c08a73b48ffd40d51a96a9a0b2328653be4193f7b62d36a9e5a981786ab8",
@@ -497,7 +658,52 @@
       "requirement": {
         "id": "incident_evidence_log_preservation",
         "title": "Incident evidence and log preservation",
-        "description": "The reviewed documents appear to preserve logs, records, forensic evidence, and other incident materials that support investigation and later compliance documentation."
+        "description": "The reviewed documents appear to preserve logs, records, forensic evidence, and other incident materials that support investigation and later compliance documentation.",
+        "element_definitions": [
+          {
+            "id": "incident_materials",
+            "label": "Preserves or captures relevant logs, communications, evidence, or investigation records",
+            "requiredForCovered": true,
+            "signals": [
+              "preserve logs",
+              "logs are preserved",
+              "retain incident logs",
+              "incident materials retained",
+              "preserve evidence",
+              "incident records",
+              "investigation records",
+              "investigation notes",
+              "forensic evidence",
+              "security console exports",
+              "volatile information",
+              "log retention"
+            ]
+          },
+          {
+            "id": "integrity_or_chain_of_custody",
+            "label": "Maintains evidence integrity or chain of custody",
+            "requiredForCovered": false,
+            "signals": [
+              "chain of custody",
+              "records integrity",
+              "provenance",
+              "custody"
+            ]
+          },
+          {
+            "id": "preservation_process",
+            "label": "Defines an owner-directed or controlled-storage process for preserving relevant logs or evidence",
+            "requiredForCovered": true,
+            "signals": [
+              "procedure requires preserving",
+              "preservation process",
+              "preserve relevant logs",
+              "retain logs for investigation",
+              "evidence retention requirements",
+              "chain of custody"
+            ]
+          }
+        ]
       },
       "proposed_expected_status": {
         "value": "covered",
@@ -615,20 +821,65 @@
       ]
     },
     {
-      "case_id": "preservation-records-inventory-negative",
-      "evaluation_role": "unresolved",
+      "case_id": "preservation-records-inventory-partial",
+      "evaluation_role": "scored",
       "requirement": {
         "id": "incident_evidence_log_preservation",
         "title": "Incident evidence and log preservation",
-        "description": "The reviewed documents appear to preserve logs, records, forensic evidence, and other incident materials that support investigation and later compliance documentation."
+        "description": "The reviewed documents appear to preserve logs, records, forensic evidence, and other incident materials that support investigation and later compliance documentation.",
+        "element_definitions": [
+          {
+            "id": "incident_materials",
+            "label": "Preserves or captures relevant logs, communications, evidence, or investigation records",
+            "requiredForCovered": true,
+            "signals": [
+              "preserve logs",
+              "logs are preserved",
+              "retain incident logs",
+              "incident materials retained",
+              "preserve evidence",
+              "incident records",
+              "investigation records",
+              "investigation notes",
+              "forensic evidence",
+              "security console exports",
+              "volatile information",
+              "log retention"
+            ]
+          },
+          {
+            "id": "integrity_or_chain_of_custody",
+            "label": "Maintains evidence integrity or chain of custody",
+            "requiredForCovered": false,
+            "signals": [
+              "chain of custody",
+              "records integrity",
+              "provenance",
+              "custody"
+            ]
+          },
+          {
+            "id": "preservation_process",
+            "label": "Defines an owner-directed or controlled-storage process for preserving relevant logs or evidence",
+            "requiredForCovered": true,
+            "signals": [
+              "procedure requires preserving",
+              "preservation process",
+              "preserve relevant logs",
+              "retain logs for investigation",
+              "evidence retention requirements",
+              "chain of custody"
+            ]
+          }
+        ]
       },
       "proposed_expected_status": {
-        "value": "missing",
+        "value": "partial",
         "provenance": {
-          "confirmed": false,
-          "source_type": "implementation_inference",
-          "reviewer_id": null,
-          "reviewed_at": null,
+          "confirmed": true,
+          "source_type": "manual_adjudication",
+          "reviewer_id": "vivaan-bhargava",
+          "reviewed_at": "2026-07-21T02:57:36.000Z",
           "source_path": "tests/findings-generation.test.mjs",
           "source_locator": "records inventory fixture near line 1227",
           "source_hash": "a9a31fad7d6002c38fbbd0fd4d61ce1a6567f852601201071f3a26dbf7e0c248",
@@ -636,12 +887,14 @@
         }
       },
       "proposed_expected_supported_elements": {
-        "value": [],
+        "value": [
+          "incident_materials"
+        ],
         "provenance": {
-          "confirmed": false,
-          "source_type": "implementation_inference",
-          "reviewer_id": null,
-          "reviewed_at": null,
+          "confirmed": true,
+          "source_type": "manual_adjudication",
+          "reviewer_id": "vivaan-bhargava",
+          "reviewed_at": "2026-07-21T02:57:36.000Z",
           "source_path": "tests/findings-generation.test.mjs",
           "source_locator": "records inventory fixture near line 1227",
           "source_hash": "a9a31fad7d6002c38fbbd0fd4d61ce1a6567f852601201071f3a26dbf7e0c248",
@@ -661,12 +914,12 @@
           "candidate_id": "preservation-inventory-1",
           "exact_candidate_text": "Books and records include notification investigations, determinations, supporting facts, and the basis for any no-notice decision.\n• The file also includes written documentation from the Attorney General concerning any delay in notice.\n• These records are preserved for five years.",
           "proposed_expected_relationship": {
-            "value": "irrelevant",
+            "value": "partially_supports",
             "provenance": {
-              "confirmed": false,
-              "source_type": "diagnostic_artifact",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T02:57:36.000Z",
               "source_path": "tests/findings-generation.test.mjs",
               "source_locator": "records inventory fixture near line 1227",
               "source_hash": "a9a31fad7d6002c38fbbd0fd4d61ce1a6567f852601201071f3a26dbf7e0c248",
@@ -674,12 +927,14 @@
             }
           },
           "proposed_expected_elements": {
-            "value": [],
+            "value": [
+              "incident_materials"
+            ],
             "provenance": {
-              "confirmed": false,
-              "source_type": "diagnostic_artifact",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T02:57:36.000Z",
               "source_path": "tests/findings-generation.test.mjs",
               "source_locator": "records inventory fixture near line 1227",
               "source_hash": "a9a31fad7d6002c38fbbd0fd4d61ce1a6567f852601201071f3a26dbf7e0c248",
@@ -689,10 +944,10 @@
           "proposed_direct_support": {
             "value": false,
             "provenance": {
-              "confirmed": false,
-              "source_type": "diagnostic_artifact",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T02:57:36.000Z",
               "source_path": "tests/findings-generation.test.mjs",
               "source_locator": "records inventory fixture near line 1227",
               "source_hash": "a9a31fad7d6002c38fbbd0fd4d61ce1a6567f852601201071f3a26dbf7e0c248",
@@ -700,12 +955,12 @@
             }
           },
           "proposed_hard_negative": {
-            "value": true,
+            "value": false,
             "provenance": {
-              "confirmed": false,
-              "source_type": "diagnostic_artifact",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T02:57:36.000Z",
               "source_path": "tests/findings-generation.test.mjs",
               "source_locator": "records inventory fixture near line 1227",
               "source_hash": "a9a31fad7d6002c38fbbd0fd4d61ce1a6567f852601201071f3a26dbf7e0c248",
@@ -733,36 +988,81 @@
     },
     {
       "case_id": "preservation-optional-language-negative",
-      "evaluation_role": "unresolved",
+      "evaluation_role": "scored",
       "requirement": {
         "id": "incident_evidence_log_preservation",
         "title": "Incident evidence and log preservation",
-        "description": "The reviewed documents appear to preserve logs, records, forensic evidence, and other incident materials that support investigation and later compliance documentation."
+        "description": "The reviewed documents appear to preserve logs, records, forensic evidence, and other incident materials that support investigation and later compliance documentation.",
+        "element_definitions": [
+          {
+            "id": "incident_materials",
+            "label": "Preserves or captures relevant logs, communications, evidence, or investigation records",
+            "requiredForCovered": true,
+            "signals": [
+              "preserve logs",
+              "logs are preserved",
+              "retain incident logs",
+              "incident materials retained",
+              "preserve evidence",
+              "incident records",
+              "investigation records",
+              "investigation notes",
+              "forensic evidence",
+              "security console exports",
+              "volatile information",
+              "log retention"
+            ]
+          },
+          {
+            "id": "integrity_or_chain_of_custody",
+            "label": "Maintains evidence integrity or chain of custody",
+            "requiredForCovered": false,
+            "signals": [
+              "chain of custody",
+              "records integrity",
+              "provenance",
+              "custody"
+            ]
+          },
+          {
+            "id": "preservation_process",
+            "label": "Defines an owner-directed or controlled-storage process for preserving relevant logs or evidence",
+            "requiredForCovered": true,
+            "signals": [
+              "procedure requires preserving",
+              "preservation process",
+              "preserve relevant logs",
+              "retain logs for investigation",
+              "evidence retention requirements",
+              "chain of custody"
+            ]
+          }
+        ]
       },
       "proposed_expected_status": {
         "value": "missing",
         "provenance": {
-          "confirmed": false,
-          "source_type": "implementation_inference",
-          "reviewer_id": null,
-          "reviewed_at": null,
+          "confirmed": true,
+          "source_type": "manual_adjudication",
+          "reviewer_id": "vivaan-bhargava",
+          "reviewed_at": "2026-07-21T02:57:36.000Z",
           "source_path": "tests/requirement-debug.test.mjs",
           "source_locator": "negative fixtures near lines 352-360",
           "source_hash": "23512acd4941a7263421b3bdc22c1322bf5ea8a43c2aa205c8b8f5111842a221",
-          "normalization_recipe": null
+          "normalization_recipe": "Concatenated the two adjacent diagnostic literals in source order with one space."
         }
       },
       "proposed_expected_supported_elements": {
         "value": [],
         "provenance": {
-          "confirmed": false,
-          "source_type": "implementation_inference",
-          "reviewer_id": null,
-          "reviewed_at": null,
+          "confirmed": true,
+          "source_type": "manual_adjudication",
+          "reviewer_id": "vivaan-bhargava",
+          "reviewed_at": "2026-07-21T02:57:36.000Z",
           "source_path": "tests/requirement-debug.test.mjs",
           "source_locator": "negative fixtures near lines 352-360",
           "source_hash": "23512acd4941a7263421b3bdc22c1322bf5ea8a43c2aa205c8b8f5111842a221",
-          "normalization_recipe": null
+          "normalization_recipe": "Concatenated the two adjacent diagnostic literals in source order with one space."
         }
       },
       "reviewer_decisions": {
@@ -780,10 +1080,10 @@
           "proposed_expected_relationship": {
             "value": "background_context",
             "provenance": {
-              "confirmed": false,
-              "source_type": "diagnostic_artifact",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T02:57:36.000Z",
               "source_path": "tests/requirement-debug.test.mjs",
               "source_locator": "negative fixtures near lines 352-360",
               "source_hash": "23512acd4941a7263421b3bdc22c1322bf5ea8a43c2aa205c8b8f5111842a221",
@@ -793,10 +1093,10 @@
           "proposed_expected_elements": {
             "value": [],
             "provenance": {
-              "confirmed": false,
-              "source_type": "diagnostic_artifact",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T02:57:36.000Z",
               "source_path": "tests/requirement-debug.test.mjs",
               "source_locator": "negative fixtures near lines 352-360",
               "source_hash": "23512acd4941a7263421b3bdc22c1322bf5ea8a43c2aa205c8b8f5111842a221",
@@ -806,10 +1106,10 @@
           "proposed_direct_support": {
             "value": false,
             "provenance": {
-              "confirmed": false,
-              "source_type": "diagnostic_artifact",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T02:57:36.000Z",
               "source_path": "tests/requirement-debug.test.mjs",
               "source_locator": "negative fixtures near lines 352-360",
               "source_hash": "23512acd4941a7263421b3bdc22c1322bf5ea8a43c2aa205c8b8f5111842a221",
@@ -819,10 +1119,10 @@
           "proposed_hard_negative": {
             "value": true,
             "provenance": {
-              "confirmed": false,
-              "source_type": "diagnostic_artifact",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T02:57:36.000Z",
               "source_path": "tests/requirement-debug.test.mjs",
               "source_locator": "negative fixtures near lines 352-360",
               "source_hash": "23512acd4941a7263421b3bdc22c1322bf5ea8a43c2aa205c8b8f5111842a221",
@@ -850,22 +1150,61 @@
     },
     {
       "case_id": "recovery-full-operative-procedure",
-      "evaluation_role": "unresolved",
+      "evaluation_role": "scored",
       "requirement": {
         "id": "response_recovery_remediation_validation",
         "title": "Response recovery and remediation validation",
-        "description": "The reviewed documents appear to define how the firm recovers from unauthorized access or use of customer information and validates remediation or corrective action."
+        "description": "The reviewed documents appear to define how the firm recovers from unauthorized access or use of customer information and validates remediation or corrective action.",
+        "element_definitions": [
+          {
+            "id": "recovery_steps",
+            "label": "Defines recovery after unauthorized access or use",
+            "requiredForCovered": true,
+            "signals": [
+              "recover from unauthorized access",
+              "recover from unauthorized use",
+              "recovery",
+              "restore",
+              "restoration"
+            ]
+          },
+          {
+            "id": "remediation_tracking",
+            "label": "Tracks remediation or corrective actions",
+            "requiredForCovered": true,
+            "signals": [
+              "remediation tracking",
+              "track remediation",
+              "corrective action",
+              "corrective actions",
+              "vulnerability remediation"
+            ]
+          },
+          {
+            "id": "validation_testing",
+            "label": "Validates recovery or remediation",
+            "requiredForCovered": true,
+            "signals": [
+              "validate recovery",
+              "confirm remediation",
+              "verify restored assets",
+              "follow-up vulnerability scan",
+              "repeated testing",
+              "validation"
+            ]
+          }
+        ]
       },
       "proposed_expected_status": {
         "value": "covered",
         "provenance": {
           "confirmed": true,
-          "source_type": "reviewer_answer_key",
-          "reviewer_id": null,
-          "reviewed_at": null,
-          "source_path": "eval/corpora/regspan-v2-realistic-corpus/answer_key.csv",
-          "source_locator": "answer_key.csv row 34: northline-brokerage-services / response_recovery_remediation_validation / covered",
-          "source_hash": "fec13c8972f87da4b17c23a963e7f0fa4e0035add3b14bda307fbaae0d3b8abd",
+          "source_type": "manual_adjudication",
+          "reviewer_id": "vivaan-bhargava",
+          "reviewed_at": "2026-07-21T02:57:36.000Z",
+          "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf",
+          "source_locator": "PDF page 6, section 14",
+          "source_hash": "8540c08a73b48ffd40d51a96a9a0b2328653be4193f7b62d36a9e5a981786ab8",
           "normalization_recipe": null
         }
       },
@@ -876,10 +1215,10 @@
           "validation_testing"
         ],
         "provenance": {
-          "confirmed": false,
-          "source_type": "implementation_inference",
-          "reviewer_id": null,
-          "reviewed_at": null,
+          "confirmed": true,
+          "source_type": "manual_adjudication",
+          "reviewer_id": "vivaan-bhargava",
+          "reviewed_at": "2026-07-21T02:57:36.000Z",
           "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf",
           "source_locator": "PDF page 6, section 14",
           "source_hash": "8540c08a73b48ffd40d51a96a9a0b2328653be4193f7b62d36a9e5a981786ab8",
@@ -901,10 +1240,10 @@
           "proposed_expected_relationship": {
             "value": "supports",
             "provenance": {
-              "confirmed": false,
-              "source_type": "implementation_inference",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T02:57:36.000Z",
               "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf",
               "source_locator": "PDF page 6, section 14",
               "source_hash": "8540c08a73b48ffd40d51a96a9a0b2328653be4193f7b62d36a9e5a981786ab8",
@@ -918,10 +1257,10 @@
               "validation_testing"
             ],
             "provenance": {
-              "confirmed": false,
-              "source_type": "implementation_inference",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T02:57:36.000Z",
               "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf",
               "source_locator": "PDF page 6, section 14",
               "source_hash": "8540c08a73b48ffd40d51a96a9a0b2328653be4193f7b62d36a9e5a981786ab8",
@@ -931,10 +1270,10 @@
           "proposed_direct_support": {
             "value": true,
             "provenance": {
-              "confirmed": false,
-              "source_type": "implementation_inference",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T02:57:36.000Z",
               "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf",
               "source_locator": "PDF page 6, section 14",
               "source_hash": "8540c08a73b48ffd40d51a96a9a0b2328653be4193f7b62d36a9e5a981786ab8",
@@ -944,10 +1283,10 @@
           "proposed_hard_negative": {
             "value": false,
             "provenance": {
-              "confirmed": false,
-              "source_type": "implementation_inference",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T02:57:36.000Z",
               "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf",
               "source_locator": "PDF page 6, section 14",
               "source_hash": "8540c08a73b48ffd40d51a96a9a0b2328653be4193f7b62d36a9e5a981786ab8",
@@ -975,19 +1314,58 @@
     },
     {
       "case_id": "recovery-corrective-ownership-negative",
-      "evaluation_role": "unresolved",
+      "evaluation_role": "scored",
       "requirement": {
         "id": "response_recovery_remediation_validation",
         "title": "Response recovery and remediation validation",
-        "description": "The reviewed documents appear to define how the firm recovers from unauthorized access or use of customer information and validates remediation or corrective action."
+        "description": "The reviewed documents appear to define how the firm recovers from unauthorized access or use of customer information and validates remediation or corrective action.",
+        "element_definitions": [
+          {
+            "id": "recovery_steps",
+            "label": "Defines recovery after unauthorized access or use",
+            "requiredForCovered": true,
+            "signals": [
+              "recover from unauthorized access",
+              "recover from unauthorized use",
+              "recovery",
+              "restore",
+              "restoration"
+            ]
+          },
+          {
+            "id": "remediation_tracking",
+            "label": "Tracks remediation or corrective actions",
+            "requiredForCovered": true,
+            "signals": [
+              "remediation tracking",
+              "track remediation",
+              "corrective action",
+              "corrective actions",
+              "vulnerability remediation"
+            ]
+          },
+          {
+            "id": "validation_testing",
+            "label": "Validates recovery or remediation",
+            "requiredForCovered": true,
+            "signals": [
+              "validate recovery",
+              "confirm remediation",
+              "verify restored assets",
+              "follow-up vulnerability scan",
+              "repeated testing",
+              "validation"
+            ]
+          }
+        ]
       },
       "proposed_expected_status": {
         "value": "missing",
         "provenance": {
-          "confirmed": false,
-          "source_type": "implementation_inference",
-          "reviewer_id": null,
-          "reviewed_at": null,
+          "confirmed": true,
+          "source_type": "manual_adjudication",
+          "reviewer_id": "vivaan-bhargava",
+          "reviewed_at": "2026-07-21T02:57:36.000Z",
           "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/lakeshore_regulation_sp_compliance_program.pdf",
           "source_locator": "PDF page 3, section 8",
           "source_hash": "793e888a7a816987be788dd0f0743d9de0a1355018ceaec379b4535c81aeb110",
@@ -997,10 +1375,10 @@
       "proposed_expected_supported_elements": {
         "value": [],
         "provenance": {
-          "confirmed": false,
-          "source_type": "implementation_inference",
-          "reviewer_id": null,
-          "reviewed_at": null,
+          "confirmed": true,
+          "source_type": "manual_adjudication",
+          "reviewer_id": "vivaan-bhargava",
+          "reviewed_at": "2026-07-21T02:57:36.000Z",
           "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/lakeshore_regulation_sp_compliance_program.pdf",
           "source_locator": "PDF page 3, section 8",
           "source_hash": "793e888a7a816987be788dd0f0743d9de0a1355018ceaec379b4535c81aeb110",
@@ -1022,10 +1400,10 @@
           "proposed_expected_relationship": {
             "value": "irrelevant",
             "provenance": {
-              "confirmed": false,
-              "source_type": "implementation_inference",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T02:57:36.000Z",
               "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/lakeshore_regulation_sp_compliance_program.pdf",
               "source_locator": "PDF page 3, section 8",
               "source_hash": "793e888a7a816987be788dd0f0743d9de0a1355018ceaec379b4535c81aeb110",
@@ -1035,10 +1413,10 @@
           "proposed_expected_elements": {
             "value": [],
             "provenance": {
-              "confirmed": false,
-              "source_type": "implementation_inference",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T02:57:36.000Z",
               "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/lakeshore_regulation_sp_compliance_program.pdf",
               "source_locator": "PDF page 3, section 8",
               "source_hash": "793e888a7a816987be788dd0f0743d9de0a1355018ceaec379b4535c81aeb110",
@@ -1048,10 +1426,10 @@
           "proposed_direct_support": {
             "value": false,
             "provenance": {
-              "confirmed": false,
-              "source_type": "implementation_inference",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T02:57:36.000Z",
               "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/lakeshore_regulation_sp_compliance_program.pdf",
               "source_locator": "PDF page 3, section 8",
               "source_hash": "793e888a7a816987be788dd0f0743d9de0a1355018ceaec379b4535c81aeb110",
@@ -1061,10 +1439,10 @@
           "proposed_hard_negative": {
             "value": true,
             "provenance": {
-              "confirmed": false,
-              "source_type": "implementation_inference",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T02:57:36.000Z",
               "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/lakeshore_regulation_sp_compliance_program.pdf",
               "source_locator": "PDF page 3, section 8",
               "source_hash": "793e888a7a816987be788dd0f0743d9de0a1355018ceaec379b4535c81aeb110",
@@ -1092,19 +1470,58 @@
     },
     {
       "case_id": "recovery-appendix-inventory-negative",
-      "evaluation_role": "unresolved",
+      "evaluation_role": "scored",
       "requirement": {
         "id": "response_recovery_remediation_validation",
         "title": "Response recovery and remediation validation",
-        "description": "The reviewed documents appear to define how the firm recovers from unauthorized access or use of customer information and validates remediation or corrective action."
+        "description": "The reviewed documents appear to define how the firm recovers from unauthorized access or use of customer information and validates remediation or corrective action.",
+        "element_definitions": [
+          {
+            "id": "recovery_steps",
+            "label": "Defines recovery after unauthorized access or use",
+            "requiredForCovered": true,
+            "signals": [
+              "recover from unauthorized access",
+              "recover from unauthorized use",
+              "recovery",
+              "restore",
+              "restoration"
+            ]
+          },
+          {
+            "id": "remediation_tracking",
+            "label": "Tracks remediation or corrective actions",
+            "requiredForCovered": true,
+            "signals": [
+              "remediation tracking",
+              "track remediation",
+              "corrective action",
+              "corrective actions",
+              "vulnerability remediation"
+            ]
+          },
+          {
+            "id": "validation_testing",
+            "label": "Validates recovery or remediation",
+            "requiredForCovered": true,
+            "signals": [
+              "validate recovery",
+              "confirm remediation",
+              "verify restored assets",
+              "follow-up vulnerability scan",
+              "repeated testing",
+              "validation"
+            ]
+          }
+        ]
       },
       "proposed_expected_status": {
         "value": "missing",
         "provenance": {
-          "confirmed": false,
-          "source_type": "implementation_inference",
-          "reviewer_id": null,
-          "reviewed_at": null,
+          "confirmed": true,
+          "source_type": "manual_adjudication",
+          "reviewer_id": "vivaan-bhargava",
+          "reviewed_at": "2026-07-21T02:57:36.000Z",
           "source_path": "tests/operative-evidence-elements.test.mjs",
           "source_locator": "inventory fixture near line 174",
           "source_hash": "e70260a377781da702731d62f615ce777b11467ac87aa6f3f3b8d6f026081add",
@@ -1114,10 +1531,10 @@
       "proposed_expected_supported_elements": {
         "value": [],
         "provenance": {
-          "confirmed": false,
-          "source_type": "implementation_inference",
-          "reviewer_id": null,
-          "reviewed_at": null,
+          "confirmed": true,
+          "source_type": "manual_adjudication",
+          "reviewer_id": "vivaan-bhargava",
+          "reviewed_at": "2026-07-21T02:57:36.000Z",
           "source_path": "tests/operative-evidence-elements.test.mjs",
           "source_locator": "inventory fixture near line 174",
           "source_hash": "e70260a377781da702731d62f615ce777b11467ac87aa6f3f3b8d6f026081add",
@@ -1139,10 +1556,10 @@
           "proposed_expected_relationship": {
             "value": "background_context",
             "provenance": {
-              "confirmed": false,
-              "source_type": "diagnostic_artifact",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T02:57:36.000Z",
               "source_path": "tests/operative-evidence-elements.test.mjs",
               "source_locator": "inventory fixture near line 174",
               "source_hash": "e70260a377781da702731d62f615ce777b11467ac87aa6f3f3b8d6f026081add",
@@ -1152,10 +1569,10 @@
           "proposed_expected_elements": {
             "value": [],
             "provenance": {
-              "confirmed": false,
-              "source_type": "diagnostic_artifact",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T02:57:36.000Z",
               "source_path": "tests/operative-evidence-elements.test.mjs",
               "source_locator": "inventory fixture near line 174",
               "source_hash": "e70260a377781da702731d62f615ce777b11467ac87aa6f3f3b8d6f026081add",
@@ -1165,10 +1582,10 @@
           "proposed_direct_support": {
             "value": false,
             "provenance": {
-              "confirmed": false,
-              "source_type": "diagnostic_artifact",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T02:57:36.000Z",
               "source_path": "tests/operative-evidence-elements.test.mjs",
               "source_locator": "inventory fixture near line 174",
               "source_hash": "e70260a377781da702731d62f615ce777b11467ac87aa6f3f3b8d6f026081add",
@@ -1178,10 +1595,10 @@
           "proposed_hard_negative": {
             "value": true,
             "provenance": {
-              "confirmed": false,
-              "source_type": "diagnostic_artifact",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T02:57:36.000Z",
               "source_path": "tests/operative-evidence-elements.test.mjs",
               "source_locator": "inventory fixture near line 174",
               "source_hash": "e70260a377781da702731d62f615ce777b11467ac87aa6f3f3b8d6f026081add",
@@ -1209,22 +1626,61 @@
     },
     {
       "case_id": "recovery-restoration-monitoring-partial",
-      "evaluation_role": "unresolved",
+      "evaluation_role": "scored",
       "requirement": {
         "id": "response_recovery_remediation_validation",
         "title": "Response recovery and remediation validation",
-        "description": "The reviewed documents appear to define how the firm recovers from unauthorized access or use of customer information and validates remediation or corrective action."
+        "description": "The reviewed documents appear to define how the firm recovers from unauthorized access or use of customer information and validates remediation or corrective action.",
+        "element_definitions": [
+          {
+            "id": "recovery_steps",
+            "label": "Defines recovery after unauthorized access or use",
+            "requiredForCovered": true,
+            "signals": [
+              "recover from unauthorized access",
+              "recover from unauthorized use",
+              "recovery",
+              "restore",
+              "restoration"
+            ]
+          },
+          {
+            "id": "remediation_tracking",
+            "label": "Tracks remediation or corrective actions",
+            "requiredForCovered": true,
+            "signals": [
+              "remediation tracking",
+              "track remediation",
+              "corrective action",
+              "corrective actions",
+              "vulnerability remediation"
+            ]
+          },
+          {
+            "id": "validation_testing",
+            "label": "Validates recovery or remediation",
+            "requiredForCovered": true,
+            "signals": [
+              "validate recovery",
+              "confirm remediation",
+              "verify restored assets",
+              "follow-up vulnerability scan",
+              "repeated testing",
+              "validation"
+            ]
+          }
+        ]
       },
       "proposed_expected_status": {
         "value": "partial",
         "provenance": {
           "confirmed": true,
-          "source_type": "reviewer_answer_key",
-          "reviewer_id": null,
-          "reviewed_at": null,
-          "source_path": "eval/corpora/regspan-v2-realistic-corpus/answer_key.csv",
-          "source_locator": "answer_key.csv row 122: stonehaven-advisory-partners / response_recovery_remediation_validation / partial",
-          "source_hash": "fec13c8972f87da4b17c23a963e7f0fa4e0035add3b14bda307fbaae0d3b8abd",
+          "source_type": "manual_adjudication",
+          "reviewer_id": "vivaan-bhargava",
+          "reviewed_at": "2026-07-21T02:57:36.000Z",
+          "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/stonehaven_privacy_cybersecurity_practices.pdf",
+          "source_locator": "PDF page 5, section 14",
+          "source_hash": "08e37e692f72c96b4962fed10711eca070597f3818c24ef0cefd353b2e07c939",
           "normalization_recipe": null
         }
       },
@@ -1233,10 +1689,10 @@
           "recovery_steps"
         ],
         "provenance": {
-          "confirmed": false,
-          "source_type": "implementation_inference",
-          "reviewer_id": null,
-          "reviewed_at": null,
+          "confirmed": true,
+          "source_type": "manual_adjudication",
+          "reviewer_id": "vivaan-bhargava",
+          "reviewed_at": "2026-07-21T02:57:36.000Z",
           "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/stonehaven_privacy_cybersecurity_practices.pdf",
           "source_locator": "PDF page 5, section 14",
           "source_hash": "08e37e692f72c96b4962fed10711eca070597f3818c24ef0cefd353b2e07c939",
@@ -1258,10 +1714,10 @@
           "proposed_expected_relationship": {
             "value": "partially_supports",
             "provenance": {
-              "confirmed": false,
-              "source_type": "implementation_inference",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T02:57:36.000Z",
               "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/stonehaven_privacy_cybersecurity_practices.pdf",
               "source_locator": "PDF page 5, section 14",
               "source_hash": "08e37e692f72c96b4962fed10711eca070597f3818c24ef0cefd353b2e07c939",
@@ -1273,10 +1729,10 @@
               "recovery_steps"
             ],
             "provenance": {
-              "confirmed": false,
-              "source_type": "implementation_inference",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T02:57:36.000Z",
               "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/stonehaven_privacy_cybersecurity_practices.pdf",
               "source_locator": "PDF page 5, section 14",
               "source_hash": "08e37e692f72c96b4962fed10711eca070597f3818c24ef0cefd353b2e07c939",
@@ -1286,10 +1742,10 @@
           "proposed_direct_support": {
             "value": false,
             "provenance": {
-              "confirmed": false,
-              "source_type": "implementation_inference",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T02:57:36.000Z",
               "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/stonehaven_privacy_cybersecurity_practices.pdf",
               "source_locator": "PDF page 5, section 14",
               "source_hash": "08e37e692f72c96b4962fed10711eca070597f3818c24ef0cefd353b2e07c939",
@@ -1299,10 +1755,10 @@
           "proposed_hard_negative": {
             "value": false,
             "provenance": {
-              "confirmed": false,
-              "source_type": "implementation_inference",
-              "reviewer_id": null,
-              "reviewed_at": null,
+              "confirmed": true,
+              "source_type": "manual_adjudication",
+              "reviewer_id": "vivaan-bhargava",
+              "reviewed_at": "2026-07-21T02:57:36.000Z",
               "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/stonehaven_privacy_cybersecurity_practices.pdf",
               "source_locator": "PDF page 5, section 14",
               "source_hash": "08e37e692f72c96b4962fed10711eca070597f3818c24ef0cefd353b2e07c939",

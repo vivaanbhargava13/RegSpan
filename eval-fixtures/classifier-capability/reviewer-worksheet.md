@@ -1,23 +1,33 @@
 # Classifier capability reviewer worksheet
 
-Fixture suite hash: `55fbc31f73e71563165867b2ad3b33bfc7aa2911714c36d4bef7fbfe3bd49ddf`
+Fixture suite hash: `9870600f6a6a01d586f3da0de52a5c97a830c3e81a5f5fc4b6879b63a292c8a9`
 
 ## Unresolved blocker
 
-No existing reviewer artifact provides a case with complementary support across at least two candidates, one high-signal distractor, original order, expected final status, and expected supported elements.
+No suitable frozen local artifact was found. The requirement and retrieval reports preserve ordered candidate text, document IDs, and chunk indexes, but omit original candidate chunk IDs and exact candidate-text hashes; the isolated corpus results contain case summaries rather than ordered candidates. A review case cannot be created without fabricating identity or provenance.
+
+Artifacts inspected:
+
+- `eval-results/requirement-eval-latest.json`
+- `eval-results/retrieval-eval-latest.json`
+- `eval-results/classifier-capability/dry-run.json`
+- `eval-results/corpus-regspan-v1-isolated-*/results.{json,csv}`
+- `eval-results/corpus-regspan-v2-realistic-company-policies-isolated-*/results.{json,csv}`
+
+No multi-candidate review section was added because doing so would require fabricating missing candidate IDs or hashes.
 
 ## assessment-full-operative-procedure
 
-Role: `unresolved`  
-Requirement: **Incident assessment, containment, and control** (`incident_assessment_containment_control`)  
+Role: `scored`
+Requirement: **Incident assessment, containment, and control** (`incident_assessment_containment_control`)
 The reviewed documents appear to define how the firm assesses the nature and scope of unauthorized access or use of customer information and takes steps to contain and control the incident.
 
-Proposed final status: `covered`  
+Proposed final status: `covered`
 Proposed supported elements: `assesses_scope, customer_information_systems, containment_control`
 
-Reviewer final status: ____________________  
-Reviewer supported elements: ____________________  
-Reviewer ID: ____________________  
+Reviewer final status: ____________________
+Reviewer supported elements: ____________________
+Reviewer ID: ____________________
 Reviewed at: ____________________
 
 ### Candidate 1: assessment-full-1
@@ -34,26 +44,26 @@ The assessment must identify each customer information system that may have been
 
 Proposed: relationship `supports`; elements `assesses_scope, customer_information_systems, containment_control`; direct-support `true`; hard-negative `false`.
 
-Provenance: `implementation_inference`, eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf, PDF page 3, section 5.
+Provenance: `manual_adjudication`, eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf, PDF page 3, section 5.
 
-Reviewer relationship: ____________________  
-Reviewer elements: ____________________  
-Reviewer direct-support designation: ____________________  
-Reviewer hard-negative designation: ____________________  
+Reviewer relationship: ____________________
+Reviewer elements: ____________________
+Reviewer direct-support designation: ____________________
+Reviewer hard-negative designation: ____________________
 Reviewer notes: ____________________
 
 ## assessment-incident-history-negative
 
-Role: `unresolved`  
-Requirement: **Incident assessment, containment, and control** (`incident_assessment_containment_control`)  
+Role: `scored`
+Requirement: **Incident assessment, containment, and control** (`incident_assessment_containment_control`)
 The reviewed documents appear to define how the firm assesses the nature and scope of unauthorized access or use of customer information and takes steps to contain and control the incident.
 
-Proposed final status: `missing`  
+Proposed final status: `missing`
 Proposed supported elements: `none`
 
-Reviewer final status: ____________________  
-Reviewer supported elements: ____________________  
-Reviewer ID: ____________________  
+Reviewer final status: ____________________
+Reviewer supported elements: ____________________
+Reviewer ID: ____________________
 Reviewed at: ____________________
 
 ### Candidate 1: assessment-history-1
@@ -64,26 +74,26 @@ Rule 121 - Continuing service-company review. Assurance reports, material change
 
 Proposed: relationship `irrelevant`; elements `none`; direct-support `false`; hard-negative `true`.
 
-Provenance: `diagnostic_artifact`, tests/requirement-debug.test.mjs, negative fixture near line 349.
+Provenance: `manual_adjudication`, tests/requirement-debug.test.mjs, negative fixture near line 349.
 
-Reviewer relationship: ____________________  
-Reviewer elements: ____________________  
-Reviewer direct-support designation: ____________________  
-Reviewer hard-negative designation: ____________________  
+Reviewer relationship: ____________________
+Reviewer elements: ____________________
+Reviewer direct-support designation: ____________________
+Reviewer hard-negative designation: ____________________
 Reviewer notes: ____________________
 
 ## assessment-monitoring-escalation-partial
 
-Role: `diagnostic_only`  
-Requirement: **Incident assessment, containment, and control** (`incident_assessment_containment_control`)  
+Role: `diagnostic_only`
+Requirement: **Incident assessment, containment, and control** (`incident_assessment_containment_control`)
 The reviewed documents appear to define how the firm assesses the nature and scope of unauthorized access or use of customer information and takes steps to contain and control the incident.
 
-Proposed final status: `partial`  
+Proposed final status: `partial`
 Proposed supported elements: `customer_information_systems`
 
-Reviewer final status: ____________________  
-Reviewer supported elements: ____________________  
-Reviewer ID: ____________________  
+Reviewer final status: ____________________
+Reviewer supported elements: ____________________
+Reviewer ID: ____________________
 Reviewed at: ____________________
 
 ### Candidate 1: assessment-partial-1
@@ -96,24 +106,24 @@ Proposed: relationship `partially_supports`; elements `customer_information_syst
 
 Provenance: `diagnostic_artifact`, eval-results/requirement-eval-latest.json, unauthorized_access_detection_escalation candidate chunk 1.
 
-Reviewer relationship: ____________________  
-Reviewer elements: ____________________  
-Reviewer direct-support designation: ____________________  
-Reviewer hard-negative designation: ____________________  
+Reviewer relationship: ____________________
+Reviewer elements: ____________________
+Reviewer direct-support designation: ____________________
+Reviewer hard-negative designation: ____________________
 Reviewer notes: ____________________
 
 ## preservation-full-operative-procedure
 
-Role: `unresolved`  
-Requirement: **Incident evidence and log preservation** (`incident_evidence_log_preservation`)  
+Role: `scored`
+Requirement: **Incident evidence and log preservation** (`incident_evidence_log_preservation`)
 The reviewed documents appear to preserve logs, records, forensic evidence, and other incident materials that support investigation and later compliance documentation.
 
-Proposed final status: `covered`  
+Proposed final status: `covered`
 Proposed supported elements: `incident_materials, integrity_or_chain_of_custody, preservation_process`
 
-Reviewer final status: ____________________  
-Reviewer supported elements: ____________________  
-Reviewer ID: ____________________  
+Reviewer final status: ____________________
+Reviewer supported elements: ____________________
+Reviewer ID: ____________________
 Reviewed at: ____________________
 
 ### Candidate 1: preservation-full-1
@@ -125,26 +135,26 @@ Relevant logs and volatile information are preserved promptly. Exports are store
 
 Proposed: relationship `supports`; elements `incident_materials, integrity_or_chain_of_custody, preservation_process`; direct-support `true`; hard-negative `false`.
 
-Provenance: `implementation_inference`, eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf, PDF page 6, section 12.
+Provenance: `manual_adjudication`, eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf, PDF page 6, section 12.
 
-Reviewer relationship: ____________________  
-Reviewer elements: ____________________  
-Reviewer direct-support designation: ____________________  
-Reviewer hard-negative designation: ____________________  
+Reviewer relationship: ____________________
+Reviewer elements: ____________________
+Reviewer direct-support designation: ____________________
+Reviewer hard-negative designation: ____________________
 Reviewer notes: ____________________
 
 ## preservation-log-procedure
 
-Role: `diagnostic_only`  
-Requirement: **Incident evidence and log preservation** (`incident_evidence_log_preservation`)  
+Role: `diagnostic_only`
+Requirement: **Incident evidence and log preservation** (`incident_evidence_log_preservation`)
 The reviewed documents appear to preserve logs, records, forensic evidence, and other incident materials that support investigation and later compliance documentation.
 
-Proposed final status: `covered`  
+Proposed final status: `covered`
 Proposed supported elements: `incident_materials, preservation_process`
 
-Reviewer final status: ____________________  
-Reviewer supported elements: ____________________  
-Reviewer ID: ____________________  
+Reviewer final status: ____________________
+Reviewer supported elements: ____________________
+Reviewer ID: ____________________
 Reviewed at: ____________________
 
 ### Candidate 1: preservation-log-1
@@ -157,24 +167,24 @@ Proposed: relationship `supports`; elements `incident_materials, preservation_pr
 
 Provenance: `diagnostic_artifact`, eval-results/requirement-eval-latest.json, evidence_log_preservation candidate chunk 3.
 
-Reviewer relationship: ____________________  
-Reviewer elements: ____________________  
-Reviewer direct-support designation: ____________________  
-Reviewer hard-negative designation: ____________________  
+Reviewer relationship: ____________________
+Reviewer elements: ____________________
+Reviewer direct-support designation: ____________________
+Reviewer hard-negative designation: ____________________
 Reviewer notes: ____________________
 
-## preservation-records-inventory-negative
+## preservation-records-inventory-partial
 
-Role: `unresolved`  
-Requirement: **Incident evidence and log preservation** (`incident_evidence_log_preservation`)  
+Role: `scored`
+Requirement: **Incident evidence and log preservation** (`incident_evidence_log_preservation`)
 The reviewed documents appear to preserve logs, records, forensic evidence, and other incident materials that support investigation and later compliance documentation.
 
-Proposed final status: `missing`  
-Proposed supported elements: `none`
+Proposed final status: `partial`
+Proposed supported elements: `incident_materials`
 
-Reviewer final status: ____________________  
-Reviewer supported elements: ____________________  
-Reviewer ID: ____________________  
+Reviewer final status: ____________________
+Reviewer supported elements: ____________________
+Reviewer ID: ____________________
 Reviewed at: ____________________
 
 ### Candidate 1: preservation-inventory-1
@@ -185,28 +195,28 @@ Books and records include notification investigations, determinations, supportin
 • These records are preserved for five years.
 ```
 
-Proposed: relationship `irrelevant`; elements `none`; direct-support `false`; hard-negative `true`.
+Proposed: relationship `partially_supports`; elements `incident_materials`; direct-support `false`; hard-negative `false`.
 
-Provenance: `diagnostic_artifact`, tests/findings-generation.test.mjs, records inventory fixture near line 1227.
+Provenance: `manual_adjudication`, tests/findings-generation.test.mjs, records inventory fixture near line 1227.
 
-Reviewer relationship: ____________________  
-Reviewer elements: ____________________  
-Reviewer direct-support designation: ____________________  
-Reviewer hard-negative designation: ____________________  
+Reviewer relationship: ____________________
+Reviewer elements: ____________________
+Reviewer direct-support designation: ____________________
+Reviewer hard-negative designation: ____________________
 Reviewer notes: ____________________
 
 ## preservation-optional-language-negative
 
-Role: `unresolved`  
-Requirement: **Incident evidence and log preservation** (`incident_evidence_log_preservation`)  
+Role: `scored`
+Requirement: **Incident evidence and log preservation** (`incident_evidence_log_preservation`)
 The reviewed documents appear to preserve logs, records, forensic evidence, and other incident materials that support investigation and later compliance documentation.
 
-Proposed final status: `missing`  
+Proposed final status: `missing`
 Proposed supported elements: `none`
 
-Reviewer final status: ____________________  
-Reviewer supported elements: ____________________  
-Reviewer ID: ____________________  
+Reviewer final status: ____________________
+Reviewer supported elements: ____________________
+Reviewer ID: ____________________
 Reviewed at: ____________________
 
 ### Candidate 1: preservation-optional-1
@@ -217,26 +227,26 @@ The incident briefing may discuss logs and communications, and a shared folder c
 
 Proposed: relationship `background_context`; elements `none`; direct-support `false`; hard-negative `true`.
 
-Provenance: `diagnostic_artifact`, tests/requirement-debug.test.mjs, negative fixtures near lines 352-360.
+Provenance: `manual_adjudication`, tests/requirement-debug.test.mjs, negative fixtures near lines 352-360.
 
-Reviewer relationship: ____________________  
-Reviewer elements: ____________________  
-Reviewer direct-support designation: ____________________  
-Reviewer hard-negative designation: ____________________  
+Reviewer relationship: ____________________
+Reviewer elements: ____________________
+Reviewer direct-support designation: ____________________
+Reviewer hard-negative designation: ____________________
 Reviewer notes: ____________________
 
 ## recovery-full-operative-procedure
 
-Role: `unresolved`  
-Requirement: **Response recovery and remediation validation** (`response_recovery_remediation_validation`)  
+Role: `scored`
+Requirement: **Response recovery and remediation validation** (`response_recovery_remediation_validation`)
 The reviewed documents appear to define how the firm recovers from unauthorized access or use of customer information and validates remediation or corrective action.
 
-Proposed final status: `covered`  
+Proposed final status: `covered`
 Proposed supported elements: `recovery_steps, remediation_tracking, validation_testing`
 
-Reviewer final status: ____________________  
-Reviewer supported elements: ____________________  
-Reviewer ID: ____________________  
+Reviewer final status: ____________________
+Reviewer supported elements: ____________________
+Reviewer ID: ____________________
 Reviewed at: ____________________
 
 ### Candidate 1: recovery-full-1
@@ -253,26 +263,26 @@ Before returning a material customer information system to normal operation, the
 
 Proposed: relationship `supports`; elements `recovery_steps, remediation_tracking, validation_testing`; direct-support `true`; hard-negative `false`.
 
-Provenance: `implementation_inference`, eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf, PDF page 6, section 14.
+Provenance: `manual_adjudication`, eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf, PDF page 6, section 14.
 
-Reviewer relationship: ____________________  
-Reviewer elements: ____________________  
-Reviewer direct-support designation: ____________________  
-Reviewer hard-negative designation: ____________________  
+Reviewer relationship: ____________________
+Reviewer elements: ____________________
+Reviewer direct-support designation: ____________________
+Reviewer hard-negative designation: ____________________
 Reviewer notes: ____________________
 
 ## recovery-corrective-ownership-negative
 
-Role: `unresolved`  
-Requirement: **Response recovery and remediation validation** (`response_recovery_remediation_validation`)  
+Role: `scored`
+Requirement: **Response recovery and remediation validation** (`response_recovery_remediation_validation`)
 The reviewed documents appear to define how the firm recovers from unauthorized access or use of customer information and validates remediation or corrective action.
 
-Proposed final status: `missing`  
+Proposed final status: `missing`
 Proposed supported elements: `none`
 
-Reviewer final status: ____________________  
-Reviewer supported elements: ____________________  
-Reviewer ID: ____________________  
+Reviewer final status: ____________________
+Reviewer supported elements: ____________________
+Reviewer ID: ____________________
 Reviewed at: ____________________
 
 ### Candidate 1: recovery-ownership-1
@@ -283,26 +293,26 @@ Vendors are expected to comply with applicable law and the terms of their agreem
 
 Proposed: relationship `irrelevant`; elements `none`; direct-support `false`; hard-negative `true`.
 
-Provenance: `implementation_inference`, eval/corpora/regspan-v2-realistic-corpus/documents/lakeshore_regulation_sp_compliance_program.pdf, PDF page 3, section 8.
+Provenance: `manual_adjudication`, eval/corpora/regspan-v2-realistic-corpus/documents/lakeshore_regulation_sp_compliance_program.pdf, PDF page 3, section 8.
 
-Reviewer relationship: ____________________  
-Reviewer elements: ____________________  
-Reviewer direct-support designation: ____________________  
-Reviewer hard-negative designation: ____________________  
+Reviewer relationship: ____________________
+Reviewer elements: ____________________
+Reviewer direct-support designation: ____________________
+Reviewer hard-negative designation: ____________________
 Reviewer notes: ____________________
 
 ## recovery-appendix-inventory-negative
 
-Role: `unresolved`  
-Requirement: **Response recovery and remediation validation** (`response_recovery_remediation_validation`)  
+Role: `scored`
+Requirement: **Response recovery and remediation validation** (`response_recovery_remediation_validation`)
 The reviewed documents appear to define how the firm recovers from unauthorized access or use of customer information and validates remediation or corrective action.
 
-Proposed final status: `missing`  
+Proposed final status: `missing`
 Proposed supported elements: `none`
 
-Reviewer final status: ____________________  
-Reviewer supported elements: ____________________  
-Reviewer ID: ____________________  
+Reviewer final status: ____________________
+Reviewer supported elements: ____________________
+Reviewer ID: ____________________
 Reviewed at: ____________________
 
 ### Candidate 1: recovery-inventory-1
@@ -313,26 +323,26 @@ Appendix A - Incident File Minimum Contents: investigation timeline, containment
 
 Proposed: relationship `background_context`; elements `none`; direct-support `false`; hard-negative `true`.
 
-Provenance: `diagnostic_artifact`, tests/operative-evidence-elements.test.mjs, inventory fixture near line 174.
+Provenance: `manual_adjudication`, tests/operative-evidence-elements.test.mjs, inventory fixture near line 174.
 
-Reviewer relationship: ____________________  
-Reviewer elements: ____________________  
-Reviewer direct-support designation: ____________________  
-Reviewer hard-negative designation: ____________________  
+Reviewer relationship: ____________________
+Reviewer elements: ____________________
+Reviewer direct-support designation: ____________________
+Reviewer hard-negative designation: ____________________
 Reviewer notes: ____________________
 
 ## recovery-restoration-monitoring-partial
 
-Role: `unresolved`  
-Requirement: **Response recovery and remediation validation** (`response_recovery_remediation_validation`)  
+Role: `scored`
+Requirement: **Response recovery and remediation validation** (`response_recovery_remediation_validation`)
 The reviewed documents appear to define how the firm recovers from unauthorized access or use of customer information and validates remediation or corrective action.
 
-Proposed final status: `partial`  
+Proposed final status: `partial`
 Proposed supported elements: `recovery_steps`
 
-Reviewer final status: ____________________  
-Reviewer supported elements: ____________________  
-Reviewer ID: ____________________  
+Reviewer final status: ____________________
+Reviewer supported elements: ____________________
+Reviewer ID: ____________________
 Reviewed at: ____________________
 
 ### Candidate 1: recovery-partial-1
@@ -343,11 +353,11 @@ After containment, the firm returns systems to service and monitors for recurrin
 
 Proposed: relationship `partially_supports`; elements `recovery_steps`; direct-support `false`; hard-negative `false`.
 
-Provenance: `implementation_inference`, eval/corpora/regspan-v2-realistic-corpus/documents/stonehaven_privacy_cybersecurity_practices.pdf, PDF page 5, section 14.
+Provenance: `manual_adjudication`, eval/corpora/regspan-v2-realistic-corpus/documents/stonehaven_privacy_cybersecurity_practices.pdf, PDF page 5, section 14.
 
-Reviewer relationship: ____________________  
-Reviewer elements: ____________________  
-Reviewer direct-support designation: ____________________  
-Reviewer hard-negative designation: ____________________  
+Reviewer relationship: ____________________
+Reviewer elements: ____________________
+Reviewer direct-support designation: ____________________
+Reviewer hard-negative designation: ____________________
 Reviewer notes: ____________________
 

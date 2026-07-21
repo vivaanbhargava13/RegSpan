@@ -19,20 +19,21 @@ Every expected status, relationship, element set, direct-support designation,
 and hard-negative designation records confirmation, provenance source, reviewer
 metadata where applicable, source path/locator/hash, and normalization recipe.
 Only confirmed `reviewer_answer_key` or `manual_adjudication` fields may be
-scored. The two cases derived from prior OpenAI diagnostics are
-`diagnostic_only`. The other cases remain `unresolved`; no reviewer decisions
-were created by the fixture builder.
+scored. Nine approved single-candidate cases are confirmed through manual
+adjudication and scored. The two cases derived from prior OpenAI diagnostics
+remain `diagnostic_only`; their provider-derived provenance was not converted.
 
 The blank review artifacts are:
 
 - `eval-fixtures/classifier-capability/reviewer-worksheet.md`
 - `eval-fixtures/classifier-capability/reviewer-worksheet.json`
 
-They contain requirement text, exact candidate text and order, proposed labels,
-provenance, and blank reviewer fields. No existing reviewer artifact supplies a
-confirmed multi-candidate case with complementary support, a high-signal
-distractor, original order, final status, and supported elements. Paid mode
-therefore remains deliberately blocked.
+They contain requirement text, element definitions, exact candidate text and
+order, proposed labels, provenance, and blank reviewer fields. The frozen local
+requirement and retrieval reports omit original candidate chunk IDs and exact
+candidate-text hashes, while the isolated corpus results contain case summaries
+rather than ordered candidates. No multi-candidate review case was fabricated,
+and paid mode therefore remains deliberately blocked.
 
 Regenerate normalized fixtures and worksheets after an intentional source
 review with:
@@ -68,8 +69,8 @@ Before any provider access, paid mode requires:
 - literal paid confirmation and both external-AI flags;
 - an API key.
 
-The current suite fails the adjudication and multi-candidate requirements, so a
-paid run cannot start.
+The current suite passes single-candidate adjudication but lacks a confirmed
+multi-candidate case, so a paid run cannot start.
 
 ## Candidate outcomes and arm validity
 

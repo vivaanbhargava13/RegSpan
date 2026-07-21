@@ -21,6 +21,27 @@ const FROZEN_BASELINE = "d59d1c914397206a7d72aa104edcf4aabcd04bfb";
 const FROZEN_UNCOMMITTED_SOURCE_HASHES: Record<string, string> = {
   "eval-results/requirement-eval-latest.json": "2d9796e2710198cd96efccd83dd304e41f603f4da4d9cf47b28ec1173db47eed",
 };
+const MANUAL_REVIEWER_ID = "vivaan-bhargava";
+const MANUAL_REVIEWED_AT = "2026-07-21T02:57:36.000Z";
+const APPROVED_CASE_IDS = new Set([
+  "assessment-full-operative-procedure",
+  "assessment-incident-history-negative",
+  "preservation-full-operative-procedure",
+  "preservation-records-inventory-partial",
+  "preservation-optional-language-negative",
+  "recovery-full-operative-procedure",
+  "recovery-corrective-ownership-negative",
+  "recovery-appendix-inventory-negative",
+  "recovery-restoration-monitoring-partial",
+]);
+const MULTI_CANDIDATE_ARTIFACTS_INSPECTED = [
+  "eval-results/requirement-eval-latest.json",
+  "eval-results/retrieval-eval-latest.json",
+  "eval-results/classifier-capability/dry-run.json",
+  "eval-results/corpus-regspan-v1-isolated-*/results.{json,csv}",
+  "eval-results/corpus-regspan-v2-realistic-company-policies-isolated-*/results.{json,csv}",
+];
+const MULTI_CANDIDATE_BLOCKER = "No suitable frozen local artifact was found. The requirement and retrieval reports preserve ordered candidate text, document IDs, and chunk indexes, but omit original candidate chunk IDs and exact candidate-text hashes; the isolated corpus results contain case summaries rather than ordered candidates. A review case cannot be created without fabricating identity or provenance.";
 
 const requirementAliases: Array<[RegSpRequirementId, RegSpRequirementId]> = [
   ["incident_assessment_containment_control", "unauthorized_access_detection_escalation"],
@@ -198,19 +219,19 @@ const caseDrafts = [
     })],
   },
   {
-    id: "preservation-records-inventory-negative",
+    id: "preservation-records-inventory-partial",
     requirement_id: "incident_evidence_log_preservation",
     category: "incident_evidence_log_preservation",
-    expected_status: "missing",
-    notes: "A records inventory is not an operative evidence-preservation procedure.",
+    expected_status: "partial",
+    notes: "The passage requires five-year preservation of notification-investigation records, but does not define an operational preservation process.",
     candidates: [candidate({
       id: "preservation-inventory-1",
       filename: "Books and records diagnostic",
       section: "Books and records",
       page: 1,
       text: "Books and records include notification investigations, determinations, supporting facts, and the basis for any no-notice decision.\n• The file also includes written documentation from the Attorney General concerning any delay in notice.\n• These records are preserved for five years.",
-      relationship: "irrelevant",
-      hardNegative: true,
+      relationship: "partially_supports",
+      elements: ["incident_materials"],
       sourcePath: "tests/findings-generation.test.mjs",
       locator: "records inventory fixture near line 1227",
       sourceKind: "regression_diagnostic",
@@ -313,9 +334,7 @@ const caseDrafts = [
 
 async function main() {
   const requirements = frozenRequirements();
-  const answerKeyPath = "eval/corpora/regspan-v2-realistic-corpus/answer_key.csv";
   const sourcePaths = new Set([
-    answerKeyPath,
     ...caseDrafts.flatMap((item) => item.candidates.map((candidate) => candidate.source.path)),
   ]);
   const sourceHashes = new Map<string, string>();
@@ -339,45 +358,39 @@ async function main() {
     source_hash: sourceHashes.get(path)!,
     normalization_recipe: null,
   });
-  const answerKeyImports: Record<string, { companyId: string; requirementId: string; status: string; locator: string }> = {
-    "assessment-full-operative-procedure": { companyId: "northline-brokerage-services", requirementId: "incident_assessment_containment_control", status: "covered", locator: "answer_key.csv row 25" },
-    "preservation-full-operative-procedure": { companyId: "northline-brokerage-services", requirementId: "incident_evidence_log_preservation", status: "covered", locator: "answer_key.csv row 32" },
-    "recovery-full-operative-procedure": { companyId: "northline-brokerage-services", requirementId: "response_recovery_remediation_validation", status: "covered", locator: "answer_key.csv row 34" },
-    "recovery-restoration-monitoring-partial": { companyId: "stonehaven-advisory-partners", requirementId: "response_recovery_remediation_validation", status: "partial", locator: "answer_key.csv row 122" },
-  };
-  const answerKeyLines = (await readFile(resolve(answerKeyPath), "utf8")).split(/\r?\n/);
-  for (const [caseId, imported] of Object.entries(answerKeyImports)) {
-    const line = answerKeyLines.find((item) => item.startsWith(`${imported.companyId},`)
-      && item.includes(`,${imported.requirementId},`));
-    if (!line || !line.includes(`,${imported.status},`)) {
-      throw new Error(`Reviewer answer-key import no longer supports ${caseId}.`);
-    }
-  }
-  const answerKey = (locator: string): ClassifierCapabilityFieldProvenance => ({
+  const manual = (path: string, locator: string, normalizationRecipe: string | null): ClassifierCapabilityFieldProvenance => ({
     confirmed: true,
-    source_type: "reviewer_answer_key",
-    reviewer_id: null,
-    reviewed_at: null,
-    source_path: answerKeyPath,
+    source_type: "manual_adjudication",
+    reviewer_id: MANUAL_REVIEWER_ID,
+    reviewed_at: MANUAL_REVIEWED_AT,
+    source_path: path,
     source_locator: locator,
-    source_hash: sourceHashes.get(answerKeyPath)!,
-    normalization_recipe: null,
+    source_hash: sourceHashes.get(path)!,
+    normalization_recipe: normalizationRecipe,
   });
   const cases = caseDrafts.map((draft) => {
     const diagnosticOnly = draft.id === "assessment-monitoring-escalation-partial"
       || draft.id === "preservation-log-procedure";
+    const approved = APPROVED_CASE_IDS.has(draft.id);
     const primarySource = draft.candidates[0].source;
-    const statusProvenance = answerKeyImports[draft.id]
-      ? answerKey(`${answerKeyImports[draft.id].locator}: ${answerKeyImports[draft.id].companyId} / ${answerKeyImports[draft.id].requirementId} / ${answerKeyImports[draft.id].status}`)
+    const primaryNormalizationRecipe = primarySource.path.includes("requirement-eval-latest")
+      ? "Removed the section heading and bullets; joined source line wraps with spaces."
+      : draft.candidates[0].chunk_id === "preservation-optional-1"
+        ? "Concatenated the two adjacent diagnostic literals in source order with one space."
+        : null;
+    const statusProvenance = approved
+      ? manual(primarySource.path, primarySource.locator, primaryNormalizationRecipe)
       : inferred(primarySource.path, primarySource.locator,
         primarySource.path.includes("requirement-eval-latest") ? "diagnostic_artifact" : "implementation_inference");
     return {
       ...draft,
-      evaluation_role: diagnosticOnly ? "diagnostic_only" as const : "unresolved" as const,
+      evaluation_role: diagnosticOnly ? "diagnostic_only" as const : approved ? "scored" as const : "unresolved" as const,
       expected_status: { value: draft.expected_status, provenance: statusProvenance },
       expected_supported_elements: {
         value: [...new Set(draft.candidates.flatMap((candidate) => candidate.expected_covered_elements))],
-        provenance: inferred(primarySource.path, primarySource.locator),
+        provenance: approved
+          ? manual(primarySource.path, primarySource.locator, primaryNormalizationRecipe)
+          : inferred(primarySource.path, primarySource.locator),
       },
       candidates: draft.candidates.map((candidate) => {
         const labelSourceType = candidate.source.path.includes("requirement-eval-latest")
@@ -390,10 +403,12 @@ async function main() {
           : candidate.chunk_id === "preservation-optional-1"
             ? "Concatenated the two adjacent diagnostic literals in source order with one space."
             : null;
-        const provenance = () => ({
-          ...inferred(candidate.source.path, candidate.source.locator, labelSourceType),
-          normalization_recipe: normalizationRecipe,
-        });
+        const provenance = () => approved
+          ? manual(candidate.source.path, candidate.source.locator, normalizationRecipe)
+          : {
+            ...inferred(candidate.source.path, candidate.source.locator, labelSourceType),
+            normalization_recipe: normalizationRecipe,
+          };
         return {
           ...candidate,
           expected_relationship: { value: candidate.expected_relationship, provenance: provenance() },
@@ -415,7 +430,7 @@ async function main() {
     multi_candidate_review: {
       status: "unresolved",
       case_id: null,
-      blocker: "No existing reviewer artifact provides a case with complementary support across at least two candidates, one high-signal distractor, original order, expected final status, and expected supported elements.",
+      blocker: MULTI_CANDIDATE_BLOCKER,
     },
     cases,
   };
@@ -431,12 +446,19 @@ async function main() {
     schema_version: "classifier-capability-reviewer-worksheet/v1",
     fixture_suite_hash: suite.suite_hash,
     unresolved_multi_candidate_blocker: suite.multi_candidate_review.blocker,
+    multi_candidate_artifacts_inspected: MULTI_CANDIDATE_ARTIFACTS_INSPECTED,
+    multi_candidate_review_case: null,
     cases: cases.map((fixtureCase) => {
       const requirement = requirements.find((item) => item.id === fixtureCase.requirement_id)!;
       return {
         case_id: fixtureCase.id,
         evaluation_role: fixtureCase.evaluation_role,
-        requirement: { id: requirement.id, title: requirement.title, description: requirement.description },
+        requirement: {
+          id: requirement.id,
+          title: requirement.title,
+          description: requirement.description,
+          element_definitions: requirement.coverageElements,
+        },
         proposed_expected_status: fixtureCase.expected_status,
         proposed_expected_supported_elements: fixtureCase.expected_supported_elements,
         reviewer_decisions: { expected_status: null, expected_supported_elements: null, reviewer_id: null, reviewed_at: null, notes: null },
@@ -472,19 +494,25 @@ async function main() {
     "",
     suite.multi_candidate_review.blocker!,
     "",
+    "Artifacts inspected:",
+    "",
+    ...MULTI_CANDIDATE_ARTIFACTS_INSPECTED.map((path) => `- \`${path}\``),
+    "",
+    "No multi-candidate review section was added because doing so would require fabricating missing candidate IDs or hashes.",
+    "",
     ...worksheet.cases.flatMap((fixtureCase) => [
       `## ${fixtureCase.case_id}`,
       "",
-      `Role: \`${fixtureCase.evaluation_role}\`  `,
-      `Requirement: **${fixtureCase.requirement.title}** (\`${fixtureCase.requirement.id}\`)  `,
+      `Role: \`${fixtureCase.evaluation_role}\``,
+      `Requirement: **${fixtureCase.requirement.title}** (\`${fixtureCase.requirement.id}\`)`,
       fixtureCase.requirement.description,
       "",
-      `Proposed final status: \`${fixtureCase.proposed_expected_status.value}\`  `,
+      `Proposed final status: \`${fixtureCase.proposed_expected_status.value}\``,
       `Proposed supported elements: \`${fixtureCase.proposed_expected_supported_elements.value.join(", ") || "none"}\``,
       "",
-      "Reviewer final status: ____________________  ",
-      "Reviewer supported elements: ____________________  ",
-      "Reviewer ID: ____________________  ",
+      "Reviewer final status: ____________________",
+      "Reviewer supported elements: ____________________",
+      "Reviewer ID: ____________________",
       "Reviewed at: ____________________",
       "",
       ...fixtureCase.candidates.flatMap((candidate) => [
@@ -498,10 +526,10 @@ async function main() {
         "",
         `Provenance: \`${candidate.proposed_expected_relationship.provenance.source_type}\`, ${candidate.proposed_expected_relationship.provenance.source_path}, ${candidate.proposed_expected_relationship.provenance.source_locator}.`,
         "",
-        "Reviewer relationship: ____________________  ",
-        "Reviewer elements: ____________________  ",
-        "Reviewer direct-support designation: ____________________  ",
-        "Reviewer hard-negative designation: ____________________  ",
+        "Reviewer relationship: ____________________",
+        "Reviewer elements: ____________________",
+        "Reviewer direct-support designation: ____________________",
+        "Reviewer hard-negative designation: ____________________",
         "Reviewer notes: ____________________",
         "",
       ]),
