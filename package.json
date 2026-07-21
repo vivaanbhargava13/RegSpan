@@ -19,6 +19,9 @@
     "eval:classifier-facts:dry": "node --conditions=react-server --import ./scripts/registerServerTsLoader.mjs scripts/runClassifierFactsPrototype.ts dry",
     "eval:classifier-facts": "node --conditions=react-server --import ./scripts/registerServerTsLoader.mjs scripts/runClassifierFactsPrototype.ts run",
     "eval:classifier-facts:report": "node --conditions=react-server --import ./scripts/registerServerTsLoader.mjs scripts/runClassifierFactsPrototype.ts report",
+    "eval:classifier-facts:v2:dry": "node --conditions=react-server --import ./scripts/registerServerTsLoader.mjs scripts/runClassifierFactsPrototype.ts dry",
+    "eval:classifier-facts:v2": "node --conditions=react-server --import ./scripts/registerServerTsLoader.mjs scripts/runClassifierFactsPrototype.ts run",
+    "eval:classifier-facts:v2:report": "node --conditions=react-server --import ./scripts/registerServerTsLoader.mjs scripts/runClassifierFactsPrototype.ts report",
     "eval:score-holdout": "node scripts/scoreBlindHoldout.mjs"
   },
   "dependencies": {

@@ -5,8 +5,8 @@ import type {
   ClassifierCapabilityFixtureSuite,
 } from "./classifierCapabilityEval";
 
-export const CLASSIFIER_FACTS_PROTOTYPE_SCHEMA = "classifier-facts-prototype-results/v1";
-export const CLASSIFIER_FACTS_DRY_SCHEMA = "classifier-facts-prototype-dry-run/v1";
+export const CLASSIFIER_FACTS_PROTOTYPE_SCHEMA = "classifier-facts-prototype-results/v2";
+export const CLASSIFIER_FACTS_DRY_SCHEMA = "classifier-facts-prototype-dry-run/v2";
 export const CLASSIFIER_FACTS_MODEL = "gpt-4o-mini-2024-07-18";
 
 export const WORKFLOW_SCOPES = [
@@ -20,9 +20,10 @@ export const WORKFLOW_SCOPES = [
 export type FactWorkflowScope = typeof WORKFLOW_SCOPES[number];
 
 export const FACT_ACTIONS = [
-  "assess", "identify", "contain", "disable", "block", "preserve", "capture", "store", "retain",
-  "restore", "remediate", "track", "assign", "validate", "verify", "test", "monitor", "record",
-  "inventory", "coordinate", "other",
+  "assess", "identify", "contain", "isolate", "disable", "block", "shutdown", "preserve", "capture",
+  "collect", "store", "retain", "maintain", "restore", "rebuild", "reset", "patch", "remove",
+  "remediate", "track", "assign", "validate", "verify", "test", "monitor", "record", "inventory",
+  "coordinate", "review", "approve", "other",
 ] as const;
 export type FactAction = typeof FACT_ACTIONS[number];
 
@@ -30,11 +31,12 @@ export const FACT_OBJECTS = [
   "incident_nature_and_scope", "customer_information_system", "customer_information", "compromised_asset",
   "incident_materials", "logs", "volatile_information", "evidence", "investigation_records", "service",
   "system", "unauthorized_access_path", "root_cause", "remediation_item", "security_control",
-  "restored_environment", "provider_performance", "contract_issue", "record_contents", "other",
+  "restored_environment", "credentials", "patch", "configuration", "backup", "provider_performance",
+  "contract_issue", "record_contents", "other",
 ] as const;
 export type FactObject = typeof FACT_OBJECTS[number];
 
-export const FACT_MODALITIES = ["mandatory", "performed", "descriptive", "optional", "unknown"] as const;
+export const FACT_MODALITIES = ["required", "operative", "conditional_operative", "optional", "descriptive", "unknown"] as const;
 export type FactModality = typeof FACT_MODALITIES[number];
 
 export const VALIDATION_ACTIVITIES = [
@@ -68,8 +70,10 @@ export type ExtractedOperationalFact = {
   source_candidate_id: string;
   source_unit_ids: string[];
   actor: string | null;
-  action: FactAction;
+  action: FactAction | null;
+  action_text: string | null;
   object: FactObject | null;
+  object_text: string | null;
   workflow_scope: FactWorkflowScope;
   condition_or_trigger: string | null;
   modality: FactModality;
@@ -114,6 +118,7 @@ export type FactsExtractionRequest = {
 export type ValidatedFact = ExtractedOperationalFact & {
   reconstructed_quote: string;
   source_unit_sha256: string[];
+  semantic_grounding_rejections: string[];
 };
 
 export type FactLedgerEntry = ValidatedFact & {
@@ -171,7 +176,7 @@ const PROHIBITED_MODEL_KEYS = new Set([
 ]);
 
 const FACT_KEYS = [
-  "fact_id", "source_candidate_id", "source_unit_ids", "actor", "action", "object", "workflow_scope",
+  "fact_id", "source_candidate_id", "source_unit_ids", "actor", "action", "action_text", "object", "object_text", "workflow_scope",
   "condition_or_trigger", "modality", "tracking_details", "validation_activity", "record_or_material",
   "preservation_method",
 ];
@@ -271,8 +276,10 @@ function factJsonSchema(): Record<string, unknown> {
             source_candidate_id: { type: "string" },
             source_unit_ids: { type: "array", minItems: 1, items: { type: "string" } },
             actor: { anyOf: [{ type: "string" }, { type: "null" }] },
-            action: { type: "string", enum: FACT_ACTIONS },
+            action: nullableEnum(FACT_ACTIONS),
+            action_text: { anyOf: [{ type: "string" }, { type: "null" }] },
             object: nullableEnum(FACT_OBJECTS),
+            object_text: { anyOf: [{ type: "string" }, { type: "null" }] },
             workflow_scope: { type: "string", enum: WORKFLOW_SCOPES },
             condition_or_trigger: { anyOf: [{ type: "string" }, { type: "null" }] },
             modality: { type: "string", enum: FACT_MODALITIES },
@@ -297,10 +304,18 @@ function extractionSystemPrompt() {
     "You extract atomic operational facts from supplied source units. Return facts only.",
     "Every fact must be fully grounded in the cited source_candidate_id and one or more source_unit_ids.",
     "Use source units from only one candidate per fact. Cite contiguous units in source order.",
+    "Return one separate fact for every distinct actor-action-object operation, even when one sentence contains several operations.",
+    "Generic example: if a policy says a team opens a case, assigns an owner, and tracks completion, return three facts citing the same unit.",
+    "action_text and object_text must copy the shortest exact contiguous source substring grounding the selected action or object. Use null when action or object is null.",
     "Do not infer an action from a list of records expected in a file. Classify such lists as records_inventory.",
     "Classify provider oversight and procurement/contract corrective action in their own workflow scopes, never incident_response.",
-    "Use optional modality for may, can, optional, or discretionary language. Do not strengthen modality.",
-    "Use descriptive for a noun/list/reference that does not state a required or performed operation.",
+    "Modality required means explicit must, shall, required, or an equivalent obligation.",
+    "Modality operative means present-tense policy or procedure language stating that an actor performs an action; lack of must or shall does not make it optional.",
+    "Modality conditional_operative means an action required or established when, after, before, or upon a trigger.",
+    "Modality optional means may, can, at discretion, when appropriate, if feasible, or equivalent discretionary language.",
+    "Modality descriptive means purpose, capability, background, inventory, or design language that does not itself establish an action.",
+    "Modality unknown means modality cannot be grounded.",
+    "Generic examples: 'The team reviews alerts' is operative; 'After an alert, the team opens a case' is conditional_operative; 'The team may review alerts' is optional.",
     "Do not return final status, evidence relationship, requirement_supported, direct_support, covered/missing elements, or any compliance conclusion.",
     "Use null for every field not explicitly grounded in the cited units. Do not add keys.",
   ].join("\n");
@@ -357,6 +372,60 @@ export function buildFactsExtractionRequests(
   });
 }
 
+const ACTION_FAMILY_PATTERNS: Record<FactAction, RegExp> = {
+  assess: /\b(?:assess(?:es|ed|ing)?|evaluat(?:e|es|ed|ing)|determin(?:e|es|ed|ing)|investigat(?:e|es|ed|ing))\b/iu,
+  identify: /\b(?:identif(?:y|ies|ied|ying)|determin(?:e|es|ed|ing))\b/iu,
+  contain: /\b(?:contain(?:s|ed|ing|ment)?|control(?:s|led|ling)?)\b/iu,
+  isolate: /\bisolat(?:e|es|ed|ing)\b/iu,
+  disable: /\bdisabl(?:e|es|ed|ing)\b/iu,
+  block: /\bblock(?:s|ed|ing)?\b/iu,
+  shutdown: /\b(?:shutdown|shut\s+down)\b/iu,
+  preserve: /\bpreserv(?:e|es|ed|ing)\b/iu,
+  capture: /\bcaptur(?:e|es|ed|ing)\b/iu,
+  collect: /\bcollect(?:s|ed|ing|ion)?\b/iu,
+  store: /\bstor(?:e|es|ed|ing|age)\b/iu,
+  retain: /\bretain(?:s|ed|ing)?|retention\b/iu,
+  maintain: /\bmaintain(?:s|ed|ing)?\b/iu,
+  restore: /\b(?:restor(?:e|es|ed|ing|ation)|recover(?:s|ed|ing|y)?|return(?:s|ed|ing)?\s+[^.]{0,40}\s+to\s+(?:service|operation))\b/iu,
+  rebuild: /\brebuild(?:s|ing)?|rebuilt\b/iu,
+  reset: /\b(?:reset(?:s|ting)?|reissu(?:e|es|ed|ing)|rotat(?:e|es|ed|ing))\b/iu,
+  patch: /\b(?:patch(?:es|ed|ing)?|configuration\s+change(?:s)?)\b/iu,
+  remove: /\bremov(?:e|es|ed|ing)\b/iu,
+  remediate: /\b(?:remediat(?:e|es|ed|ing|ion)|correct(?:s|ed|ing|ive))\b/iu,
+  track: /\b(?:track(?:s|ed|ing)?|remain(?:s|ed|ing)?\s+open)\b/iu,
+  assign: /\bassign(?:s|ed|ing|ment)?\b/iu,
+  validate: /\bvalidat(?:e|es|ed|ing|ion)\b/iu,
+  verify: /\b(?:verif(?:y|ies|ied|ying)|confirm(?:s|ed|ing|ation)?)\b/iu,
+  test: /\btest(?:s|ed|ing)?\b/iu,
+  monitor: /\bmonitor(?:s|ed|ing)?\b/iu,
+  record: /\b(?:record(?:s|ed|ing)?|document(?:s|ed|ing|ation)?|enter(?:s|ed|ing)?)\b/iu,
+  inventory: /\b(?:inventory|inventories|contents?|list(?:s|ed|ing)?|contain(?:s|ed|ing)?|include(?:s|d|ing)?)\b/iu,
+  coordinate: /\bcoordinat(?:e|es|ed|ing|ion)\b/iu,
+  review: /\breview(?:s|ed|ing)?\b/iu,
+  approve: /\bapprov(?:e|es|ed|ing|al)\b/iu,
+  other: /[\s\S]+/u,
+};
+
+function semanticGroundingRejections(fact: ExtractedOperationalFact, reconstructedQuote: string) {
+  const reasons: string[] = [];
+  if (fact.action === null) {
+    if (fact.action_text !== null) reasons.push("action_text_without_action");
+  } else if (fact.action_text === null) {
+    reasons.push(`missing_action_text:${fact.action}`);
+  } else {
+    if (!reconstructedQuote.includes(fact.action_text)) reasons.push(`action_text_not_exact_source_substring:${fact.action}`);
+    else if (!ACTION_FAMILY_PATTERNS[fact.action].test(fact.action_text)) reasons.push(`action_family_mismatch:${fact.action}`);
+  }
+  if (fact.object === null) {
+    if (fact.object_text !== null) reasons.push("object_text_without_object");
+  } else if (fact.object_text === null) {
+    reasons.push(`missing_object_text:${fact.object}`);
+  } else if (!reconstructedQuote.includes(fact.object_text)) {
+    reasons.push(`object_text_not_exact_source_substring:${fact.object}`);
+  }
+  return reasons;
+}
+
 function validateFactShape(value: unknown, index: number): ExtractedOperationalFact {
   const label = `facts[${index}]`;
   assertPlainObject(value, label);
@@ -369,6 +438,8 @@ function validateFactShape(value: unknown, index: number): ExtractedOperationalF
   if (!Array.isArray(value.source_unit_ids) || value.source_unit_ids.length === 0
     || value.source_unit_ids.some((item) => typeof item !== "string" || !item)) throw new Error(`${label}.source_unit_ids is invalid.`);
   nullableString(value.actor, `${label}.actor`);
+  nullableString(value.action_text, `${label}.action_text`);
+  nullableString(value.object_text, `${label}.object_text`);
   nullableString(value.condition_or_trigger, `${label}.condition_or_trigger`);
   if (value.tracking_details !== null) {
     assertPlainObject(value.tracking_details, `${label}.tracking_details`);
@@ -384,8 +455,10 @@ function validateFactShape(value: unknown, index: number): ExtractedOperationalF
     source_candidate_id: value.source_candidate_id,
     source_unit_ids: value.source_unit_ids as string[],
     actor: value.actor as string | null,
-    action: enumValue(value.action, FACT_ACTIONS, `${label}.action`),
+    action: value.action === null ? null : enumValue(value.action, FACT_ACTIONS, `${label}.action`),
+    action_text: value.action_text as string | null,
     object: value.object === null ? null : enumValue(value.object, FACT_OBJECTS, `${label}.object`),
+    object_text: value.object_text as string | null,
     workflow_scope: enumValue(value.workflow_scope, WORKFLOW_SCOPES, `${label}.workflow_scope`),
     condition_or_trigger: value.condition_or_trigger as string | null,
     modality: enumValue(value.modality, FACT_MODALITIES, `${label}.modality`),
@@ -422,10 +495,14 @@ export function validateFactsExtractionResponse(request: FactsExtractionRequest,
     const last = candidate.units[positions[positions.length - 1]];
     const reconstructedQuote = candidate.text.slice(first.start_offset, last.end_offset);
     if (!reconstructedQuote || !candidate.text.includes(reconstructedQuote)) throw new Error(`Fact ${fact.fact_id} quote reconstruction failed.`);
+    const groundingRejections = semanticGroundingRejections(fact, reconstructedQuote);
+    const sourceSubstringFailure = groundingRejections.find((reason) => reason.includes("_not_exact_source_substring"));
+    if (sourceSubstringFailure) throw new Error(`Fact ${fact.fact_id} failed exact semantic grounding: ${sourceSubstringFailure}.`);
     return {
       ...fact,
       reconstructed_quote: reconstructedQuote,
       source_unit_sha256: positions.map((position) => candidate.units[position].text_sha256),
+      semantic_grounding_rejections: groundingRejections,
     };
   });
   return { facts, selectedUnitReferenceCount, invalidUnitReferenceCount: 0 };
@@ -433,7 +510,12 @@ export function validateFactsExtractionResponse(request: FactsExtractionRequest,
 
 function mapFact(requirementId: string, fact: ValidatedFact) {
   const mapped: string[] = [];
-  const rejected: string[] = [];
+  const rejected = [...fact.semantic_grounding_rejections];
+  if (rejected.length > 0) return { mapped, rejected };
+  if (fact.action === null) {
+    rejected.push("null_action_not_mappable");
+    return { mapped, rejected };
+  }
   if (fact.workflow_scope !== "incident_response") {
     rejected.push(`workflow_scope_mismatch:${fact.workflow_scope}`);
     return { mapped, rejected };
@@ -456,24 +538,32 @@ function mapFact(requirementId: string, fact: ValidatedFact) {
     if (fact.action === "identify" && (fact.object === "customer_information_system" || fact.object === "customer_information")) {
       mapped.push("customer_information_systems");
     }
-    if (["contain", "disable", "block"].includes(fact.action)
+    if (["contain", "isolate", "disable", "block", "shutdown"].includes(fact.action)
       && ["compromised_asset", "system", "unauthorized_access_path"].includes(fact.object ?? "")) {
       mapped.push("containment_control");
     }
   } else if (requirementId === "incident_evidence_log_preservation") {
-    const preservationAction = ["preserve", "capture", "retain", "store"].includes(fact.action);
-    if (preservationAction && fact.record_or_material !== null) mapped.push("incident_materials");
-    if (preservationAction && fact.preservation_method !== null
-      && fact.preservation_method !== "fixed_retention_period") mapped.push("preservation_process");
+    const materials = ["incident_materials", "logs", "volatile_information", "evidence", "investigation_records"].includes(fact.object ?? "")
+      || fact.record_or_material !== null;
+    const preservationAction = ["preserve", "capture", "collect", "retain", "store"].includes(fact.action);
+    const maintainsIncidentFile = fact.action === "maintain"
+      && (fact.object === "incident_materials" || fact.record_or_material === "incident_file");
+    if ((preservationAction && materials) || maintainsIncidentFile) mapped.push("incident_materials");
+    if (preservationAction && materials && fact.preservation_method !== "fixed_retention_period") mapped.push("preservation_process");
+    if (fact.action === "store" && fact.preservation_method !== null) mapped.push("preservation_process");
+    if (fact.action === "store"
+      && (fact.preservation_method === "access_controlled_storage" || fact.preservation_method === "custody_metadata")) {
+      mapped.push("integrity_or_chain_of_custody");
+    }
     if (preservationAction && fact.preservation_method === "custody_metadata") mapped.push("integrity_or_chain_of_custody");
     if (fact.validation_activity === "evidence_integrity_check") mapped.push("integrity_or_chain_of_custody");
   } else if (requirementId === "response_recovery_remediation_validation") {
-    if (["restore", "remediate"].includes(fact.action)
-      && ["service", "system", "unauthorized_access_path", "root_cause", "restored_environment"].includes(fact.object ?? "")) {
+    if (["restore", "rebuild", "reset", "patch", "remove", "remediate"].includes(fact.action)
+      && ["service", "system", "unauthorized_access_path", "root_cause", "restored_environment", "credentials", "patch", "configuration", "backup"].includes(fact.object ?? "")) {
       mapped.push("recovery_steps");
     }
     const tracking = fact.tracking_details;
-    if (["track", "assign"].includes(fact.action) && fact.object === "remediation_item" && tracking
+    if (["track", "assign", "monitor", "review"].includes(fact.action) && fact.object === "remediation_item" && tracking
       && [tracking.owner_assigned, tracking.due_date_assigned, tracking.status_monitored, tracking.open_until_evidence_review].some((item) => item === true)) {
       mapped.push("remediation_tracking");
     }

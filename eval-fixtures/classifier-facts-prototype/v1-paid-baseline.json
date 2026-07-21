@@ -1,0 +1,21 @@
+{
+  "schema_version": "classifier-facts-prototype-baseline/v1",
+  "result_schema_version": "classifier-facts-prototype-results/v1",
+  "implementation_commit": "7cf010b",
+  "model": "gpt-4o-mini-2024-07-18",
+  "fixture_suite_hash": "2d867460a314063bef3aeec81d95952922476b4d8bbfa1b9bbe7a4ff8bffc73a",
+  "source_result_path": "eval-results/classifier-facts-prototype/runs/20260721-010647/results.json",
+  "source_result_sha256": "5d32b988f90e94e8304d41013214e0ba29fc5fcb0f6d546c1968a4e114de2847",
+  "source_report_path": "eval-results/classifier-facts-prototype/runs/20260721-010647/results.md",
+  "source_report_sha256": "fa1fb6f7e536992a56f6173e093004eba2b2ce1aa7e87bfd1bfc5a9dbbb7075b",
+  "metrics": {
+    "element_precision": { "numerator": 4, "denominator": 4, "rate": 1 },
+    "element_recall": { "numerator": 4, "denominator": 11, "rate": 0.36363636363636365 },
+    "element_f1": 0.5333333333333333,
+    "requirement_status_accuracy": { "numerator": 5, "denominator": 9, "rate": 0.5555555555555556 },
+    "false_assurance": { "count": 0, "denominator": 9, "rate": 0 },
+    "hard_negative_rejection": { "numerator": 4, "denominator": 4, "rate": 1 },
+    "exact_source_unit_validity": { "numerator": 24, "denominator": 24, "rate": 1 },
+    "extraction_failures": 0
+  }
+}

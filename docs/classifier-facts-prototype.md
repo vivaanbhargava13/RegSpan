@@ -15,6 +15,30 @@ Model swapping stops at that result. This prototype freezes the planned model to
 `gpt-4o-mini-2024-07-18` so a later run tests the facts-only architecture rather
 than a simultaneous model change.
 
+## Version history and preserved v1 result
+
+The first paid facts-only run is preserved under
+`eval-results/classifier-facts-prototype/runs/20260721-010647/` and remains
+comparable with later v2 output. It used result schema
+`classifier-facts-prototype-results/v1`, the same model and fixture hash, and
+reported 100% element precision, 36.4% element recall, 55.6% status accuracy,
+0/9 false assurance, 4/4 hard-negative rejection, and 24/24 exact source-unit
+validity.
+
+The tracked `eval-fixtures/classifier-facts-prototype/v1-paid-baseline.json`
+records those metrics, exact result/report hashes, source paths, and the v1
+implementation commit (`7cf010b`). This keeps the ignored raw exchanges intact
+locally while making their comparison identity reproducible.
+
+Its raw facts confirmed four ontology failures: present-tense operative recovery
+language was marked optional; compound operations were under-extracted; closure
+approval and containment confirmation received unsupported validation semantics;
+and preservation facts were dropped when an auxiliary material field was null.
+V2 changes only the extraction ontology, semantic grounding, and deterministic
+mapping described below. V1 run JSON and Markdown are not overwritten; v2 uses a
+separate `eval-results/classifier-facts-prototype/v2/` directory and `/v2`
+schemas.
+
 ## Boundary
 
 This code is evaluation-only and is not called by production analysis. It covers
@@ -29,9 +53,9 @@ classifier-capability fixture. It does not change fixture labels, production
 prompts, retrieval, ingestion, embeddings, quote rules, status rules, or the
 production classifier.
 
-The isolated paid path additionally requires
-`CLASSIFIER_FACTS_PROTOTYPE_ENABLED=true`, the existing two external-AI flags, an
-API key, and the literal paid confirmation `CLASSIFIER_FACTS_PROTOTYPE`.
+The isolated v2 paid path additionally requires
+`CLASSIFIER_FACTS_PROTOTYPE_V2_ENABLED=true`, the existing two external-AI flags,
+an API key, and the literal paid confirmation `CLASSIFIER_FACTS_PROTOTYPE_V2`.
 
 ## Pipeline
 
@@ -42,8 +66,11 @@ API key, and the literal paid confirmation `CLASSIFIER_FACTS_PROTOTYPE`.
    scored candidates associated with each requirement.
 3. The structured-output schema permits atomic operational facts only. It has no
    status, relationship, support, element, or compliance-conclusion fields.
+   Multiple distinct facts may cite the same unit, and the prompt requires one
+   fact per actor-action-object operation.
 4. Response validation requires a real candidate, real contiguous ordered unit
-   IDs, exact schema keys, controlled enums, and unique fact IDs. Quotes are
+   IDs, exact schema keys, controlled enums, unique fact IDs, and exact
+   `action_text`/`object_text` substrings. Quotes are
    reconstructed from frozen source offsets; there is no fuzzy quote recovery.
 5. Valid facts form a cross-candidate ledger. The ledger records exact source
    units, reconstructed quote, mapped elements, and deterministic rejection
@@ -63,6 +90,8 @@ and categorized outcome remain available for diagnosis.
 - `service_provider_oversight`, `contract_management`, `general_governance`,
   `records_inventory`, and `unrelated` facts are rejected with a workflow reason.
 - Optional, descriptive, and unknown modality cannot satisfy an element.
+- Required, operative present-tense, and conditional-operative facts are eligible
+  to map. Lack of `must` or `shall` does not imply optionality.
 - A records inventory or record-contents statement is not operational proof.
 - Incident-history registration does not prove assessment or containment.
 - Remediation tracking requires an incident-response remediation item, a tracking
@@ -73,6 +102,22 @@ and categorized outcome remain available for diagnosis.
 - Preservation-process coverage requires a controlled preservation method; a
   fixed retention period can establish retained incident materials but not the
   complete preservation process.
+- Every mapped action must have exact cited `action_text` matching an approved
+  generic verb family. Thus approval cannot masquerade as validation and review
+  cannot masquerade as assessment.
+
+V2 modalities are:
+
+- `required`: explicit must, shall, required, or equivalent obligation;
+- `operative`: present-tense policy/procedure language stating an actor performs
+  an action;
+- `conditional_operative`: an action established when, after, before, or upon a
+  trigger;
+- `optional`: may, can, at discretion, when appropriate, if feasible, or
+  equivalent discretion;
+- `descriptive`: purpose, capability, background, inventory, or design language
+  that does not itself establish an action;
+- `unknown`: modality cannot be grounded.
 
 ## Fact record
 
@@ -80,35 +125,35 @@ Every model-returned fact must provide all fields, using explicit `null` where t
 source does not ground a value:
 
 - `fact_id`, `source_candidate_id`, `source_unit_ids`;
-- `actor`, `action`, `object`, `workflow_scope`, `condition_or_trigger`,
+- `actor`, `action`, `action_text`, `object`, `object_text`, `workflow_scope`, `condition_or_trigger`,
   `modality`;
 - `tracking_details`, `validation_activity`, `record_or_material`, and
   `preservation_method`.
 
-The validator adds only deterministic fields: `reconstructed_quote` and the
-selected source-unit hashes. Mapping then adds `mapped_elements` and
-`deterministic_rejections` to the evaluation ledger.
+The validator adds only deterministic fields: `reconstructed_quote`, selected
+source-unit hashes, and `semantic_grounding_rejections`. Mapping then adds
+`mapped_elements` and `deterministic_rejections` to the evaluation ledger.
 
 ## Commands
 
 Serialize and inspect all three requests without provider access:
 
 ```bash
-npm run eval:classifier-facts:dry
+npm run eval:classifier-facts:v2:dry
 ```
 
 Regenerate a Markdown report from a stored result without provider access:
 
 ```bash
-npm run eval:classifier-facts:report
+npm run eval:classifier-facts:v2:report
 ```
 
 The eventual paid command is intentionally separate and must not be run during
 prototype construction:
 
 ```bash
-CLASSIFIER_FACTS_PROTOTYPE_ENABLED=true npm run eval:classifier-facts -- \
-  --confirm-paid CLASSIFIER_FACTS_PROTOTYPE
+CLASSIFIER_FACTS_PROTOTYPE_V2_ENABLED=true npm run eval:classifier-facts:v2 -- \
+  --confirm-paid CLASSIFIER_FACTS_PROTOTYPE_V2
 ```
 
 ## Evaluation and limitations

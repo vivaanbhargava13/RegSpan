@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
@@ -16,10 +17,10 @@ import {
 import { validateClassifierCapabilityFixtures } from "../lib/classifierCapabilityEval";
 
 const DEFAULT_FIXTURES = "eval-fixtures/classifier-capability/fixtures.v2.json";
-const DEFAULT_DRY_OUTPUT = "eval-results/classifier-facts-prototype/dry-run.json";
-const DEFAULT_RESULT_OUTPUT = "eval-results/classifier-facts-prototype/results.json";
-const DEFAULT_REPORT_OUTPUT = "eval-results/classifier-facts-prototype/results.md";
-const PAID_CONFIRMATION = "CLASSIFIER_FACTS_PROTOTYPE";
+const DEFAULT_DRY_OUTPUT = "eval-results/classifier-facts-prototype/v2/dry-run.json";
+const DEFAULT_RESULT_OUTPUT = "eval-results/classifier-facts-prototype/v2/results.json";
+const DEFAULT_REPORT_OUTPUT = "eval-results/classifier-facts-prototype/v2/results.md";
+const PAID_CONFIRMATION = "CLASSIFIER_FACTS_PROTOTYPE_V2";
 
 type Mode = "dry" | "run" | "report";
 
@@ -65,6 +66,7 @@ async function loadFixtures(path: string) {
 function requestSummary(request: FactsExtractionRequest) {
   return {
     requirement_id: request.requirement_id,
+    request_sha256: createHash("sha256").update(JSON.stringify(request.body), "utf8").digest("hex"),
     candidate_count: request.candidates.length,
     unit_count: request.candidates.reduce((sum, candidate) => sum + candidate.units.length, 0),
     candidates: request.candidates,
@@ -83,6 +85,7 @@ async function runDry(fixturePath: string, outputPath: string) {
     network_calls: 0,
     request_count: requests.length,
     scored_case_count: fixtures.cases.filter((item) => item.evaluation_role === "scored").length,
+    request_plan_sha256: createHash("sha256").update(JSON.stringify(requests.map((request) => request.body)), "utf8").digest("hex"),
     requests: requests.map(requestSummary),
   });
   console.log(`Serialized ${requests.length} requirement-level requests covering 9 scored cases without network calls.`);
@@ -92,8 +95,8 @@ async function runDry(fixturePath: string, outputPath: string) {
 function assertPaidConfiguration(confirmPaid: string) {
   const blockers: string[] = [];
   if (confirmPaid !== PAID_CONFIRMATION) blockers.push(`--confirm-paid ${PAID_CONFIRMATION} is required`);
-  if (process.env.CLASSIFIER_FACTS_PROTOTYPE_ENABLED?.trim().toLowerCase() !== "true") {
-    blockers.push("CLASSIFIER_FACTS_PROTOTYPE_ENABLED=true is required");
+  if (process.env.CLASSIFIER_FACTS_PROTOTYPE_V2_ENABLED?.trim().toLowerCase() !== "true") {
+    blockers.push("CLASSIFIER_FACTS_PROTOTYPE_V2_ENABLED=true is required");
   }
   if (process.env.ENABLE_EXTERNAL_AI_PROCESSING?.trim().toLowerCase() !== "true"
     || process.env.ENABLE_EXTERNAL_AI_CLASSIFIER?.trim().toLowerCase() !== "true") {
