@@ -20,11 +20,11 @@ import {
 import { validateClassifierCapabilityFixtures } from "../lib/classifierCapabilityEval";
 
 const FIXTURES = "eval-fixtures/classifier-capability/fixtures.v2.json";
-const DRY = "eval-results/classifier-facts-prototype/v4-1/dry-run.json";
-const RESULT = "eval-results/classifier-facts-prototype/v4-1/results.json";
-const REPORT = "eval-results/classifier-facts-prototype/v4-1/results.md";
-const REPLAY_RESULT = "eval-results/classifier-facts-prototype/v4-1-replay/results.json";
-const REPLAY_REPORT = "eval-results/classifier-facts-prototype/v4-1-replay/results.md";
+const DRY = "eval-results/classifier-facts-prototype/v4-1-namefix/dry-run.json";
+const RESULT = "eval-results/classifier-facts-prototype/v4-1-namefix/results.json";
+const REPORT = "eval-results/classifier-facts-prototype/v4-1-namefix/results.md";
+const REPLAY_RESULT = "eval-results/classifier-facts-prototype/v4-1-namefix-replay/results.json";
+const REPLAY_REPORT = "eval-results/classifier-facts-prototype/v4-1-namefix-replay/results.md";
 const CONFIRMATION = "CLASSIFIER_FACTS_PROTOTYPE_V4_1";
 
 type Mode = "dry" | "run" | "report" | "replay";
@@ -160,11 +160,18 @@ async function runDry(fixturesPath: string, output: string) {
   const requests = buildV41ExtractionRequests(fixtures);
   const summaries = requests.map((request) => {
     const schema = request.body.response_format.json_schema.schema as { properties: { units: { required: string[] } } };
+    const oldSchemaName = `unit_accountable_operational_facts_v4_1_${request.requirement_id}`;
+    const newSchemaName = request.body.response_format.json_schema.name;
     return {
       requirement_id: request.requirement_id,
+      old_schema_name: oldSchemaName,
+      old_schema_name_length: oldSchemaName.length,
+      new_schema_name: newSchemaName,
+      new_schema_name_length: newSchemaName.length,
       required_unit_property_count: schema.properties.units.required.length,
       required_unit_ids: [...schema.properties.units.required].sort(),
       response_schema_sha256: v41SchemaHash(request),
+      prompt_sha256: sha256(JSON.stringify(request.body.messages)),
       request_sha256: v41RequestHash(request),
       model: request.model,
       network_calls: 0,
@@ -180,7 +187,7 @@ async function runDry(fixturesPath: string, output: string) {
     request_plan_sha256: sha256(JSON.stringify(requests.map((request) => request.body))), requests: summaries,
   });
   console.log(`Serialized ${requests.length} V4.1 exact-unit requests with zero network calls.`);
-  for (const item of summaries) console.log(`${item.requirement_id}: ${item.required_unit_property_count} units, schema ${item.response_schema_sha256}, request ${item.request_sha256}`);
+  for (const item of summaries) console.log(`${item.requirement_id}: ${item.old_schema_name} (${item.old_schema_name_length}) -> ${item.new_schema_name} (${item.new_schema_name_length}), request ${item.request_sha256}`);
   console.log(`Dry artifact: ${output}`);
 }
 

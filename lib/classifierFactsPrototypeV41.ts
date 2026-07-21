@@ -97,20 +97,34 @@ function dynamicResponseSchema(baseRequest: V4Request) {
 }
 
 export function buildV41ExtractionRequests(fixtures: ClassifierCapabilityFixtureSuite): V41Request[] {
-  return buildV4ExtractionRequests(fixtures).map((baseRequest) => ({
+  const requests: V41Request[] = buildV4ExtractionRequests(fixtures).map((baseRequest) => ({
     ...baseRequest,
     body: {
       ...baseRequest.body,
       response_format: {
         type: "json_schema",
         json_schema: {
-          name: `unit_accountable_operational_facts_v4_1_${baseRequest.requirement_id}`,
+          name: v41SchemaName(baseRequest.requirement_id),
           strict: true,
           schema: dynamicResponseSchema(baseRequest),
         },
       },
     },
   }));
+  const names = requests.map((request) => request.body.response_format.json_schema.name);
+  for (const [index, name] of names.entries()) {
+    if (name.length > 64) throw new Error(`V4.1 schema name exceeds 64 characters: ${name}.`);
+    if (!/^[A-Za-z0-9_-]+$/u.test(name)) throw new Error(`V4.1 schema name contains unsupported characters: ${name}.`);
+    if (name !== v41SchemaName(requests[index].requirement_id)) throw new Error(`V4.1 schema name is not deterministic for ${requests[index].requirement_id}.`);
+  }
+  if (new Set(names).size !== names.length) throw new Error("V4.1 schema names must be unique across the request plan.");
+  return requests;
+}
+
+export function v41SchemaName(requirementId: string) {
+  const sanitized = requirementId.replace(/[^A-Za-z0-9_-]+/gu, "_").replace(/^_+|_+$/gu, "");
+  const shortPrefix = sanitized.split("_").slice(0, 2).join("_").slice(0, 20) || "requirement";
+  return `facts_v41_${shortPrefix}_${sha256(requirementId).slice(0, 10)}`;
 }
 
 export function v41SchemaHash(request: V41Request) {
