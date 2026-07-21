@@ -11,6 +11,10 @@
     "eval:retrieval": "node scripts/runRetrievalEval.mjs",
     "eval:requirements": "node scripts/runRequirementEval.mjs",
     "eval:corpus": "node --conditions=react-server --import ./scripts/registerServerTsLoader.mjs scripts/runCorpusEval.ts",
+    "eval:classifier-capability:fixtures": "node --conditions=react-server --import ./scripts/registerServerTsLoader.mjs scripts/buildClassifierCapabilityFixtures.ts",
+    "eval:classifier-capability:dry": "node --conditions=react-server --import ./scripts/registerServerTsLoader.mjs scripts/runClassifierCapabilityEval.ts dry",
+    "eval:classifier-capability": "node --conditions=react-server --import ./scripts/registerServerTsLoader.mjs scripts/runClassifierCapabilityEval.ts run",
+    "eval:classifier-capability:report": "node --conditions=react-server --import ./scripts/registerServerTsLoader.mjs scripts/runClassifierCapabilityEval.ts report",
     "eval:score-holdout": "node scripts/scoreBlindHoldout.mjs"
   },
   "dependencies": {

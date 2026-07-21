@@ -1,0 +1,1623 @@
+{
+  "schema_version": "classifier-capability-fixtures/v2",
+  "fixture_version": "v2",
+  "frozen_baseline_commit": "d59d1c914397206a7d72aa104edcf4aabcd04bfb",
+  "source_diagnostic_artifact": "eval-results/requirement-eval-latest.json (local/ignored) plus committed corpus and regression diagnostics",
+  "requirements": [
+    {
+      "id": "incident_assessment_containment_control",
+      "title": "Incident assessment, containment, and control",
+      "description": "The reviewed documents appear to define how the firm assesses the nature and scope of unauthorized access or use of customer information and takes steps to contain and control the incident.",
+      "sourceBasis": "Amended Regulation S-P incident response program elements, 17 CFR 248.30(a)(3)(i) and (ii).",
+      "regulatoryRole": "direct_reg_s_p",
+      "mvpScope": "mvp",
+      "riskSeverity": "high",
+      "evidenceCriteria": {
+        "lookFor": "Assessment of customer-information incidents, affected systems/data, containment, control, escalation, and severity procedures.",
+        "strongEvidence": "Procedures require assessing the nature and scope of unauthorized access or use, identifying affected customer information systems and information types, and taking concrete containment/control actions.",
+        "partialEvidence": "Detection, escalation, or containment appears in isolation, but assessment of customer information scope or control actions is incomplete.",
+        "missingOrNegativeEvidence": "The documents say assessment or containment is not defined, or only describe generic monitoring without incident response steps."
+      },
+      "coverageElements": [
+        {
+          "id": "assesses_scope",
+          "label": "Assesses the nature and scope of unauthorized access or use",
+          "requiredForCovered": true,
+          "signals": [
+            "assess the nature and scope",
+            "assessment of unauthorized access",
+            "assess unauthorized access",
+            "incident scope assessment"
+          ]
+        },
+        {
+          "id": "customer_information_systems",
+          "label": "Identifies affected customer information systems or information types",
+          "requiredForCovered": true,
+          "signals": [
+            "affected customer information systems",
+            "affected customer information",
+            "information types affected",
+            "affected sensitive customer information"
+          ]
+        },
+        {
+          "id": "containment_control",
+          "label": "Requires containment or control steps",
+          "requiredForCovered": true,
+          "signals": [
+            "contain and control",
+            "containment steps",
+            "isolate affected systems",
+            "block unauthorized access",
+            "reset credentials"
+          ]
+        }
+      ],
+      "retrievalQuery": "unauthorized access use customer information assess nature scope contain control customer information systems data types triage severity escalation",
+      "directSignals": [
+        "unauthorized access",
+        "unauthorized use",
+        "assess the nature and scope",
+        "nature and scope",
+        "customer information systems",
+        "types of customer information",
+        "contain and control",
+        "containment",
+        "incident escalation",
+        "escalate",
+        "severity"
+      ],
+      "actionSignals": [
+        "assess",
+        "detect",
+        "triage",
+        "classify",
+        "escalate",
+        "contain",
+        "control",
+        "severity"
+      ],
+      "topicSignals": [
+        "unauthorized access",
+        "unauthorized use",
+        "customer information",
+        "customer information systems",
+        "incident escalation",
+        "containment"
+      ],
+      "partialSignals": [
+        "triage",
+        "classification",
+        "major incident",
+        "security event",
+        "alert",
+        "monitoring"
+      ],
+      "backgroundSignals": [
+        "detect",
+        "monitor",
+        "analyze",
+        "investigate",
+        "incident"
+      ],
+      "requiredElementsForCovered": [
+        "assesses_scope",
+        "customer_information_systems",
+        "containment_control"
+      ],
+      "optionalElements": [],
+      "strongEvidenceGuidance": "Procedures require assessing the nature and scope of unauthorized access or use, identifying affected customer information systems and information types, and taking concrete containment/control actions.",
+      "partialEvidenceGuidance": "Detection, escalation, or containment appears in isolation, but assessment of customer information scope or control actions is incomplete.",
+      "missingEvidenceGuidance": "The documents say assessment or containment is not defined, or only describe generic monitoring without incident response steps."
+    },
+    {
+      "id": "incident_evidence_log_preservation",
+      "title": "Incident evidence and log preservation",
+      "description": "The reviewed documents appear to preserve logs, records, forensic evidence, and other incident materials that support investigation and later compliance documentation.",
+      "sourceBasis": "Supporting control for the amended incident response and recordkeeping requirements; not a standalone quoted Regulation S-P notice obligation.",
+      "regulatoryRole": "supporting_control",
+      "mvpScope": "supporting",
+      "riskSeverity": "medium",
+      "evidenceCriteria": {
+        "lookFor": "Procedures to preserve logs, forensic data, incident records, chain of custody, investigation notes, and evidence needed for review.",
+        "strongEvidence": "Policies define a preservation process for relevant incident logs and evidence, with sufficient investigation, retention, or integrity scope.",
+        "partialEvidence": "Logs or evidence are mentioned, but retention, ownership, or incident use is unclear.",
+        "missingOrNegativeEvidence": "The documents say evidence preservation is not defined or only describe monitoring without retaining incident materials."
+      },
+      "coverageElements": [
+        {
+          "id": "incident_materials",
+          "label": "Preserves or captures relevant logs, communications, evidence, or investigation records",
+          "requiredForCovered": true,
+          "signals": [
+            "preserve logs",
+            "logs are preserved",
+            "retain incident logs",
+            "incident materials retained",
+            "preserve evidence",
+            "incident records",
+            "investigation records",
+            "investigation notes",
+            "forensic evidence",
+            "security console exports",
+            "volatile information",
+            "log retention"
+          ]
+        },
+        {
+          "id": "integrity_or_chain_of_custody",
+          "label": "Maintains evidence integrity or chain of custody",
+          "requiredForCovered": false,
+          "signals": [
+            "chain of custody",
+            "records integrity",
+            "provenance",
+            "custody"
+          ]
+        },
+        {
+          "id": "preservation_process",
+          "label": "Defines an owner-directed or controlled-storage process for preserving relevant logs or evidence",
+          "requiredForCovered": true,
+          "signals": [
+            "procedure requires preserving",
+            "preservation process",
+            "preserve relevant logs",
+            "retain logs for investigation",
+            "evidence retention requirements",
+            "chain of custody"
+          ]
+        }
+      ],
+      "retrievalQuery": "preserve logs evidence forensic records chain of custody incident investigation retention",
+      "directSignals": [
+        "collect and preserve data",
+        "preserve logs",
+        "logs are preserved",
+        "retain incident logs",
+        "incident materials retained",
+        "preserve evidence",
+        "evidence preservation",
+        "log evidence",
+        "potential evidence",
+        "forensic evidence",
+        "security console exports",
+        "chain of custody",
+        "incident records",
+        "investigation records",
+        "records integrity",
+        "log retention",
+        "provenance",
+        "volatile information"
+      ],
+      "actionSignals": [
+        "preserve",
+        "retain",
+        "collect",
+        "document",
+        "chain of custody",
+        "forensic",
+        "provenance"
+      ],
+      "topicSignals": [
+        "logs",
+        "evidence",
+        "forensic",
+        "chain of custody",
+        "incident records",
+        "investigation records"
+      ],
+      "partialSignals": [
+        "logs",
+        "evidence",
+        "records",
+        "forensic",
+        "retention",
+        "investigation records"
+      ],
+      "backgroundSignals": [
+        "investigation",
+        "analysis",
+        "documentation",
+        "incident"
+      ],
+      "requiredElementsForCovered": [
+        "incident_materials",
+        "preservation_process"
+      ],
+      "optionalElements": [
+        "integrity_or_chain_of_custody"
+      ],
+      "strongEvidenceGuidance": "Policies define a preservation process for relevant incident logs and evidence, with sufficient investigation, retention, or integrity scope.",
+      "partialEvidenceGuidance": "Logs or evidence are mentioned, but retention, ownership, or incident use is unclear.",
+      "missingEvidenceGuidance": "The documents say evidence preservation is not defined or only describe monitoring without retaining incident materials."
+    },
+    {
+      "id": "response_recovery_remediation_validation",
+      "title": "Response recovery and remediation validation",
+      "description": "The reviewed documents appear to define how the firm recovers from unauthorized access or use of customer information and validates remediation or corrective action.",
+      "sourceBasis": "Amended Regulation S-P incident response program recovery requirement, 17 CFR 248.30(a)(3), with remediation validation treated as supporting implementation evidence.",
+      "regulatoryRole": "direct_reg_s_p",
+      "mvpScope": "mvp",
+      "riskSeverity": "high",
+      "evidenceCriteria": {
+        "lookFor": "Recovery procedures, remediation tracking, corrective actions, restored asset verification, vulnerability retesting, lessons learned, and closure validation.",
+        "strongEvidence": "Policies require recovery actions, remediation tracking, and validation or closure after incidents; an appendix or record-category list alone is not a procedure.",
+        "partialEvidence": "Recovery or remediation is mentioned, but validation, testing, ownership, or closure evidence is unclear.",
+        "missingOrNegativeEvidence": "The documents say recovery validation is not required or only describe informal restoration without confirmation or follow-up."
+      },
+      "coverageElements": [
+        {
+          "id": "recovery_steps",
+          "label": "Defines recovery after unauthorized access or use",
+          "requiredForCovered": true,
+          "signals": [
+            "recover from unauthorized access",
+            "recover from unauthorized use",
+            "recovery",
+            "restore",
+            "restoration"
+          ]
+        },
+        {
+          "id": "remediation_tracking",
+          "label": "Tracks remediation or corrective actions",
+          "requiredForCovered": true,
+          "signals": [
+            "remediation tracking",
+            "track remediation",
+            "corrective action",
+            "corrective actions",
+            "vulnerability remediation"
+          ]
+        },
+        {
+          "id": "validation_testing",
+          "label": "Validates recovery or remediation",
+          "requiredForCovered": true,
+          "signals": [
+            "validate recovery",
+            "confirm remediation",
+            "verify restored assets",
+            "follow-up vulnerability scan",
+            "repeated testing",
+            "validation"
+          ]
+        }
+      ],
+      "retrievalQuery": "respond recover remediation validation corrective actions vulnerabilities tracked closure testing restoration customer information incident response",
+      "directSignals": [
+        "recover from unauthorized access",
+        "recover from unauthorized use",
+        "recovery validation",
+        "recovery capabilities",
+        "confirm remediation",
+        "corrective action",
+        "corrective actions",
+        "validate recovery",
+        "verify restored assets",
+        "vulnerability remediation",
+        "follow-up vulnerability scan",
+        "repeated testing",
+        "track remediation",
+        "remediation tracking",
+        "lessons learned"
+      ],
+      "actionSignals": [
+        "recover",
+        "remediate",
+        "remediation",
+        "confirm",
+        "validate",
+        "track",
+        "test",
+        "verify",
+        "corrective action"
+      ],
+      "topicSignals": [
+        "recovery",
+        "remediation",
+        "validation",
+        "vulnerability remediation",
+        "corrective actions",
+        "lessons learned"
+      ],
+      "partialSignals": [
+        "recovery",
+        "restoration",
+        "closure",
+        "testing",
+        "lessons learned",
+        "vulnerability scan"
+      ],
+      "backgroundSignals": [
+        "vulnerability",
+        "incident",
+        "action plan",
+        "follow up"
+      ],
+      "requiredElementsForCovered": [
+        "recovery_steps",
+        "remediation_tracking",
+        "validation_testing"
+      ],
+      "optionalElements": [],
+      "strongEvidenceGuidance": "Policies require recovery actions, remediation tracking, and validation or closure after incidents; an appendix or record-category list alone is not a procedure.",
+      "partialEvidenceGuidance": "Recovery or remediation is mentioned, but validation, testing, ownership, or closure evidence is unclear.",
+      "missingEvidenceGuidance": "The documents say recovery validation is not required or only describe informal restoration without confirmation or follow-up."
+    }
+  ],
+  "requirement_sha256": {
+    "incident_assessment_containment_control": "fd14d22e7d11d66e7d94cdcc95562d1ea617b3b7c2f47ec348362f183cad80e6",
+    "incident_evidence_log_preservation": "7111cdcec7d292ecdfbd7d8b119f912881efb957ae29688758505a1318222a86",
+    "response_recovery_remediation_validation": "dd78cddd713682c800f1d44fc9e0e4b201822f3480e16e73b45996c718fc68f5"
+  },
+  "multi_candidate_review": {
+    "status": "unresolved",
+    "case_id": null,
+    "blocker": "No existing reviewer artifact provides a case with complementary support across at least two candidates, one high-signal distractor, original order, expected final status, and expected supported elements."
+  },
+  "cases": [
+    {
+      "id": "assessment-full-operative-procedure",
+      "requirement_id": "incident_assessment_containment_control",
+      "category": "incident_assessment_containment",
+      "expected_status": {
+        "value": "covered",
+        "provenance": {
+          "confirmed": true,
+          "source_type": "reviewer_answer_key",
+          "reviewer_id": null,
+          "reviewed_at": null,
+          "source_path": "eval/corpora/regspan-v2-realistic-corpus/answer_key.csv",
+          "source_locator": "answer_key.csv row 25: northline-brokerage-services / incident_assessment_containment_control / covered",
+          "source_hash": "fec13c8972f87da4b17c23a963e7f0fa4e0035add3b14bda307fbaae0d3b8abd",
+          "normalization_recipe": null
+        }
+      },
+      "notes": "Direct support present in the frozen candidate; capability target for prior undercalls.",
+      "candidates": [
+        {
+          "chunk_id": "assessment-full-1",
+          "document_id": "fixture-document-assessment-full-1",
+          "filename": "northline_regulation_sp_policy.pdf",
+          "page_start": 3,
+          "page_end": 3,
+          "chunk_index": 0,
+          "section_path": "5. Assessment, Containment, and Control",
+          "content_preview": "For every suspected incident involving unauthorized access to or use of customer information, the response team assesses the nature and scope of the incident. The assessment identifies the date and method of access, affected accounts and users, duration, privileges obtained, systems involved, and whether data was viewed, copied, altered, transmitted, or destroyed.\nThe assessment must identify each customer information system that may have been affected and the types of customer information stored or processed in those systems. The team records whether sensitive customer information may be involved and identifies affected individuals when reasonably possible.\n• isolate compromised hosts, accounts, applications, or network segments;\n• disable or reset credentials and rotate keys or tokens;\n• block malicious infrastructure and preserve monitoring;\n• search for additional affected systems and unauthorized persistence;\n• coordinate controlled shutdowns when needed to prevent further unauthorized access or use.",
+          "similarity": 0.5,
+          "evidence_reason": "frozen_classifier_capability_fixture",
+          "embedding_input": null,
+          "source_type": "client_policy",
+          "evidence_role": "organization_evidence",
+          "rerank_score": 50,
+          "rerank_reason": "Frozen before classifier capability evaluation; order and count must not change.",
+          "expected_relationship": {
+            "value": "supports",
+            "provenance": {
+              "confirmed": false,
+              "source_type": "implementation_inference",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf",
+              "source_locator": "PDF page 3, section 5",
+              "source_hash": "8540c08a73b48ffd40d51a96a9a0b2328653be4193f7b62d36a9e5a981786ab8",
+              "normalization_recipe": null
+            }
+          },
+          "expected_covered_elements": {
+            "value": [
+              "assesses_scope",
+              "customer_information_systems",
+              "containment_control"
+            ],
+            "provenance": {
+              "confirmed": false,
+              "source_type": "implementation_inference",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf",
+              "source_locator": "PDF page 3, section 5",
+              "source_hash": "8540c08a73b48ffd40d51a96a9a0b2328653be4193f7b62d36a9e5a981786ab8",
+              "normalization_recipe": null
+            }
+          },
+          "direct_support_recovery": {
+            "value": true,
+            "provenance": {
+              "confirmed": false,
+              "source_type": "implementation_inference",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf",
+              "source_locator": "PDF page 3, section 5",
+              "source_hash": "8540c08a73b48ffd40d51a96a9a0b2328653be4193f7b62d36a9e5a981786ab8",
+              "normalization_recipe": null
+            }
+          },
+          "hard_negative": {
+            "value": false,
+            "provenance": {
+              "confirmed": false,
+              "source_type": "implementation_inference",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf",
+              "source_locator": "PDF page 3, section 5",
+              "source_hash": "8540c08a73b48ffd40d51a96a9a0b2328653be4193f7b62d36a9e5a981786ab8",
+              "normalization_recipe": null
+            }
+          },
+          "source": {
+            "kind": "committed_corpus",
+            "path": "eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf",
+            "locator": "PDF page 3, section 5",
+            "content_sha256": "266c85c6b92f7f457373e888085122d3582e1c3757bc4c77d532da0e3fe4922e",
+            "normalization_recipe": null
+          }
+        }
+      ],
+      "evaluation_role": "unresolved",
+      "expected_supported_elements": {
+        "value": [
+          "assesses_scope",
+          "customer_information_systems",
+          "containment_control"
+        ],
+        "provenance": {
+          "confirmed": false,
+          "source_type": "implementation_inference",
+          "reviewer_id": null,
+          "reviewed_at": null,
+          "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf",
+          "source_locator": "PDF page 3, section 5",
+          "source_hash": "8540c08a73b48ffd40d51a96a9a0b2328653be4193f7b62d36a9e5a981786ab8",
+          "normalization_recipe": null
+        }
+      }
+    },
+    {
+      "id": "assessment-incident-history-negative",
+      "requirement_id": "incident_assessment_containment_control",
+      "category": "incident_assessment_containment",
+      "expected_status": {
+        "value": "missing",
+        "provenance": {
+          "confirmed": false,
+          "source_type": "implementation_inference",
+          "reviewer_id": null,
+          "reviewed_at": null,
+          "source_path": "tests/requirement-debug.test.mjs",
+          "source_locator": "negative fixture near line 349",
+          "source_hash": "23512acd4941a7263421b3bdc22c1322bf5ea8a43c2aa205c8b8f5111842a221",
+          "normalization_recipe": null
+        }
+      },
+      "notes": "Incident history in a register is not an assessment and containment procedure.",
+      "candidates": [
+        {
+          "chunk_id": "assessment-history-1",
+          "document_id": "fixture-document-assessment-history-1",
+          "filename": "OakMeridia Evidence Register diagnostic",
+          "page_start": 1,
+          "page_end": 1,
+          "chunk_index": 0,
+          "section_path": "Continuing service-company review",
+          "content_preview": "Rule 121 - Continuing service-company review. Assurance reports, material changes, remediation, and incident history are entered in OakMeridia Evidence Register.",
+          "similarity": 0.5,
+          "evidence_reason": "frozen_classifier_capability_fixture",
+          "embedding_input": null,
+          "source_type": "client_policy",
+          "evidence_role": "organization_evidence",
+          "rerank_score": 50,
+          "rerank_reason": "Frozen before classifier capability evaluation; order and count must not change.",
+          "expected_relationship": {
+            "value": "irrelevant",
+            "provenance": {
+              "confirmed": false,
+              "source_type": "diagnostic_artifact",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "tests/requirement-debug.test.mjs",
+              "source_locator": "negative fixture near line 349",
+              "source_hash": "23512acd4941a7263421b3bdc22c1322bf5ea8a43c2aa205c8b8f5111842a221",
+              "normalization_recipe": null
+            }
+          },
+          "expected_covered_elements": {
+            "value": [],
+            "provenance": {
+              "confirmed": false,
+              "source_type": "diagnostic_artifact",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "tests/requirement-debug.test.mjs",
+              "source_locator": "negative fixture near line 349",
+              "source_hash": "23512acd4941a7263421b3bdc22c1322bf5ea8a43c2aa205c8b8f5111842a221",
+              "normalization_recipe": null
+            }
+          },
+          "direct_support_recovery": {
+            "value": false,
+            "provenance": {
+              "confirmed": false,
+              "source_type": "diagnostic_artifact",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "tests/requirement-debug.test.mjs",
+              "source_locator": "negative fixture near line 349",
+              "source_hash": "23512acd4941a7263421b3bdc22c1322bf5ea8a43c2aa205c8b8f5111842a221",
+              "normalization_recipe": null
+            }
+          },
+          "hard_negative": {
+            "value": true,
+            "provenance": {
+              "confirmed": false,
+              "source_type": "diagnostic_artifact",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "tests/requirement-debug.test.mjs",
+              "source_locator": "negative fixture near line 349",
+              "source_hash": "23512acd4941a7263421b3bdc22c1322bf5ea8a43c2aa205c8b8f5111842a221",
+              "normalization_recipe": null
+            }
+          },
+          "source": {
+            "kind": "regression_diagnostic",
+            "path": "tests/requirement-debug.test.mjs",
+            "locator": "negative fixture near line 349",
+            "content_sha256": "3dadeddda37cff471643f32b2c0d20f56a2cf8a88800a281d8d02d541ea3ef1e",
+            "normalization_recipe": null
+          }
+        }
+      ],
+      "evaluation_role": "unresolved",
+      "expected_supported_elements": {
+        "value": [],
+        "provenance": {
+          "confirmed": false,
+          "source_type": "implementation_inference",
+          "reviewer_id": null,
+          "reviewed_at": null,
+          "source_path": "tests/requirement-debug.test.mjs",
+          "source_locator": "negative fixture near line 349",
+          "source_hash": "23512acd4941a7263421b3bdc22c1322bf5ea8a43c2aa205c8b8f5111842a221",
+          "normalization_recipe": null
+        }
+      }
+    },
+    {
+      "id": "assessment-monitoring-escalation-partial",
+      "requirement_id": "incident_assessment_containment_control",
+      "category": "incident_assessment_containment",
+      "expected_status": {
+        "value": "partial",
+        "provenance": {
+          "confirmed": false,
+          "source_type": "diagnostic_artifact",
+          "reviewer_id": null,
+          "reviewed_at": null,
+          "source_path": "eval-results/requirement-eval-latest.json",
+          "source_locator": "unauthorized_access_detection_escalation candidate chunk 1",
+          "source_hash": "2d9796e2710198cd96efccd83dd304e41f603f4da4d9cf47b28ec1173db47eed",
+          "normalization_recipe": null
+        }
+      },
+      "notes": "Monitoring and escalation do not establish all assessment and containment elements.",
+      "candidates": [
+        {
+          "chunk_id": "assessment-partial-1",
+          "document_id": "fixture-document-assessment-partial-1",
+          "filename": "Northstar_Partial_Client_Information_Security_Procedure.pdf",
+          "page_start": 1,
+          "page_end": 1,
+          "chunk_index": 0,
+          "section_path": "2. Security Monitoring and Internal Escalation",
+          "content_preview": "Security alerts from endpoint, firewall, authentication, and cloud systems are reviewed by IT Operations. Potential unauthorized access is escalated internally to the IT Manager and Compliance mailbox when customer information may be involved. The IT Manager may open an incident ticket and request help from Legal or Compliance when the event appears material. Incident tickets should include affected systems, dates, owner, and current status.",
+          "similarity": 0.5,
+          "evidence_reason": "frozen_classifier_capability_fixture",
+          "embedding_input": null,
+          "source_type": "client_policy",
+          "evidence_role": "organization_evidence",
+          "rerank_score": 50,
+          "rerank_reason": "Frozen before classifier capability evaluation; order and count must not change.",
+          "expected_relationship": {
+            "value": "partially_supports",
+            "provenance": {
+              "confirmed": false,
+              "source_type": "diagnostic_artifact",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval-results/requirement-eval-latest.json",
+              "source_locator": "unauthorized_access_detection_escalation candidate chunk 1",
+              "source_hash": "2d9796e2710198cd96efccd83dd304e41f603f4da4d9cf47b28ec1173db47eed",
+              "normalization_recipe": "Removed the section heading and bullets; joined source line wraps with spaces."
+            }
+          },
+          "expected_covered_elements": {
+            "value": [
+              "customer_information_systems"
+            ],
+            "provenance": {
+              "confirmed": false,
+              "source_type": "diagnostic_artifact",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval-results/requirement-eval-latest.json",
+              "source_locator": "unauthorized_access_detection_escalation candidate chunk 1",
+              "source_hash": "2d9796e2710198cd96efccd83dd304e41f603f4da4d9cf47b28ec1173db47eed",
+              "normalization_recipe": "Removed the section heading and bullets; joined source line wraps with spaces."
+            }
+          },
+          "direct_support_recovery": {
+            "value": false,
+            "provenance": {
+              "confirmed": false,
+              "source_type": "diagnostic_artifact",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval-results/requirement-eval-latest.json",
+              "source_locator": "unauthorized_access_detection_escalation candidate chunk 1",
+              "source_hash": "2d9796e2710198cd96efccd83dd304e41f603f4da4d9cf47b28ec1173db47eed",
+              "normalization_recipe": "Removed the section heading and bullets; joined source line wraps with spaces."
+            }
+          },
+          "hard_negative": {
+            "value": false,
+            "provenance": {
+              "confirmed": false,
+              "source_type": "diagnostic_artifact",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval-results/requirement-eval-latest.json",
+              "source_locator": "unauthorized_access_detection_escalation candidate chunk 1",
+              "source_hash": "2d9796e2710198cd96efccd83dd304e41f603f4da4d9cf47b28ec1173db47eed",
+              "normalization_recipe": "Removed the section heading and bullets; joined source line wraps with spaces."
+            }
+          },
+          "source": {
+            "kind": "regression_diagnostic",
+            "path": "eval-results/requirement-eval-latest.json",
+            "locator": "unauthorized_access_detection_escalation candidate chunk 1",
+            "content_sha256": "175b9f23ff894e1dc0ecd86d4f98e1d86d1149ae374a357483a090292febe7bc",
+            "normalization_recipe": "Removed the section heading and bullets; joined source line wraps with spaces."
+          }
+        }
+      ],
+      "evaluation_role": "diagnostic_only",
+      "expected_supported_elements": {
+        "value": [
+          "customer_information_systems"
+        ],
+        "provenance": {
+          "confirmed": false,
+          "source_type": "implementation_inference",
+          "reviewer_id": null,
+          "reviewed_at": null,
+          "source_path": "eval-results/requirement-eval-latest.json",
+          "source_locator": "unauthorized_access_detection_escalation candidate chunk 1",
+          "source_hash": "2d9796e2710198cd96efccd83dd304e41f603f4da4d9cf47b28ec1173db47eed",
+          "normalization_recipe": null
+        }
+      }
+    },
+    {
+      "id": "preservation-full-operative-procedure",
+      "requirement_id": "incident_evidence_log_preservation",
+      "category": "incident_evidence_log_preservation",
+      "expected_status": {
+        "value": "covered",
+        "provenance": {
+          "confirmed": true,
+          "source_type": "reviewer_answer_key",
+          "reviewer_id": null,
+          "reviewed_at": null,
+          "source_path": "eval/corpora/regspan-v2-realistic-corpus/answer_key.csv",
+          "source_locator": "answer_key.csv row 32: northline-brokerage-services / incident_evidence_log_preservation / covered",
+          "source_hash": "fec13c8972f87da4b17c23a963e7f0fa4e0035add3b14bda307fbaae0d3b8abd",
+          "normalization_recipe": null
+        }
+      },
+      "notes": "Direct support present in the frozen candidate; capability target for prior quote undercalls.",
+      "candidates": [
+        {
+          "chunk_id": "preservation-full-1",
+          "document_id": "fixture-document-preservation-full-1",
+          "filename": "northline_regulation_sp_policy.pdf",
+          "page_start": 6,
+          "page_end": 6,
+          "chunk_index": 0,
+          "section_path": "12. Logging and Investigation Records",
+          "content_preview": "The incident manager maintains a contemporaneous incident file containing alerts, system and identity logs, relevant exports, screenshots, investigation notes, affected-system and data inventories, decisions, approvals, containment steps, customer-notice analysis, provider communications, recovery tests, and closure documentation.\nRelevant logs and volatile information are preserved promptly. Exports are stored in access-controlled case folders with source, collection time, custodian, and integrity information when material to the investigation. Routine log retention is not shortened while an incident, investigation, examination, or legal hold is open.",
+          "similarity": 0.5,
+          "evidence_reason": "frozen_classifier_capability_fixture",
+          "embedding_input": null,
+          "source_type": "client_policy",
+          "evidence_role": "organization_evidence",
+          "rerank_score": 50,
+          "rerank_reason": "Frozen before classifier capability evaluation; order and count must not change.",
+          "expected_relationship": {
+            "value": "supports",
+            "provenance": {
+              "confirmed": false,
+              "source_type": "implementation_inference",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf",
+              "source_locator": "PDF page 6, section 12",
+              "source_hash": "8540c08a73b48ffd40d51a96a9a0b2328653be4193f7b62d36a9e5a981786ab8",
+              "normalization_recipe": null
+            }
+          },
+          "expected_covered_elements": {
+            "value": [
+              "incident_materials",
+              "integrity_or_chain_of_custody",
+              "preservation_process"
+            ],
+            "provenance": {
+              "confirmed": false,
+              "source_type": "implementation_inference",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf",
+              "source_locator": "PDF page 6, section 12",
+              "source_hash": "8540c08a73b48ffd40d51a96a9a0b2328653be4193f7b62d36a9e5a981786ab8",
+              "normalization_recipe": null
+            }
+          },
+          "direct_support_recovery": {
+            "value": true,
+            "provenance": {
+              "confirmed": false,
+              "source_type": "implementation_inference",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf",
+              "source_locator": "PDF page 6, section 12",
+              "source_hash": "8540c08a73b48ffd40d51a96a9a0b2328653be4193f7b62d36a9e5a981786ab8",
+              "normalization_recipe": null
+            }
+          },
+          "hard_negative": {
+            "value": false,
+            "provenance": {
+              "confirmed": false,
+              "source_type": "implementation_inference",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf",
+              "source_locator": "PDF page 6, section 12",
+              "source_hash": "8540c08a73b48ffd40d51a96a9a0b2328653be4193f7b62d36a9e5a981786ab8",
+              "normalization_recipe": null
+            }
+          },
+          "source": {
+            "kind": "committed_corpus",
+            "path": "eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf",
+            "locator": "PDF page 6, section 12",
+            "content_sha256": "e17485333b4e2f00f2073aedadb118e5a6196904d9d3f1f1c8d185a3b09b73d3",
+            "normalization_recipe": null
+          }
+        }
+      ],
+      "evaluation_role": "unresolved",
+      "expected_supported_elements": {
+        "value": [
+          "incident_materials",
+          "integrity_or_chain_of_custody",
+          "preservation_process"
+        ],
+        "provenance": {
+          "confirmed": false,
+          "source_type": "implementation_inference",
+          "reviewer_id": null,
+          "reviewed_at": null,
+          "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf",
+          "source_locator": "PDF page 6, section 12",
+          "source_hash": "8540c08a73b48ffd40d51a96a9a0b2328653be4193f7b62d36a9e5a981786ab8",
+          "normalization_recipe": null
+        }
+      }
+    },
+    {
+      "id": "preservation-log-procedure",
+      "requirement_id": "incident_evidence_log_preservation",
+      "category": "incident_evidence_log_preservation",
+      "expected_status": {
+        "value": "covered",
+        "provenance": {
+          "confirmed": false,
+          "source_type": "diagnostic_artifact",
+          "reviewer_id": null,
+          "reviewed_at": null,
+          "source_path": "eval-results/requirement-eval-latest.json",
+          "source_locator": "evidence_log_preservation candidate chunk 3",
+          "source_hash": "2d9796e2710198cd96efccd83dd304e41f603f4da4d9cf47b28ec1173db47eed",
+          "normalization_recipe": null
+        }
+      },
+      "notes": "A narrower mandatory incident-log preservation procedure without a full forensic program.",
+      "candidates": [
+        {
+          "chunk_id": "preservation-log-1",
+          "document_id": "fixture-document-preservation-log-1",
+          "filename": "Northstar_Partial_Client_Information_Security_Procedure.pdf",
+          "page_start": 2,
+          "page_end": 2,
+          "chunk_index": 0,
+          "section_path": "4. Log Retention and Investigation Support",
+          "content_preview": "System logs, authentication logs, and cloud audit records are retained for investigation support. IT Operations preserves relevant logs when an incident ticket is opened and may export copies for review by Compliance or outside investigators. The procedure does not define a full forensic chain-of-custody process, but incident owners should document where evidence was collected and who handled it.",
+          "similarity": 0.5,
+          "evidence_reason": "frozen_classifier_capability_fixture",
+          "embedding_input": null,
+          "source_type": "client_policy",
+          "evidence_role": "organization_evidence",
+          "rerank_score": 50,
+          "rerank_reason": "Frozen before classifier capability evaluation; order and count must not change.",
+          "expected_relationship": {
+            "value": "supports",
+            "provenance": {
+              "confirmed": false,
+              "source_type": "diagnostic_artifact",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval-results/requirement-eval-latest.json",
+              "source_locator": "evidence_log_preservation candidate chunk 3",
+              "source_hash": "2d9796e2710198cd96efccd83dd304e41f603f4da4d9cf47b28ec1173db47eed",
+              "normalization_recipe": "Removed the section heading and bullets; joined source line wraps with spaces."
+            }
+          },
+          "expected_covered_elements": {
+            "value": [
+              "incident_materials",
+              "preservation_process"
+            ],
+            "provenance": {
+              "confirmed": false,
+              "source_type": "diagnostic_artifact",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval-results/requirement-eval-latest.json",
+              "source_locator": "evidence_log_preservation candidate chunk 3",
+              "source_hash": "2d9796e2710198cd96efccd83dd304e41f603f4da4d9cf47b28ec1173db47eed",
+              "normalization_recipe": "Removed the section heading and bullets; joined source line wraps with spaces."
+            }
+          },
+          "direct_support_recovery": {
+            "value": false,
+            "provenance": {
+              "confirmed": false,
+              "source_type": "diagnostic_artifact",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval-results/requirement-eval-latest.json",
+              "source_locator": "evidence_log_preservation candidate chunk 3",
+              "source_hash": "2d9796e2710198cd96efccd83dd304e41f603f4da4d9cf47b28ec1173db47eed",
+              "normalization_recipe": "Removed the section heading and bullets; joined source line wraps with spaces."
+            }
+          },
+          "hard_negative": {
+            "value": false,
+            "provenance": {
+              "confirmed": false,
+              "source_type": "diagnostic_artifact",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval-results/requirement-eval-latest.json",
+              "source_locator": "evidence_log_preservation candidate chunk 3",
+              "source_hash": "2d9796e2710198cd96efccd83dd304e41f603f4da4d9cf47b28ec1173db47eed",
+              "normalization_recipe": "Removed the section heading and bullets; joined source line wraps with spaces."
+            }
+          },
+          "source": {
+            "kind": "regression_diagnostic",
+            "path": "eval-results/requirement-eval-latest.json",
+            "locator": "evidence_log_preservation candidate chunk 3",
+            "content_sha256": "d57841cbee3ea997385c752722173d258a91d59c9911cb9d3e6893e3aa219c49",
+            "normalization_recipe": "Removed the section heading and bullets; joined source line wraps with spaces."
+          }
+        }
+      ],
+      "evaluation_role": "diagnostic_only",
+      "expected_supported_elements": {
+        "value": [
+          "incident_materials",
+          "preservation_process"
+        ],
+        "provenance": {
+          "confirmed": false,
+          "source_type": "implementation_inference",
+          "reviewer_id": null,
+          "reviewed_at": null,
+          "source_path": "eval-results/requirement-eval-latest.json",
+          "source_locator": "evidence_log_preservation candidate chunk 3",
+          "source_hash": "2d9796e2710198cd96efccd83dd304e41f603f4da4d9cf47b28ec1173db47eed",
+          "normalization_recipe": null
+        }
+      }
+    },
+    {
+      "id": "preservation-records-inventory-negative",
+      "requirement_id": "incident_evidence_log_preservation",
+      "category": "incident_evidence_log_preservation",
+      "expected_status": {
+        "value": "missing",
+        "provenance": {
+          "confirmed": false,
+          "source_type": "implementation_inference",
+          "reviewer_id": null,
+          "reviewed_at": null,
+          "source_path": "tests/findings-generation.test.mjs",
+          "source_locator": "records inventory fixture near line 1227",
+          "source_hash": "a9a31fad7d6002c38fbbd0fd4d61ce1a6567f852601201071f3a26dbf7e0c248",
+          "normalization_recipe": null
+        }
+      },
+      "notes": "A records inventory is not an operative evidence-preservation procedure.",
+      "candidates": [
+        {
+          "chunk_id": "preservation-inventory-1",
+          "document_id": "fixture-document-preservation-inventory-1",
+          "filename": "Books and records diagnostic",
+          "page_start": 1,
+          "page_end": 1,
+          "chunk_index": 0,
+          "section_path": "Books and records",
+          "content_preview": "Books and records include notification investigations, determinations, supporting facts, and the basis for any no-notice decision.\n• The file also includes written documentation from the Attorney General concerning any delay in notice.\n• These records are preserved for five years.",
+          "similarity": 0.5,
+          "evidence_reason": "frozen_classifier_capability_fixture",
+          "embedding_input": null,
+          "source_type": "client_policy",
+          "evidence_role": "organization_evidence",
+          "rerank_score": 50,
+          "rerank_reason": "Frozen before classifier capability evaluation; order and count must not change.",
+          "expected_relationship": {
+            "value": "irrelevant",
+            "provenance": {
+              "confirmed": false,
+              "source_type": "diagnostic_artifact",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "tests/findings-generation.test.mjs",
+              "source_locator": "records inventory fixture near line 1227",
+              "source_hash": "a9a31fad7d6002c38fbbd0fd4d61ce1a6567f852601201071f3a26dbf7e0c248",
+              "normalization_recipe": null
+            }
+          },
+          "expected_covered_elements": {
+            "value": [],
+            "provenance": {
+              "confirmed": false,
+              "source_type": "diagnostic_artifact",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "tests/findings-generation.test.mjs",
+              "source_locator": "records inventory fixture near line 1227",
+              "source_hash": "a9a31fad7d6002c38fbbd0fd4d61ce1a6567f852601201071f3a26dbf7e0c248",
+              "normalization_recipe": null
+            }
+          },
+          "direct_support_recovery": {
+            "value": false,
+            "provenance": {
+              "confirmed": false,
+              "source_type": "diagnostic_artifact",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "tests/findings-generation.test.mjs",
+              "source_locator": "records inventory fixture near line 1227",
+              "source_hash": "a9a31fad7d6002c38fbbd0fd4d61ce1a6567f852601201071f3a26dbf7e0c248",
+              "normalization_recipe": null
+            }
+          },
+          "hard_negative": {
+            "value": true,
+            "provenance": {
+              "confirmed": false,
+              "source_type": "diagnostic_artifact",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "tests/findings-generation.test.mjs",
+              "source_locator": "records inventory fixture near line 1227",
+              "source_hash": "a9a31fad7d6002c38fbbd0fd4d61ce1a6567f852601201071f3a26dbf7e0c248",
+              "normalization_recipe": null
+            }
+          },
+          "source": {
+            "kind": "regression_diagnostic",
+            "path": "tests/findings-generation.test.mjs",
+            "locator": "records inventory fixture near line 1227",
+            "content_sha256": "ec4a269ccb1d648ccfb6fa1edc29a1b95502434307564998e2ae75e9465478b3",
+            "normalization_recipe": null
+          }
+        }
+      ],
+      "evaluation_role": "unresolved",
+      "expected_supported_elements": {
+        "value": [],
+        "provenance": {
+          "confirmed": false,
+          "source_type": "implementation_inference",
+          "reviewer_id": null,
+          "reviewed_at": null,
+          "source_path": "tests/findings-generation.test.mjs",
+          "source_locator": "records inventory fixture near line 1227",
+          "source_hash": "a9a31fad7d6002c38fbbd0fd4d61ce1a6567f852601201071f3a26dbf7e0c248",
+          "normalization_recipe": null
+        }
+      }
+    },
+    {
+      "id": "preservation-optional-language-negative",
+      "requirement_id": "incident_evidence_log_preservation",
+      "category": "incident_evidence_log_preservation",
+      "expected_status": {
+        "value": "missing",
+        "provenance": {
+          "confirmed": false,
+          "source_type": "implementation_inference",
+          "reviewer_id": null,
+          "reviewed_at": null,
+          "source_path": "tests/requirement-debug.test.mjs",
+          "source_locator": "negative fixtures near lines 352-360",
+          "source_hash": "23512acd4941a7263421b3bdc22c1322bf5ea8a43c2aa205c8b8f5111842a221",
+          "normalization_recipe": null
+        }
+      },
+      "notes": "Optional language is not a mandatory preservation obligation.",
+      "candidates": [
+        {
+          "chunk_id": "preservation-optional-1",
+          "document_id": "fixture-document-preservation-optional-1",
+          "filename": "Incident briefing diagnostic",
+          "page_start": 1,
+          "page_end": 1,
+          "chunk_index": 0,
+          "section_path": "Incident briefing",
+          "content_preview": "The incident briefing may discuss logs and communications, and a shared folder can be used by personnel. The duty manager controls access to the folder and may ask Technology to retain a log source.",
+          "similarity": 0.5,
+          "evidence_reason": "frozen_classifier_capability_fixture",
+          "embedding_input": null,
+          "source_type": "client_policy",
+          "evidence_role": "organization_evidence",
+          "rerank_score": 50,
+          "rerank_reason": "Frozen before classifier capability evaluation; order and count must not change.",
+          "expected_relationship": {
+            "value": "background_context",
+            "provenance": {
+              "confirmed": false,
+              "source_type": "diagnostic_artifact",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "tests/requirement-debug.test.mjs",
+              "source_locator": "negative fixtures near lines 352-360",
+              "source_hash": "23512acd4941a7263421b3bdc22c1322bf5ea8a43c2aa205c8b8f5111842a221",
+              "normalization_recipe": "Concatenated the two adjacent diagnostic literals in source order with one space."
+            }
+          },
+          "expected_covered_elements": {
+            "value": [],
+            "provenance": {
+              "confirmed": false,
+              "source_type": "diagnostic_artifact",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "tests/requirement-debug.test.mjs",
+              "source_locator": "negative fixtures near lines 352-360",
+              "source_hash": "23512acd4941a7263421b3bdc22c1322bf5ea8a43c2aa205c8b8f5111842a221",
+              "normalization_recipe": "Concatenated the two adjacent diagnostic literals in source order with one space."
+            }
+          },
+          "direct_support_recovery": {
+            "value": false,
+            "provenance": {
+              "confirmed": false,
+              "source_type": "diagnostic_artifact",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "tests/requirement-debug.test.mjs",
+              "source_locator": "negative fixtures near lines 352-360",
+              "source_hash": "23512acd4941a7263421b3bdc22c1322bf5ea8a43c2aa205c8b8f5111842a221",
+              "normalization_recipe": "Concatenated the two adjacent diagnostic literals in source order with one space."
+            }
+          },
+          "hard_negative": {
+            "value": true,
+            "provenance": {
+              "confirmed": false,
+              "source_type": "diagnostic_artifact",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "tests/requirement-debug.test.mjs",
+              "source_locator": "negative fixtures near lines 352-360",
+              "source_hash": "23512acd4941a7263421b3bdc22c1322bf5ea8a43c2aa205c8b8f5111842a221",
+              "normalization_recipe": "Concatenated the two adjacent diagnostic literals in source order with one space."
+            }
+          },
+          "source": {
+            "kind": "regression_diagnostic",
+            "path": "tests/requirement-debug.test.mjs",
+            "locator": "negative fixtures near lines 352-360",
+            "content_sha256": "471f993f325a76c3fa74e7683a4a02856075acb94bfcc210d7f2d9b10e60dc61",
+            "normalization_recipe": "Concatenated the two adjacent diagnostic literals in source order with one space."
+          }
+        }
+      ],
+      "evaluation_role": "unresolved",
+      "expected_supported_elements": {
+        "value": [],
+        "provenance": {
+          "confirmed": false,
+          "source_type": "implementation_inference",
+          "reviewer_id": null,
+          "reviewed_at": null,
+          "source_path": "tests/requirement-debug.test.mjs",
+          "source_locator": "negative fixtures near lines 352-360",
+          "source_hash": "23512acd4941a7263421b3bdc22c1322bf5ea8a43c2aa205c8b8f5111842a221",
+          "normalization_recipe": null
+        }
+      }
+    },
+    {
+      "id": "recovery-full-operative-procedure",
+      "requirement_id": "response_recovery_remediation_validation",
+      "category": "recovery_remediation_validation",
+      "expected_status": {
+        "value": "covered",
+        "provenance": {
+          "confirmed": true,
+          "source_type": "reviewer_answer_key",
+          "reviewer_id": null,
+          "reviewed_at": null,
+          "source_path": "eval/corpora/regspan-v2-realistic-corpus/answer_key.csv",
+          "source_locator": "answer_key.csv row 34: northline-brokerage-services / response_recovery_remediation_validation / covered",
+          "source_hash": "fec13c8972f87da4b17c23a963e7f0fa4e0035add3b14bda307fbaae0d3b8abd",
+          "normalization_recipe": null
+        }
+      },
+      "notes": "Direct support present in the frozen candidate; capability target for prior quote undercalls.",
+      "candidates": [
+        {
+          "chunk_id": "recovery-full-1",
+          "document_id": "fixture-document-recovery-full-1",
+          "filename": "northline_regulation_sp_policy.pdf",
+          "page_start": 6,
+          "page_end": 6,
+          "chunk_index": 0,
+          "section_path": "14. Recovery, Remediation, and Validation",
+          "content_preview": "Recovery begins after the response lead confirms that immediate containment is stable. System owners restore services from approved configurations and backups, reset or reissue credentials, apply patches or configuration changes, and verify that unauthorized access paths have been removed.\nBefore returning a material customer information system to normal operation, the owner validates security logging, access permissions, data integrity, critical transactions, and required business functions. Remediation items are assigned owners and due dates and remain open until evidence of completion is reviewed.\n• document restored systems and data sources;\n• perform targeted monitoring for recurrence;\n• confirm customer-service and notice obligations remain on track;\n• complete a lessons-learned review and update procedures, safeguards, or service-provider requirements;\n• obtain closure approval from the incident lead and Compliance.",
+          "similarity": 0.5,
+          "evidence_reason": "frozen_classifier_capability_fixture",
+          "embedding_input": null,
+          "source_type": "client_policy",
+          "evidence_role": "organization_evidence",
+          "rerank_score": 50,
+          "rerank_reason": "Frozen before classifier capability evaluation; order and count must not change.",
+          "expected_relationship": {
+            "value": "supports",
+            "provenance": {
+              "confirmed": false,
+              "source_type": "implementation_inference",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf",
+              "source_locator": "PDF page 6, section 14",
+              "source_hash": "8540c08a73b48ffd40d51a96a9a0b2328653be4193f7b62d36a9e5a981786ab8",
+              "normalization_recipe": null
+            }
+          },
+          "expected_covered_elements": {
+            "value": [
+              "recovery_steps",
+              "remediation_tracking",
+              "validation_testing"
+            ],
+            "provenance": {
+              "confirmed": false,
+              "source_type": "implementation_inference",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf",
+              "source_locator": "PDF page 6, section 14",
+              "source_hash": "8540c08a73b48ffd40d51a96a9a0b2328653be4193f7b62d36a9e5a981786ab8",
+              "normalization_recipe": null
+            }
+          },
+          "direct_support_recovery": {
+            "value": true,
+            "provenance": {
+              "confirmed": false,
+              "source_type": "implementation_inference",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf",
+              "source_locator": "PDF page 6, section 14",
+              "source_hash": "8540c08a73b48ffd40d51a96a9a0b2328653be4193f7b62d36a9e5a981786ab8",
+              "normalization_recipe": null
+            }
+          },
+          "hard_negative": {
+            "value": false,
+            "provenance": {
+              "confirmed": false,
+              "source_type": "implementation_inference",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf",
+              "source_locator": "PDF page 6, section 14",
+              "source_hash": "8540c08a73b48ffd40d51a96a9a0b2328653be4193f7b62d36a9e5a981786ab8",
+              "normalization_recipe": null
+            }
+          },
+          "source": {
+            "kind": "committed_corpus",
+            "path": "eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf",
+            "locator": "PDF page 6, section 14",
+            "content_sha256": "9011bdb62d926f1557bfd5266723ba3eb69b8777baeebb04cfccd1d9c40c8b4f",
+            "normalization_recipe": null
+          }
+        }
+      ],
+      "evaluation_role": "unresolved",
+      "expected_supported_elements": {
+        "value": [
+          "recovery_steps",
+          "remediation_tracking",
+          "validation_testing"
+        ],
+        "provenance": {
+          "confirmed": false,
+          "source_type": "implementation_inference",
+          "reviewer_id": null,
+          "reviewed_at": null,
+          "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/northline_regulation_sp_policy.pdf",
+          "source_locator": "PDF page 6, section 14",
+          "source_hash": "8540c08a73b48ffd40d51a96a9a0b2328653be4193f7b62d36a9e5a981786ab8",
+          "normalization_recipe": null
+        }
+      }
+    },
+    {
+      "id": "recovery-corrective-ownership-negative",
+      "requirement_id": "response_recovery_remediation_validation",
+      "category": "recovery_remediation_validation",
+      "expected_status": {
+        "value": "missing",
+        "provenance": {
+          "confirmed": false,
+          "source_type": "implementation_inference",
+          "reviewer_id": null,
+          "reviewed_at": null,
+          "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/lakeshore_regulation_sp_compliance_program.pdf",
+          "source_locator": "PDF page 3, section 8",
+          "source_hash": "793e888a7a816987be788dd0f0743d9de0a1355018ceaec379b4535c81aeb110",
+          "normalization_recipe": null
+        }
+      },
+      "notes": "Corrective-action ownership for vendor performance is not recovery validation.",
+      "candidates": [
+        {
+          "chunk_id": "recovery-ownership-1",
+          "document_id": "fixture-document-recovery-ownership-1",
+          "filename": "lakeshore_regulation_sp_compliance_program.pdf",
+          "page_start": 3,
+          "page_end": 3,
+          "chunk_index": 0,
+          "section_path": "8. Third-Party Security and Breach Escalation",
+          "content_preview": "Vendors are expected to comply with applicable law and the terms of their agreements. Business owners contact Procurement when vendor performance is unsatisfactory. Procurement records contract issues and coordinates corrective action with the business owner.",
+          "similarity": 0.5,
+          "evidence_reason": "frozen_classifier_capability_fixture",
+          "embedding_input": null,
+          "source_type": "client_policy",
+          "evidence_role": "organization_evidence",
+          "rerank_score": 50,
+          "rerank_reason": "Frozen before classifier capability evaluation; order and count must not change.",
+          "expected_relationship": {
+            "value": "irrelevant",
+            "provenance": {
+              "confirmed": false,
+              "source_type": "implementation_inference",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/lakeshore_regulation_sp_compliance_program.pdf",
+              "source_locator": "PDF page 3, section 8",
+              "source_hash": "793e888a7a816987be788dd0f0743d9de0a1355018ceaec379b4535c81aeb110",
+              "normalization_recipe": null
+            }
+          },
+          "expected_covered_elements": {
+            "value": [],
+            "provenance": {
+              "confirmed": false,
+              "source_type": "implementation_inference",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/lakeshore_regulation_sp_compliance_program.pdf",
+              "source_locator": "PDF page 3, section 8",
+              "source_hash": "793e888a7a816987be788dd0f0743d9de0a1355018ceaec379b4535c81aeb110",
+              "normalization_recipe": null
+            }
+          },
+          "direct_support_recovery": {
+            "value": false,
+            "provenance": {
+              "confirmed": false,
+              "source_type": "implementation_inference",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/lakeshore_regulation_sp_compliance_program.pdf",
+              "source_locator": "PDF page 3, section 8",
+              "source_hash": "793e888a7a816987be788dd0f0743d9de0a1355018ceaec379b4535c81aeb110",
+              "normalization_recipe": null
+            }
+          },
+          "hard_negative": {
+            "value": true,
+            "provenance": {
+              "confirmed": false,
+              "source_type": "implementation_inference",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/lakeshore_regulation_sp_compliance_program.pdf",
+              "source_locator": "PDF page 3, section 8",
+              "source_hash": "793e888a7a816987be788dd0f0743d9de0a1355018ceaec379b4535c81aeb110",
+              "normalization_recipe": null
+            }
+          },
+          "source": {
+            "kind": "committed_corpus",
+            "path": "eval/corpora/regspan-v2-realistic-corpus/documents/lakeshore_regulation_sp_compliance_program.pdf",
+            "locator": "PDF page 3, section 8",
+            "content_sha256": "7e2e893ee19dbcebd24c5119ceb1be4a1b6f1dcfc522810b5e6cfe71d52b7e38",
+            "normalization_recipe": null
+          }
+        }
+      ],
+      "evaluation_role": "unresolved",
+      "expected_supported_elements": {
+        "value": [],
+        "provenance": {
+          "confirmed": false,
+          "source_type": "implementation_inference",
+          "reviewer_id": null,
+          "reviewed_at": null,
+          "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/lakeshore_regulation_sp_compliance_program.pdf",
+          "source_locator": "PDF page 3, section 8",
+          "source_hash": "793e888a7a816987be788dd0f0743d9de0a1355018ceaec379b4535c81aeb110",
+          "normalization_recipe": null
+        }
+      }
+    },
+    {
+      "id": "recovery-appendix-inventory-negative",
+      "requirement_id": "response_recovery_remediation_validation",
+      "category": "recovery_remediation_validation",
+      "expected_status": {
+        "value": "missing",
+        "provenance": {
+          "confirmed": false,
+          "source_type": "implementation_inference",
+          "reviewer_id": null,
+          "reviewed_at": null,
+          "source_path": "tests/operative-evidence-elements.test.mjs",
+          "source_locator": "inventory fixture near line 174",
+          "source_hash": "e70260a377781da702731d62f615ce777b11467ac87aa6f3f3b8d6f026081add",
+          "normalization_recipe": null
+        }
+      },
+      "notes": "An appendix record-category list is not a recovery procedure.",
+      "candidates": [
+        {
+          "chunk_id": "recovery-inventory-1",
+          "document_id": "fixture-document-recovery-inventory-1",
+          "filename": "Incident file appendix diagnostic",
+          "page_start": 1,
+          "page_end": 1,
+          "chunk_index": 0,
+          "section_path": "Appendix A - Incident File Minimum Contents",
+          "content_preview": "Appendix A - Incident File Minimum Contents: investigation timeline, containment actions, recovery steps, corrective actions, validation results, and closure approval.",
+          "similarity": 0.5,
+          "evidence_reason": "frozen_classifier_capability_fixture",
+          "embedding_input": null,
+          "source_type": "client_policy",
+          "evidence_role": "organization_evidence",
+          "rerank_score": 50,
+          "rerank_reason": "Frozen before classifier capability evaluation; order and count must not change.",
+          "expected_relationship": {
+            "value": "background_context",
+            "provenance": {
+              "confirmed": false,
+              "source_type": "diagnostic_artifact",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "tests/operative-evidence-elements.test.mjs",
+              "source_locator": "inventory fixture near line 174",
+              "source_hash": "e70260a377781da702731d62f615ce777b11467ac87aa6f3f3b8d6f026081add",
+              "normalization_recipe": null
+            }
+          },
+          "expected_covered_elements": {
+            "value": [],
+            "provenance": {
+              "confirmed": false,
+              "source_type": "diagnostic_artifact",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "tests/operative-evidence-elements.test.mjs",
+              "source_locator": "inventory fixture near line 174",
+              "source_hash": "e70260a377781da702731d62f615ce777b11467ac87aa6f3f3b8d6f026081add",
+              "normalization_recipe": null
+            }
+          },
+          "direct_support_recovery": {
+            "value": false,
+            "provenance": {
+              "confirmed": false,
+              "source_type": "diagnostic_artifact",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "tests/operative-evidence-elements.test.mjs",
+              "source_locator": "inventory fixture near line 174",
+              "source_hash": "e70260a377781da702731d62f615ce777b11467ac87aa6f3f3b8d6f026081add",
+              "normalization_recipe": null
+            }
+          },
+          "hard_negative": {
+            "value": true,
+            "provenance": {
+              "confirmed": false,
+              "source_type": "diagnostic_artifact",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "tests/operative-evidence-elements.test.mjs",
+              "source_locator": "inventory fixture near line 174",
+              "source_hash": "e70260a377781da702731d62f615ce777b11467ac87aa6f3f3b8d6f026081add",
+              "normalization_recipe": null
+            }
+          },
+          "source": {
+            "kind": "regression_diagnostic",
+            "path": "tests/operative-evidence-elements.test.mjs",
+            "locator": "inventory fixture near line 174",
+            "content_sha256": "5aee954b054eae7fea0a3cb4cc468ff5e577bec30161e6b15f90683e39de8138",
+            "normalization_recipe": null
+          }
+        }
+      ],
+      "evaluation_role": "unresolved",
+      "expected_supported_elements": {
+        "value": [],
+        "provenance": {
+          "confirmed": false,
+          "source_type": "implementation_inference",
+          "reviewer_id": null,
+          "reviewed_at": null,
+          "source_path": "tests/operative-evidence-elements.test.mjs",
+          "source_locator": "inventory fixture near line 174",
+          "source_hash": "e70260a377781da702731d62f615ce777b11467ac87aa6f3f3b8d6f026081add",
+          "normalization_recipe": null
+        }
+      }
+    },
+    {
+      "id": "recovery-restoration-monitoring-partial",
+      "requirement_id": "response_recovery_remediation_validation",
+      "category": "recovery_remediation_validation",
+      "expected_status": {
+        "value": "partial",
+        "provenance": {
+          "confirmed": true,
+          "source_type": "reviewer_answer_key",
+          "reviewer_id": null,
+          "reviewed_at": null,
+          "source_path": "eval/corpora/regspan-v2-realistic-corpus/answer_key.csv",
+          "source_locator": "answer_key.csv row 122: stonehaven-advisory-partners / response_recovery_remediation_validation / partial",
+          "source_hash": "fec13c8972f87da4b17c23a963e7f0fa4e0035add3b14bda307fbaae0d3b8abd",
+          "normalization_recipe": null
+        }
+      },
+      "notes": "Restoration and recurrence monitoring omit remediation tracking and formal validation.",
+      "candidates": [
+        {
+          "chunk_id": "recovery-partial-1",
+          "document_id": "fixture-document-recovery-partial-1",
+          "filename": "stonehaven_privacy_cybersecurity_practices.pdf",
+          "page_start": 5,
+          "page_end": 5,
+          "chunk_index": 0,
+          "section_path": "14. Corrective Action and Post-Incident Review",
+          "content_preview": "After containment, the firm returns systems to service and monitors for recurring issues. Technology monitors the restored environment for recurring problems during the next business cycle.",
+          "similarity": 0.5,
+          "evidence_reason": "frozen_classifier_capability_fixture",
+          "embedding_input": null,
+          "source_type": "client_policy",
+          "evidence_role": "organization_evidence",
+          "rerank_score": 50,
+          "rerank_reason": "Frozen before classifier capability evaluation; order and count must not change.",
+          "expected_relationship": {
+            "value": "partially_supports",
+            "provenance": {
+              "confirmed": false,
+              "source_type": "implementation_inference",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/stonehaven_privacy_cybersecurity_practices.pdf",
+              "source_locator": "PDF page 5, section 14",
+              "source_hash": "08e37e692f72c96b4962fed10711eca070597f3818c24ef0cefd353b2e07c939",
+              "normalization_recipe": null
+            }
+          },
+          "expected_covered_elements": {
+            "value": [
+              "recovery_steps"
+            ],
+            "provenance": {
+              "confirmed": false,
+              "source_type": "implementation_inference",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/stonehaven_privacy_cybersecurity_practices.pdf",
+              "source_locator": "PDF page 5, section 14",
+              "source_hash": "08e37e692f72c96b4962fed10711eca070597f3818c24ef0cefd353b2e07c939",
+              "normalization_recipe": null
+            }
+          },
+          "direct_support_recovery": {
+            "value": false,
+            "provenance": {
+              "confirmed": false,
+              "source_type": "implementation_inference",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/stonehaven_privacy_cybersecurity_practices.pdf",
+              "source_locator": "PDF page 5, section 14",
+              "source_hash": "08e37e692f72c96b4962fed10711eca070597f3818c24ef0cefd353b2e07c939",
+              "normalization_recipe": null
+            }
+          },
+          "hard_negative": {
+            "value": false,
+            "provenance": {
+              "confirmed": false,
+              "source_type": "implementation_inference",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/stonehaven_privacy_cybersecurity_practices.pdf",
+              "source_locator": "PDF page 5, section 14",
+              "source_hash": "08e37e692f72c96b4962fed10711eca070597f3818c24ef0cefd353b2e07c939",
+              "normalization_recipe": null
+            }
+          },
+          "source": {
+            "kind": "committed_corpus",
+            "path": "eval/corpora/regspan-v2-realistic-corpus/documents/stonehaven_privacy_cybersecurity_practices.pdf",
+            "locator": "PDF page 5, section 14",
+            "content_sha256": "3bb9faa625eb9708f423ee38b650cac2dea7369341eabb4d7a467a2605f8d4a4",
+            "normalization_recipe": null
+          }
+        }
+      ],
+      "evaluation_role": "unresolved",
+      "expected_supported_elements": {
+        "value": [
+          "recovery_steps"
+        ],
+        "provenance": {
+          "confirmed": false,
+          "source_type": "implementation_inference",
+          "reviewer_id": null,
+          "reviewed_at": null,
+          "source_path": "eval/corpora/regspan-v2-realistic-corpus/documents/stonehaven_privacy_cybersecurity_practices.pdf",
+          "source_locator": "PDF page 5, section 14",
+          "source_hash": "08e37e692f72c96b4962fed10711eca070597f3818c24ef0cefd353b2e07c939",
+          "normalization_recipe": null
+        }
+      }
+    }
+  ],
+  "suite_hash": "55fbc31f73e71563165867b2ad3b33bfc7aa2911714c36d4bef7fbfe3bd49ddf"
+}

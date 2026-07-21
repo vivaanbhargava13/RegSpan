@@ -743,6 +743,197 @@ test("requirement evidence classifier exposes prompt and provider abstraction", 
   assert.match(envExample, /ENABLE_EXTERNAL_AI_CLASSIFIER=/);
 });
 
+test("OpenAI request helper and evaluation observer preserve the production classification path", async () => {
+  const {
+    buildOpenAiClassifierRequestBody,
+    createRequirementEvidenceClassifier,
+  } = await loadTsModule("lib/requirementEvidenceClassifier.ts");
+  const input = {
+    requirement: {
+      id: "customer_notification_unauthorized_access",
+      title: "Customer notification",
+      description: "Notify affected customers after unauthorized access.",
+      retrievalQuery: "customer notification unauthorized access",
+      directSignals: ["customer notification"],
+      actionSignals: ["notify"],
+      topicSignals: ["customer"],
+      partialSignals: [],
+      backgroundSignals: [],
+      coverageElements: [],
+      requiredElementsForCovered: [],
+      optionalElements: [],
+    },
+    evaluationGuidance: "Classify customer notification evidence.",
+    chunkContent: "The policy requires customer notification after unauthorized access.",
+    candidateChunkId: "candidate-1",
+    evaluationCaseId: "case-1",
+    chunkMetadata: {
+      filename: "policy.pdf", sectionPath: "Notification", pageStart: 1, pageEnd: 1,
+      chunkIndex: 0, sourceType: "client_policy", evidenceRole: "organization_evidence",
+      evidenceReason: "substantive policy evidence",
+    },
+  };
+  const environment = {
+    ENABLE_EXTERNAL_AI_PROCESSING: "true",
+    ENABLE_EXTERNAL_AI_CLASSIFIER: "true",
+    REQUIREMENT_CLASSIFIER_PROVIDER: "openai",
+    REQUIREMENT_CLASSIFIER_MODEL: "gpt-test",
+    REQUIREMENT_CLASSIFIER_API_KEY: "test-key",
+  };
+  const policy = {
+    workspaceId: "workspace-1", workspaceConsentEnabled: true,
+    externalAiProcessingEnabled: true, externalAiClassifierEnabled: true, denialReason: null,
+  };
+  const providerBody = {
+    choices: [{ message: { content: JSON.stringify({
+      relationship: "irrelevant", confidence: "low", requirement_supported: false,
+      control_absent_or_out_of_scope: false, covered_elements: [], missing_elements: [],
+      vague_elements: [], reason: "Not relevant.", supporting_quote: null,
+    }) } }],
+    usage: { prompt_tokens: 12, completion_tokens: 8, total_tokens: 20 },
+  };
+  const bodies = [];
+  const exchanges = [];
+  const classifier = createRequirementEvidenceClassifier(
+    environment,
+    async (_url, init) => {
+      bodies.push(init.body);
+      return {
+        ok: true,
+        status: 200,
+        headers: { get() { return null; } },
+        async text() { return JSON.stringify(providerBody); },
+        async json() { return providerBody; },
+      };
+    },
+    policy,
+    { recordEvaluationExchange(exchange) { exchanges.push(exchange); } },
+  );
+  const classification = await classifier.classify(input);
+
+  assert.equal(bodies[0], JSON.stringify(buildOpenAiClassifierRequestBody(input, "gpt-test")));
+  assert.equal(classification.relationship, "irrelevant");
+  assert.equal(exchanges.length, 1);
+  assert.equal(exchanges[0].outcome, "model_success");
+  assert.equal(exchanges[0].rawResponseText, JSON.stringify(providerBody));
+  assert.deepEqual(exchanges[0].rawProviderResponse, providerBody);
+  assert.equal(exchanges[0].parsedClassification.relationship, "irrelevant");
+  assert.equal(exchanges[0].postProcessedClassification.relationship, "irrelevant");
+  assert.deepEqual(exchanges[0].usage, { prompt_tokens: 12, completion_tokens: 8, total_tokens: 20 });
+});
+
+test("evaluation outcomes categorize provider failures and capture malformed transport JSON", async () => {
+  const { createRequirementEvidenceClassifier } = await loadTsModule("lib/requirementEvidenceClassifier.ts");
+  const input = {
+    requirement: {
+      id: "customer_notification_unauthorized_access", title: "Customer notification",
+      description: "Notify affected customers.", retrievalQuery: "notification",
+      directSignals: ["customer notification"], actionSignals: ["notify"], topicSignals: ["customer"],
+      partialSignals: [], backgroundSignals: [], coverageElements: [], requiredElementsForCovered: [], optionalElements: [],
+    },
+    evaluationGuidance: "Classify evidence.", chunkContent: "General administrative text.",
+    candidateChunkId: "candidate-1", evaluationCaseId: "case-1",
+    chunkMetadata: {
+      filename: "policy.pdf", sectionPath: "General", pageStart: 1, pageEnd: 1, chunkIndex: 0,
+      sourceType: "client_policy", evidenceRole: "organization_evidence", evidenceReason: null,
+    },
+  };
+  const environment = {
+    ENABLE_EXTERNAL_AI_PROCESSING: "true", ENABLE_EXTERNAL_AI_CLASSIFIER: "true",
+    REQUIREMENT_CLASSIFIER_PROVIDER: "openai", REQUIREMENT_CLASSIFIER_MODEL: "gpt-test",
+    REQUIREMENT_CLASSIFIER_API_KEY: "test-key",
+  };
+  const policy = { workspaceId: "workspace-1", workspaceConsentEnabled: true };
+  const runtime = { sleep: async () => {}, random: () => 0, now: (() => { let now = 0; return () => ++now; })() };
+  const failures = [
+    {
+      name: "http", expected: "provider_http_error", expectedCategory: "http_4xx", expectedStatus: 404,
+      fetch: async () => ({
+        ok: false, status: 404, headers: { get() { return null; } },
+        clone() { return { async text() { return "not found"; } }; },
+      }),
+    },
+    {
+      name: "rate limit", expected: "provider_rate_limit", expectedCategory: "rate_limit", expectedStatus: 429,
+      fetch: async () => ({
+        ok: false, status: 429, headers: { get() { return null; } },
+        clone() { return { async text() { return "slow down"; } }; },
+      }),
+    },
+    {
+      name: "timeout", expected: "provider_timeout", expectedCategory: "timeout", expectedStatus: null,
+      fetch: async () => { const error = new Error("timed out"); error.name = "AbortError"; throw error; },
+    },
+    {
+      name: "network", expected: "provider_network_error", expectedCategory: "network", expectedStatus: null,
+      fetch: async () => { throw new TypeError("offline"); },
+    },
+  ];
+  for (const fixture of failures) {
+    const exchanges = [];
+    const classifier = createRequirementEvidenceClassifier(
+      environment, fixture.fetch, policy, { recordEvaluationExchange(value) { exchanges.push(value); } }, runtime,
+    );
+    const result = await classifier.classify(input);
+    assert.equal(result.classifier_provider, "fallback", fixture.name);
+    assert.equal(exchanges.length, 1, fixture.name);
+    assert.equal(exchanges[0].outcome, fixture.expected, fixture.name);
+    assert.equal(exchanges[0].errorCategory, fixture.expectedCategory, fixture.name);
+    assert.equal(exchanges[0].httpStatus, fixture.expectedStatus, fixture.name);
+  }
+
+  const malformedExchanges = [];
+  const malformedClassifier = createRequirementEvidenceClassifier(
+    environment,
+    async () => ({
+      ok: true, status: 200, headers: { get() { return null; } }, async text() { return "{not-json"; },
+    }),
+    policy,
+    { recordEvaluationExchange(value) { malformedExchanges.push(value); } },
+    runtime,
+  );
+  const malformedResult = await malformedClassifier.classify(input);
+  assert.equal(malformedResult.classifier_provider, "fallback");
+  assert.equal(malformedExchanges[0].outcome, "malformed_transport_json");
+  assert.equal(malformedExchanges[0].rawResponseText, "{not-json");
+  assert.equal(malformedExchanges[0].parsedTransportJson, null);
+});
+
+test("evaluation observer exceptions cannot alter successful classifier behavior", async () => {
+  const { createRequirementEvidenceClassifier } = await loadTsModule("lib/requirementEvidenceClassifier.ts");
+  const input = {
+    requirement: {
+      id: "customer_notification_unauthorized_access", title: "Customer notification",
+      description: "Notify affected customers.", retrievalQuery: "notification",
+      directSignals: ["customer notification"], actionSignals: ["notify"], topicSignals: ["customer"],
+      partialSignals: [], backgroundSignals: [], coverageElements: [], requiredElementsForCovered: [], optionalElements: [],
+    },
+    evaluationGuidance: "Classify evidence.", chunkContent: "General administrative text.",
+    candidateChunkId: "candidate-1", evaluationCaseId: "case-1",
+    chunkMetadata: {
+      filename: "policy.pdf", sectionPath: "General", pageStart: 1, pageEnd: 1, chunkIndex: 0,
+      sourceType: "client_policy", evidenceRole: "organization_evidence", evidenceReason: null,
+    },
+  };
+  const providerBody = { choices: [{ message: { content: JSON.stringify({
+    relationship: "irrelevant", confidence: "high", requirement_supported: false,
+    control_absent_or_out_of_scope: false, covered_elements: [], missing_elements: [], vague_elements: [],
+    reason: "Unrelated.", supporting_quote: null,
+  }) } }] };
+  const classifier = createRequirementEvidenceClassifier({
+    ENABLE_EXTERNAL_AI_PROCESSING: "true", ENABLE_EXTERNAL_AI_CLASSIFIER: "true",
+    REQUIREMENT_CLASSIFIER_PROVIDER: "openai", REQUIREMENT_CLASSIFIER_MODEL: "gpt-test",
+    REQUIREMENT_CLASSIFIER_API_KEY: "test-key",
+  }, async () => ({
+    ok: true, status: 200, headers: { get() { return null; } }, async text() { return JSON.stringify(providerBody); },
+  }), { workspaceId: "workspace-1", workspaceConsentEnabled: true }, {
+    recordEvaluationExchange() { throw new Error("observer failed"); },
+  });
+  const result = await classifier.classify(input);
+  assert.equal(result.classifier_provider, "openai");
+  assert.equal(result.relationship, "irrelevant");
+});
+
 test("LLM classifier falls back to deterministic heuristic when requested but not configured", async () => {
   const { createRequirementEvidenceClassifier } = await loadTsModule("lib/requirementEvidenceClassifier.ts");
   const classifier = createRequirementEvidenceClassifier({

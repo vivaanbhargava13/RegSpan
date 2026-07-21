@@ -86,6 +86,8 @@ export type RequirementEvidenceClassifierTelemetry = {
   strictProviderFailures?: boolean;
   /** Evaluation-only upper bound for one requirement's end-to-end work. */
   requirementWatchdogMs?: number;
+  /** Evaluation-only response lifecycle observer. Production callers leave this unset. */
+  recordEvaluationExchange?: (exchange: RequirementEvidenceClassifierEvaluationExchange) => void;
 };
 
 export type RequirementEvidenceClassifierInput = {
@@ -125,6 +127,84 @@ export type RequirementEvidenceClassification = {
   supporting_quote: string | null;
   classifier_provider: RequirementEvidenceClassifierProvider;
 };
+
+export type OpenAiClassifierRequestBody = {
+  model: string;
+  temperature: 0;
+  response_format: { type: "json_object" };
+  messages: Array<{
+    role: "system" | "user";
+    content: string;
+  }>;
+};
+
+export type OpenAiClassifierUsage = {
+  prompt_tokens: number | null;
+  completion_tokens: number | null;
+  total_tokens: number | null;
+};
+
+export type RequirementEvidenceClassifierEvaluationOutcome =
+  | "model_success"
+  | "deterministic_guardrail"
+  | "provider_http_error"
+  | "provider_rate_limit"
+  | "provider_timeout"
+  | "provider_network_error"
+  | "malformed_transport_json"
+  | "classifier_parse_error"
+  | "post_processing_error"
+  | "fallback";
+
+export type RequirementEvidenceClassifierEvaluationErrorCategory =
+  | RequirementEvidenceClassifierProviderFailureCategory
+  | "malformed_transport_json"
+  | "classifier_parse_error"
+  | "post_processing_error";
+
+export type RequirementEvidenceClassifierEvaluationExchange = {
+  caseId: string | null;
+  requirementId: string;
+  candidateChunkId: string | null;
+  model: string | null;
+  requestBody: OpenAiClassifierRequestBody | null;
+  outcome: RequirementEvidenceClassifierEvaluationOutcome;
+  httpStatus: number | null;
+  retryCount: number;
+  errorCategory: RequirementEvidenceClassifierEvaluationErrorCategory | null;
+  errorMessage: string | null;
+  rawResponseText: string | null;
+  parsedTransportJson: unknown;
+  /** Compatibility alias for parsedTransportJson. */
+  rawProviderResponse: unknown;
+  parsedClassification: Omit<RequirementEvidenceClassification, "classifier_provider"> | null;
+  postProcessedClassification: Omit<RequirementEvidenceClassification, "classifier_provider"> | null;
+  usage: OpenAiClassifierUsage;
+  elapsedMs: number;
+  error: string | null;
+};
+
+function safelyRecordEvaluationExchange(
+  telemetry: RequirementEvidenceClassifierTelemetry | undefined,
+  exchange: RequirementEvidenceClassifierEvaluationExchange,
+) {
+  try {
+    telemetry?.recordEvaluationExchange?.(exchange);
+  } catch {
+    // Evaluation observers must never affect the production classification path.
+  }
+}
+
+function evaluationOutcomeForProviderFailure(
+  httpStatus: number | null,
+  category: RequirementEvidenceClassifierProviderFailureCategory,
+): RequirementEvidenceClassifierEvaluationOutcome {
+  if (httpStatus === 429 || category === "rate_limit") return "provider_rate_limit";
+  if (httpStatus !== null) return "provider_http_error";
+  if (category === "timeout") return "provider_timeout";
+  if (category === "network") return "provider_network_error";
+  return "fallback";
+}
 
 export type RequirementEvidenceClassifier = {
   provider: RequirementEvidenceClassifierProvider;
@@ -1960,7 +2040,7 @@ function chunkHasExplicitAbsenceLanguage(input: RequirementEvidenceClassifierInp
   return detectSentenceScopedNegativeEvidence(input).isNegativeEvidence;
 }
 
-function parseOpenAiClassification(
+export function parseOpenAiClassification(
   body: unknown,
   requirement: RegSpRequirement,
 ): Omit<RequirementEvidenceClassification, "classifier_provider"> {
@@ -1993,6 +2073,17 @@ function parseOpenAiClassification(
     vague_elements: sanitizeElementIds(parsed.vague_elements, requirement),
     reason: coerceString(parsed.reason, "Classifier did not provide a reason."),
     supporting_quote: coerceNullableString(parsed.supporting_quote),
+  };
+}
+
+export function openAiClassifierUsage(body: unknown): OpenAiClassifierUsage {
+  const usage = (body as { usage?: Record<string, unknown> } | null)?.usage;
+  const tokenCount = (value: unknown) =>
+    typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : null;
+  return {
+    prompt_tokens: tokenCount(usage?.prompt_tokens),
+    completion_tokens: tokenCount(usage?.completion_tokens),
+    total_tokens: tokenCount(usage?.total_tokens),
   };
 }
 
@@ -2135,6 +2226,22 @@ export function buildRequirementEvidenceClassifierPrompt(input: RequirementEvide
   };
 }
 
+export function buildOpenAiClassifierRequestBody(
+  input: RequirementEvidenceClassifierInput,
+  model: string,
+): OpenAiClassifierRequestBody {
+  const prompt = buildRequirementEvidenceClassifierPrompt(input);
+  return {
+    model,
+    temperature: 0,
+    response_format: { type: "json_object" },
+    messages: [
+      { role: "system", content: prompt.system },
+      { role: "user", content: prompt.user },
+    ],
+  };
+}
+
 export function createRequirementEvidenceClassifier(
   environment: ClassifierEnvironment = process.env,
   fetchImplementation: typeof fetch = fetch,
@@ -2206,6 +2313,26 @@ export function createRequirementEvidenceClassifier(
     async classify(input) {
       const heuristicGuardrail = classifyRequirementEvidenceHeuristically(input, "heuristic");
       if (heuristicGuardrail.relationship === "negative_evidence") {
+        safelyRecordEvaluationExchange(telemetry, {
+          caseId: input.evaluationCaseId ?? null,
+          requirementId: input.requirement.id,
+          candidateChunkId: input.candidateChunkId ?? null,
+          model,
+          requestBody: null,
+          outcome: "deterministic_guardrail",
+          httpStatus: null,
+          retryCount: 0,
+          errorCategory: null,
+          errorMessage: null,
+          rawResponseText: null,
+          parsedTransportJson: null,
+          rawProviderResponse: null,
+          parsedClassification: null,
+          postProcessedClassification: heuristicGuardrail,
+          usage: { prompt_tokens: null, completion_tokens: null, total_tokens: null },
+          elapsedMs: 0,
+          error: null,
+        });
         telemetry?.recordPath?.("heuristic_negative_guardrail");
         return {
           ...heuristicGuardrail,
@@ -2214,23 +2341,30 @@ export function createRequirementEvidenceClassifier(
         };
       }
 
-      const prompt = buildRequirementEvidenceClassifierPrompt(input);
+      const requestBody = buildOpenAiClassifierRequestBody(input, model);
       const now = runtime.now ?? (() => Date.now());
       const sleep = runtime.sleep ?? ((milliseconds) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds)));
       const random = runtime.random ?? Math.random;
       const providerScheduler = telemetry?.providerScheduler;
       const requestStartedAt = now();
-      const promptCharacters = prompt.system.length + prompt.user.length;
+      const promptCharacters = requestBody.messages.reduce(
+        (total, message) => total + message.content.length,
+        0,
+      );
       const providerFailure = ({
         httpStatus,
         errorCategory,
         retryAfter,
         requestAttempt,
+        rawResponseText = null,
+        errorMessage = null,
       }: {
         httpStatus: number | null;
         errorCategory: RequirementEvidenceClassifierProviderFailureCategory;
         retryAfter: string | null;
         requestAttempt: number;
+        rawResponseText?: string | null;
+        errorMessage?: string | null;
       }) => {
         const event: RequirementEvidenceClassifierProviderFailureEvent = {
           caseId: input.evaluationCaseId ?? null,
@@ -2249,11 +2383,32 @@ export function createRequirementEvidenceClassifier(
         if (telemetry?.strictProviderFailures) {
           throw new RequirementEvidenceClassifierProviderFailureError(event);
         }
-        return {
+        const fallback = {
           ...classifyRequirementEvidenceHeuristically(input, "fallback"),
           reason:
             "LLM classifier failed or returned invalid output; deterministic heuristic fallback was used.",
         };
+        safelyRecordEvaluationExchange(telemetry, {
+          caseId: input.evaluationCaseId ?? null,
+          requirementId: input.requirement.id,
+          candidateChunkId: input.candidateChunkId ?? null,
+          model,
+          requestBody,
+          outcome: evaluationOutcomeForProviderFailure(httpStatus, errorCategory),
+          httpStatus,
+          retryCount: Math.max(0, requestAttempt - 1),
+          errorCategory,
+          errorMessage: errorMessage ?? `Provider request failed: ${errorCategory}.`,
+          rawResponseText,
+          parsedTransportJson: null,
+          rawProviderResponse: null,
+          parsedClassification: null,
+          postProcessedClassification: fallback,
+          usage: { prompt_tokens: null, completion_tokens: null, total_tokens: null },
+          elapsedMs: Math.max(0, now() - requestStartedAt),
+          error: errorMessage ?? `Provider request failed: ${errorCategory}.`,
+        });
+        return fallback;
       };
 
       const retryProviderRequest = async ({
@@ -2314,15 +2469,7 @@ export function createRequirementEvidenceClassifier(
               Authorization: `Bearer ${apiKey}`,
               "Content-Type": "application/json",
             },
-            body: JSON.stringify({
-              model,
-              temperature: 0,
-              response_format: { type: "json_object" },
-              messages: [
-                { role: "system", content: prompt.system },
-                { role: "user", content: prompt.user },
-              ],
-            }),
+            body: JSON.stringify(requestBody),
             signal: controller.signal,
           });
           providerScheduler?.observeResponseHeaders(response.headers, promptCharacters);
@@ -2332,27 +2479,166 @@ export function createRequirementEvidenceClassifier(
             const errorCategory = providerFailureCategoryForHttpStatus(httpStatus);
             const retryAfter = retryAfterForFailure(response);
             if (await retryProviderRequest({ httpStatus, errorCategory, retryAfter, requestAttempt })) continue;
-            return providerFailure({ httpStatus, errorCategory, retryAfter, requestAttempt });
+            let rawResponseText: string | null = null;
+            if (telemetry?.recordEvaluationExchange) {
+              try {
+                rawResponseText = await response.clone().text();
+              } catch {
+                rawResponseText = null;
+              }
+            }
+            return providerFailure({
+              httpStatus,
+              errorCategory,
+              retryAfter,
+              requestAttempt,
+              rawResponseText,
+              errorMessage: `Provider returned HTTP ${httpStatus ?? "error"}.`,
+            });
           }
 
+          let rawResponseText: string | null = null;
+          let parsedTransportJson: unknown = null;
           try {
             providerScheduler?.recordSuccess();
-            const parsed = postProcessOpenAiClassification(
-              parseOpenAiClassification(await response.json(), input.requirement),
-              input,
-            );
+            if (telemetry?.recordEvaluationExchange) {
+              rawResponseText = await response.text();
+              try {
+                parsedTransportJson = JSON.parse(rawResponseText);
+              } catch (error) {
+                const message = error instanceof Error ? error.message : "Malformed transport JSON.";
+                const fallback = {
+                  ...classifyRequirementEvidenceHeuristically(input, "fallback"),
+                  reason: "LLM classifier failed or returned invalid output; deterministic heuristic fallback was used.",
+                };
+                safelyRecordEvaluationExchange(telemetry, {
+                  caseId: input.evaluationCaseId ?? null,
+                  requirementId: input.requirement.id,
+                  candidateChunkId: input.candidateChunkId ?? null,
+                  model,
+                  requestBody,
+                  outcome: "malformed_transport_json",
+                  httpStatus: httpStatusForFailure(response),
+                  retryCount: Math.max(0, requestAttempt - 1),
+                  errorCategory: "malformed_transport_json",
+                  errorMessage: message,
+                  rawResponseText,
+                  parsedTransportJson: null,
+                  rawProviderResponse: null,
+                  parsedClassification: null,
+                  postProcessedClassification: fallback,
+                  usage: { prompt_tokens: null, completion_tokens: null, total_tokens: null },
+                  elapsedMs: Math.max(0, now() - requestStartedAt),
+                  error: message,
+                });
+                telemetry?.recordPath?.("fallback_parse_error");
+                return fallback;
+              }
+            } else {
+              try {
+                parsedTransportJson = await response.json();
+              } catch {
+                telemetry?.recordPath?.("fallback_parse_error");
+                return {
+                  ...classifyRequirementEvidenceHeuristically(input, "fallback"),
+                  reason:
+                    "LLM classifier failed or returned invalid output; deterministic heuristic fallback was used.",
+                };
+              }
+            }
+
+            let parsedClassification: Omit<RequirementEvidenceClassification, "classifier_provider">;
+            try {
+              parsedClassification = parseOpenAiClassification(parsedTransportJson, input.requirement);
+            } catch (error) {
+              const message = error instanceof Error ? error.message : "Classifier response parsing failed.";
+              const fallback = {
+                ...classifyRequirementEvidenceHeuristically(input, "fallback"),
+                reason: "LLM classifier failed or returned invalid output; deterministic heuristic fallback was used.",
+              };
+              safelyRecordEvaluationExchange(telemetry, {
+                caseId: input.evaluationCaseId ?? null,
+                requirementId: input.requirement.id,
+                candidateChunkId: input.candidateChunkId ?? null,
+                model,
+                requestBody,
+                outcome: "classifier_parse_error",
+                httpStatus: httpStatusForFailure(response),
+                retryCount: Math.max(0, requestAttempt - 1),
+                errorCategory: "classifier_parse_error",
+                errorMessage: message,
+                rawResponseText,
+                parsedTransportJson,
+                rawProviderResponse: parsedTransportJson,
+                parsedClassification: null,
+                postProcessedClassification: fallback,
+                usage: openAiClassifierUsage(parsedTransportJson),
+                elapsedMs: Math.max(0, now() - requestStartedAt),
+                error: message,
+              });
+              telemetry?.recordPath?.("fallback_parse_error");
+              return fallback;
+            }
+
+            let parsed: Omit<RequirementEvidenceClassification, "classifier_provider">;
+            try {
+              parsed = postProcessOpenAiClassification(parsedClassification, input);
+            } catch (error) {
+              const message = error instanceof Error ? error.message : "Classifier post-processing failed.";
+              const fallback = {
+                ...classifyRequirementEvidenceHeuristically(input, "fallback"),
+                reason: "LLM classifier failed or returned invalid output; deterministic heuristic fallback was used.",
+              };
+              safelyRecordEvaluationExchange(telemetry, {
+                caseId: input.evaluationCaseId ?? null,
+                requirementId: input.requirement.id,
+                candidateChunkId: input.candidateChunkId ?? null,
+                model,
+                requestBody,
+                outcome: "post_processing_error",
+                httpStatus: httpStatusForFailure(response),
+                retryCount: Math.max(0, requestAttempt - 1),
+                errorCategory: "post_processing_error",
+                errorMessage: message,
+                rawResponseText,
+                parsedTransportJson,
+                rawProviderResponse: parsedTransportJson,
+                parsedClassification,
+                postProcessedClassification: fallback,
+                usage: openAiClassifierUsage(parsedTransportJson),
+                elapsedMs: Math.max(0, now() - requestStartedAt),
+                error: message,
+              });
+              telemetry?.recordPath?.("fallback_parse_error");
+              return fallback;
+            }
+            safelyRecordEvaluationExchange(telemetry, {
+              caseId: input.evaluationCaseId ?? null,
+              requirementId: input.requirement.id,
+              candidateChunkId: input.candidateChunkId ?? null,
+              model,
+              requestBody,
+              outcome: "model_success",
+              httpStatus: httpStatusForFailure(response),
+              retryCount: Math.max(0, requestAttempt - 1),
+              errorCategory: null,
+              errorMessage: null,
+              rawResponseText,
+              parsedTransportJson,
+              rawProviderResponse: parsedTransportJson,
+              parsedClassification,
+              postProcessedClassification: parsed,
+              usage: openAiClassifierUsage(parsedTransportJson),
+              elapsedMs: Math.max(0, now() - requestStartedAt),
+              error: null,
+            });
             telemetry?.recordPath?.("openai_success");
             return {
               ...parsed,
               classifier_provider: "openai",
             };
-          } catch {
-            telemetry?.recordPath?.("fallback_parse_error");
-            return {
-              ...classifyRequirementEvidenceHeuristically(input, "fallback"),
-              reason:
-                "LLM classifier failed or returned invalid output; deterministic heuristic fallback was used.",
-            };
+          } catch (error) {
+            throw error;
           }
         } catch (error) {
           if (error instanceof RequirementEvidenceClassifierProviderFailureError) throw error;
@@ -2360,7 +2646,13 @@ export function createRequirementEvidenceClassifier(
           const errorCategory = providerFailureCategoryForThrownError(error);
           const retryAfter = null;
           if (await retryProviderRequest({ httpStatus, errorCategory, retryAfter, requestAttempt })) continue;
-          return providerFailure({ httpStatus, errorCategory, retryAfter, requestAttempt });
+          return providerFailure({
+            httpStatus,
+            errorCategory,
+            retryAfter,
+            requestAttempt,
+            errorMessage: error instanceof Error ? error.message : "Provider request failed.",
+          });
         } finally {
           clearTimeout(timeout);
           releaseProviderPermit?.();
