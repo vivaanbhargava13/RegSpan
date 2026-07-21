@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -108,8 +109,8 @@ test("v2 fixtures validate imported adjudications, keep worksheets blank, and dr
     ["assessment-monitoring-escalation-partial", "preservation-log-procedure"],
   );
   assert.equal(worksheet.cases.every((item) => item.reviewer_decisions.reviewer_id === null), true);
-  assert.equal(worksheet.multi_candidate_review_case, null);
-  assert.match(worksheet.unresolved_multi_candidate_blocker, /omit original candidate chunk IDs/);
+  assert.equal(worksheet.multi_candidate_review_case.case_id, "recovery-remediation-validation-multi-candidate-review");
+  assert.match(worksheet.unresolved_multi_candidate_blocker, /source-complete but unresolved/);
   const approved = fixtures.cases.filter((item) => item.evaluation_role === "scored");
   for (const fixtureCase of approved) {
     const provenances = [
@@ -151,8 +152,66 @@ test("paid gate rejects incomplete adjudication and missing multi-candidate cove
       ENABLE_EXTERNAL_AI_PROCESSING: "true", ENABLE_EXTERNAL_AI_CLASSIFIER: "true",
       REQUIREMENT_CLASSIFIER_API_KEY: "must-not-be-used",
     }),
-    /No suitable frozen local artifact/,
+    /source-complete but unresolved/,
   );
+});
+
+test("source-complete multi-candidate capture preserves order, stored ids, hashes, and normalized text", async () => {
+  const [fixtures, worksheet, capture] = await Promise.all([
+    readFile(fixturePath, "utf8").then(JSON.parse),
+    readFile("eval-fixtures/classifier-capability/reviewer-worksheet.json", "utf8").then(JSON.parse),
+    readFile("eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json", "utf8").then(JSON.parse),
+  ]);
+  const fixtureCase = fixtures.cases.find((item) => item.id === "recovery-remediation-validation-multi-candidate-review");
+  const worksheetCase = worksheet.multi_candidate_review_case;
+  const normalize = (value) => value.replace(/\r\n?/g, "\n").normalize("NFC");
+  const hash = (value) => createHash("sha256").update(value, "utf8").digest("hex");
+
+  assert.equal(fixtureCase.evaluation_role, "unresolved");
+  assert.equal(capture.order_kind, "newly_captured_retrieval_order");
+  assert.deepEqual(fixtureCase.candidates.map((item) => item.chunk_id), capture.candidates.map((item) => item.chunk_id));
+  assert.deepEqual(worksheetCase.candidates.map((item) => item.candidate_id), capture.candidates.map((item) => item.chunk_id));
+  assert.deepEqual(capture.candidates.map((item) => item.original_position), [1, 2, 3, 4, 5]);
+  for (const [index, candidate] of fixtureCase.candidates.entries()) {
+    const stored = capture.candidates[index];
+    assert.match(candidate.chunk_id, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+    assert.equal(candidate.chunk_id, candidate.stored_provenance.chunk_id);
+    assert.equal(candidate.document_id, candidate.stored_provenance.document_id);
+    assert.equal(candidate.chunk_index, stored.chunk_index);
+    assert.equal(hash(candidate.content_preview), stored.stored_content_sha256);
+    assert.equal(stored.stored_content_sha256, stored.independently_recomputed_sha256);
+    assert.equal(normalize(candidate.content_preview), normalize(stored.exact_stored_content));
+    assert.equal(candidate.stored_provenance.merged_rank, index + 1);
+  }
+  assert.equal(fixtureCase.expected_status.value, null);
+  assert.equal(fixtureCase.expected_supported_elements.value, null);
+  assert.equal(fixtureCase.candidates.every((item) =>
+    item.expected_relationship.value === null
+    && item.expected_covered_elements.value === null
+    && item.direct_support_recovery.value === null
+    && item.hard_negative.value === null), true);
+});
+
+test("duplicate multi-candidates are rejected and unresolved decisions cannot become scored", async () => {
+  const evaluated = await runTsEval(`
+    import { readFile } from "node:fs/promises";
+    import { classifierCapabilityFixtureSuiteHash, validateClassifierCapabilityFixtures } from "./lib/classifierCapabilityEval.ts";
+    const fixtures = JSON.parse(await readFile(${JSON.stringify(fixturePath)}, "utf8"));
+    const multi = fixtures.cases.find((item) => item.id === "recovery-remediation-validation-multi-candidate-review");
+    const duplicate = structuredClone(fixtures);
+    const duplicateMulti = duplicate.cases.find((item) => item.id === multi.id);
+    duplicateMulti.candidates.push(structuredClone(duplicateMulti.candidates[0]));
+    duplicate.suite_hash = classifierCapabilityFixtureSuiteHash(duplicate);
+    let duplicateRejected = false;
+    try { validateClassifierCapabilityFixtures(duplicate); } catch (error) { duplicateRejected = /duplicate/i.test(String(error)); }
+    const scored = structuredClone(fixtures);
+    scored.cases.find((item) => item.id === multi.id).evaluation_role = "scored";
+    scored.suite_hash = classifierCapabilityFixtureSuiteHash(scored);
+    let scoringRejected = false;
+    try { validateClassifierCapabilityFixtures(scored); } catch (error) { scoringRejected = /unconfirmed/i.test(String(error)); }
+    console.log(JSON.stringify({ duplicateRejected, scoringRejected }));
+  `);
+  assert.deepEqual(evaluated, { duplicateRejected: true, scoringRejected: true });
 });
 
 test("fallback and deterministic guardrail candidates are excluded and status false assurance is ordered", async () => {

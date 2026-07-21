@@ -36,16 +36,39 @@ export type ClassifierCapabilityExpectedField<T> = {
 };
 
 export type ClassifierCapabilityCandidateFixture = RetrievedChunk & {
-  expected_relationship: ClassifierCapabilityExpectedField<RequirementEvidenceClassification["relationship"]>;
-  expected_covered_elements: ClassifierCapabilityExpectedField<string[]>;
-  direct_support_recovery: ClassifierCapabilityExpectedField<boolean>;
-  hard_negative: ClassifierCapabilityExpectedField<boolean>;
+  expected_relationship: ClassifierCapabilityExpectedField<RequirementEvidenceClassification["relationship"] | null>;
+  expected_covered_elements: ClassifierCapabilityExpectedField<string[] | null>;
+  direct_support_recovery: ClassifierCapabilityExpectedField<boolean | null>;
+  hard_negative: ClassifierCapabilityExpectedField<boolean | null>;
   source: {
-    kind: "committed_corpus" | "regression_diagnostic";
+    kind: "committed_corpus" | "regression_diagnostic" | "retrieval_capture";
     path: string;
     locator: string;
     content_sha256: string;
     normalization_recipe: string | null;
+  };
+  stored_provenance?: {
+    original_position: number;
+    workspace_id: string;
+    document_id: string;
+    chunk_id: string;
+    chunk_index: number;
+    filename: string;
+    page_start: number;
+    page_end: number;
+    section_path: string | null;
+    stored_content_sha256: string;
+    independently_recomputed_sha256: string;
+    stored_embedding_input_sha256: string;
+    section_heading: string | null;
+    parent_heading: string | null;
+    retrieval_selection_metadata: Record<string, unknown>;
+    semantic_rank: number | null;
+    keyword_rank: number | null;
+    merged_rank: number | null;
+    source_artifact_path: string;
+    source_artifact_locator: string;
+    normalization_recipe: string;
   };
 };
 
@@ -57,8 +80,8 @@ export type ClassifierCapabilityCaseFixture = {
     | "incident_evidence_log_preservation"
     | "recovery_remediation_validation";
   evaluation_role: "scored" | "diagnostic_only" | "unresolved";
-  expected_status: ClassifierCapabilityExpectedField<FindingStatus>;
-  expected_supported_elements: ClassifierCapabilityExpectedField<string[]>;
+  expected_status: ClassifierCapabilityExpectedField<FindingStatus | null>;
+  expected_supported_elements: ClassifierCapabilityExpectedField<string[] | null>;
   notes: string;
   candidates: ClassifierCapabilityCandidateFixture[];
 };
@@ -271,8 +294,18 @@ export function validateClassifierCapabilityFixtures(value: unknown): Classifier
       validateExpectedField(candidate.direct_support_recovery, `${rawCase.id}/${candidate.chunk_id}.direct_support_recovery`);
       validateExpectedField(candidate.hard_negative, `${rawCase.id}/${candidate.chunk_id}.hard_negative`);
       const knownElements = new Set(requirement.coverageElements.map((element) => element.id));
-      if (candidate.expected_covered_elements.value.some((element) => !knownElements.has(element))) {
+      if ((candidate.expected_covered_elements.value ?? []).some((element) => !knownElements.has(element))) {
         throw new Error(`Case ${rawCase.id} expects an unknown coverage element.`);
+      }
+    }
+    if (rawCase.evaluation_role === "unresolved") {
+      if (rawCase.expected_status.value !== null || rawCase.expected_supported_elements.value !== null
+        || rawCase.candidates.some((candidate) =>
+          candidate.expected_relationship.value !== null
+          || candidate.expected_covered_elements.value !== null
+          || candidate.direct_support_recovery.value !== null
+          || candidate.hard_negative.value !== null)) {
+        throw new Error(`Unresolved case ${rawCase.id} must keep every reviewer decision blank.`);
       }
     }
     if (rawCase.evaluation_role === "scored" && !caseHasConfirmedScoringFields(rawCase)) {
@@ -304,8 +337,8 @@ export function paidRunReadinessBlockers(fixtures: ClassifierCapabilityFixtureSu
   const multiCase = multi.case_id ? fixtures.cases.find((item) => item.id === multi.case_id) : null;
   const positiveCandidates = multiCase?.candidates.filter((candidate) =>
     candidate.expected_relationship.value === "supports" || candidate.expected_relationship.value === "partially_supports") ?? [];
-  const positiveElementSets = positiveCandidates.map((candidate) => new Set(candidate.expected_covered_elements.value));
-  const positiveElementUnion = new Set(positiveCandidates.flatMap((candidate) => candidate.expected_covered_elements.value));
+  const positiveElementSets = positiveCandidates.map((candidate) => new Set(candidate.expected_covered_elements.value ?? []));
+  const positiveElementUnion = new Set(positiveCandidates.flatMap((candidate) => candidate.expected_covered_elements.value ?? []));
   const complementarySupport = positiveCandidates.length >= 2
     && positiveElementUnion.size > 0
     && positiveElementSets.every((elements) => elements.size > 0 && elements.size < positiveElementUnion.size);
@@ -389,7 +422,7 @@ export function classifierCapabilityMetrics(fixtures: ClassifierCapabilityFixtur
         directDenominator += 1;
         if (actual.relationship === "supports" && output.exact_quote_valid) directNumerator += 1;
       }
-      const expectedElements = new Set(candidate.expected_covered_elements.value);
+      const expectedElements = new Set(candidate.expected_covered_elements.value ?? []);
       const actualElements = new Set(actual.covered_elements);
       for (const element of actualElements) {
         if (expectedElements.has(element)) tp += 1;
@@ -400,7 +433,7 @@ export function classifierCapabilityMetrics(fixtures: ClassifierCapabilityFixtur
         hardNegativeDenominator += 1;
         if (["irrelevant", "background_context", "negative_evidence"].includes(actual.relationship)) hardNegativeNumerator += 1;
       }
-      if (["supports", "partially_supports"].includes(candidate.expected_relationship.value)) {
+      if (["supports", "partially_supports"].includes(String(candidate.expected_relationship.value))) {
         fixedQuoteDenominator += 1;
         if (output.exact_quote_valid) fixedQuoteNumerator += 1;
       }
@@ -412,6 +445,7 @@ export function classifierCapabilityMetrics(fixtures: ClassifierCapabilityFixtur
     if (allModelSuccess) {
       statusDenominator += 1;
       if (caseOutput.final_requirement_status === fixtureCase.expected_status.value) statusNumerator += 1;
+      if (fixtureCase.expected_status.value === null) continue;
       const expectedRank = statusRank(fixtureCase.expected_status.value);
       const actualRank = statusRank(caseOutput.final_requirement_status);
       if (expectedRank !== null && actualRank !== null) {

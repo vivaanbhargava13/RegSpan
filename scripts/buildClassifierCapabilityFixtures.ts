@@ -17,6 +17,8 @@ import { REG_SP_REQUIREMENTS, type RegSpRequirement, type RegSpRequirementId } f
 const OUTPUT_PATH = "eval-fixtures/classifier-capability/fixtures.v2.json";
 const WORKSHEET_JSON_PATH = "eval-fixtures/classifier-capability/reviewer-worksheet.json";
 const WORKSHEET_MARKDOWN_PATH = "eval-fixtures/classifier-capability/reviewer-worksheet.md";
+const MULTI_CANDIDATE_CAPTURE_PATH = "eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json";
+const MULTI_CANDIDATE_CASE_ID = "recovery-remediation-validation-multi-candidate-review";
 const FROZEN_BASELINE = "d59d1c914397206a7d72aa104edcf4aabcd04bfb";
 const FROZEN_UNCOMMITTED_SOURCE_HASHES: Record<string, string> = {
   "eval-results/requirement-eval-latest.json": "2d9796e2710198cd96efccd83dd304e41f603f4da4d9cf47b28ec1173db47eed",
@@ -40,8 +42,51 @@ const MULTI_CANDIDATE_ARTIFACTS_INSPECTED = [
   "eval-results/classifier-capability/dry-run.json",
   "eval-results/corpus-regspan-v1-isolated-*/results.{json,csv}",
   "eval-results/corpus-regspan-v2-realistic-company-policies-isolated-*/results.{json,csv}",
+  MULTI_CANDIDATE_CAPTURE_PATH,
 ];
-const MULTI_CANDIDATE_BLOCKER = "No suitable frozen local artifact was found. The requirement and retrieval reports preserve ordered candidate text, document IDs, and chunk indexes, but omit original candidate chunk IDs and exact candidate-text hashes; the isolated corpus results contain case summaries rather than ordered candidates. A review case cannot be created without fabricating identity or provenance.";
+const MULTI_CANDIDATE_BLOCKER = `Multi-candidate case ${MULTI_CANDIDATE_CASE_ID} is source-complete but unresolved. Paid mode remains blocked until a reviewer manually adjudicates the final status, case-supported elements, and every candidate relationship, element, direct-support, and hard-negative field.`;
+
+type RetrievalCaptureCandidate = {
+  candidate_id: string;
+  original_position: number;
+  workspace_id: string;
+  document_id: string;
+  chunk_id: string;
+  chunk_index: number;
+  exact_stored_content: string;
+  stored_content_sha256: string;
+  independently_recomputed_sha256: string;
+  stored_embedding_input_sha256: string;
+  filename: string;
+  page_start: number;
+  page_end: number;
+  section_heading: string | null;
+  parent_heading: string | null;
+  section_path: string | null;
+  retrieval_selection_metadata: {
+    similarity: number;
+    evidence_reason: string;
+    rerank_score: number;
+    rerank_reason: string;
+  };
+  semantic_rank: number | null;
+  keyword_rank: number | null;
+  merged_rank: number | null;
+  source_artifact_path: string;
+  source_artifact_locator: string;
+};
+
+type RetrievalCapture = {
+  requirement_id: string;
+  order_kind: "newly_captured_retrieval_order";
+  normalization_recipe: string;
+  unconfirmed_review_aid: string;
+  candidates: RetrievalCaptureCandidate[];
+};
+
+function normalizeCapturedText(value: string) {
+  return value.replace(/\r\n?/g, "\n").normalize("NFC");
+}
 
 const requirementAliases: Array<[RegSpRequirementId, RegSpRequirementId]> = [
   ["incident_assessment_containment_control", "unauthorized_access_detection_escalation"],
@@ -334,8 +379,12 @@ const caseDrafts = [
 
 async function main() {
   const requirements = frozenRequirements();
+  const retrievalCapture = JSON.parse(
+    await readFile(resolve(MULTI_CANDIDATE_CAPTURE_PATH), "utf8"),
+  ) as RetrievalCapture;
   const sourcePaths = new Set([
     ...caseDrafts.flatMap((item) => item.candidates.map((candidate) => candidate.source.path)),
+    MULTI_CANDIDATE_CAPTURE_PATH,
   ]);
   const sourceHashes = new Map<string, string>();
   for (const path of sourcePaths) {
@@ -368,7 +417,7 @@ async function main() {
     source_hash: sourceHashes.get(path)!,
     normalization_recipe: normalizationRecipe,
   });
-  const cases = caseDrafts.map((draft) => {
+  const cases: ClassifierCapabilityCaseFixture[] = caseDrafts.map((draft) => {
     const diagnosticOnly = draft.id === "assessment-monitoring-escalation-partial"
       || draft.id === "preservation-log-procedure";
     const approved = APPROVED_CASE_IDS.has(draft.id);
@@ -420,6 +469,96 @@ async function main() {
       }),
     } as ClassifierCapabilityCaseFixture;
   });
+
+  if (retrievalCapture.requirement_id !== "response_recovery_remediation_validation"
+    || retrievalCapture.order_kind !== "newly_captured_retrieval_order"
+    || retrievalCapture.candidates.length < 3) {
+    throw new Error("The multi-candidate retrieval capture is incomplete or has the wrong requirement.");
+  }
+  const capturedIds = new Set<string>();
+  for (const [index, captured] of retrievalCapture.candidates.entries()) {
+    if (captured.original_position !== index + 1 || captured.merged_rank !== index + 1) {
+      throw new Error("The multi-candidate retrieval order changed.");
+    }
+    if (!/^[0-9a-f]{8}-[0-9a-f-]{27}$/.test(captured.chunk_id)
+      || captured.candidate_id !== captured.chunk_id || capturedIds.has(captured.chunk_id)) {
+      throw new Error("The multi-candidate capture has a duplicate or invalid stored chunk id.");
+    }
+    capturedIds.add(captured.chunk_id);
+    const recomputed = sha256(captured.exact_stored_content);
+    if (captured.stored_content_sha256 !== recomputed
+      || captured.independently_recomputed_sha256 !== recomputed
+      || normalizeCapturedText(captured.exact_stored_content) !== captured.exact_stored_content) {
+      throw new Error(`Stored content verification failed for ${captured.chunk_id}.`);
+    }
+  }
+  const unresolvedProvenance = (captured: RetrievalCaptureCandidate) => ({
+    ...inferred(captured.source_artifact_path, captured.source_artifact_locator),
+    normalization_recipe: retrievalCapture.normalization_recipe,
+  });
+  const capturedCandidates = retrievalCapture.candidates.map((captured) => ({
+    chunk_id: captured.chunk_id,
+    rank: captured.merged_rank,
+    document_id: captured.document_id,
+    filename: captured.filename,
+    page_start: captured.page_start,
+    page_end: captured.page_end,
+    chunk_index: captured.chunk_index,
+    section_path: captured.section_path,
+    content_preview: captured.exact_stored_content,
+    similarity: captured.retrieval_selection_metadata.similarity,
+    evidence_reason: captured.retrieval_selection_metadata.evidence_reason,
+    embedding_input: null,
+    source_type: "client_policy" as const,
+    evidence_role: "organization_evidence" as const,
+    rerank_score: captured.retrieval_selection_metadata.rerank_score,
+    rerank_reason: captured.retrieval_selection_metadata.rerank_reason,
+    expected_relationship: { value: null, provenance: unresolvedProvenance(captured) },
+    expected_covered_elements: { value: null, provenance: unresolvedProvenance(captured) },
+    direct_support_recovery: { value: null, provenance: unresolvedProvenance(captured) },
+    hard_negative: { value: null, provenance: unresolvedProvenance(captured) },
+    source: {
+      kind: "retrieval_capture" as const,
+      path: captured.source_artifact_path,
+      locator: captured.source_artifact_locator,
+      content_sha256: captured.stored_content_sha256,
+      normalization_recipe: retrievalCapture.normalization_recipe,
+    },
+    stored_provenance: {
+      original_position: captured.original_position,
+      workspace_id: captured.workspace_id,
+      document_id: captured.document_id,
+      chunk_id: captured.chunk_id,
+      chunk_index: captured.chunk_index,
+      filename: captured.filename,
+      page_start: captured.page_start,
+      page_end: captured.page_end,
+      section_path: captured.section_path,
+      stored_content_sha256: captured.stored_content_sha256,
+      independently_recomputed_sha256: captured.independently_recomputed_sha256,
+      stored_embedding_input_sha256: captured.stored_embedding_input_sha256,
+      section_heading: captured.section_heading,
+      parent_heading: captured.parent_heading,
+      retrieval_selection_metadata: captured.retrieval_selection_metadata,
+      semantic_rank: captured.semantic_rank,
+      keyword_rank: captured.keyword_rank,
+      merged_rank: captured.merged_rank,
+      source_artifact_path: captured.source_artifact_path,
+      source_artifact_locator: captured.source_artifact_locator,
+      normalization_recipe: retrievalCapture.normalization_recipe,
+    },
+  }));
+  const caseProvenance = unresolvedProvenance(retrievalCapture.candidates[0]);
+  cases.push({
+    id: MULTI_CANDIDATE_CASE_ID,
+    requirement_id: retrievalCapture.requirement_id,
+    category: "recovery_remediation_validation",
+    evaluation_role: "unresolved",
+    expected_status: { value: null, provenance: caseProvenance },
+    expected_supported_elements: { value: null, provenance: caseProvenance },
+    notes: `Newly captured retrieval order. ${retrievalCapture.unconfirmed_review_aid}`,
+    candidates: capturedCandidates,
+  });
   const suiteWithoutHash: Omit<ClassifierCapabilityFixtureSuite, "suite_hash"> = {
     schema_version: CLASSIFIER_CAPABILITY_FIXTURE_SCHEMA,
     fixture_version: "v2",
@@ -429,7 +568,7 @@ async function main() {
     requirement_sha256: Object.fromEntries(requirements.map((requirement) => [requirement.id, jsonHash(requirement)])),
     multi_candidate_review: {
       status: "unresolved",
-      case_id: null,
+      case_id: MULTI_CANDIDATE_CASE_ID,
       blocker: MULTI_CANDIDATE_BLOCKER,
     },
     cases,
@@ -442,47 +581,52 @@ async function main() {
   await mkdir(dirname(outputPath), { recursive: true });
   await writeFile(outputPath, `${JSON.stringify(suite, null, 2)}\n`, "utf8");
 
+  const worksheetCases = cases.map((fixtureCase) => {
+    const requirement = requirements.find((item) => item.id === fixtureCase.requirement_id)!;
+    return {
+      case_id: fixtureCase.id,
+      evaluation_role: fixtureCase.evaluation_role,
+      requirement: {
+        id: requirement.id,
+        title: requirement.title,
+        description: requirement.description,
+        element_definitions: requirement.coverageElements,
+      },
+      proposed_expected_status: fixtureCase.expected_status,
+      proposed_expected_supported_elements: fixtureCase.expected_supported_elements,
+      reviewer_decisions: fixtureCase.id === MULTI_CANDIDATE_CASE_ID
+        ? { expected_status: null, case_supported_elements: null, reviewer_id: null, reviewed_at: null, notes: null }
+        : { expected_status: null, expected_supported_elements: null, reviewer_id: null, reviewed_at: null, notes: null },
+      candidates: fixtureCase.candidates.map((candidate, index) => ({
+        order: candidate.stored_provenance?.original_position ?? index + 1,
+        candidate_id: candidate.chunk_id,
+        exact_candidate_text: candidate.content_preview,
+        proposed_expected_relationship: candidate.expected_relationship,
+        proposed_expected_elements: candidate.expected_covered_elements,
+        proposed_direct_support: candidate.direct_support_recovery,
+        proposed_hard_negative: candidate.hard_negative,
+        source: candidate.source,
+        ...(candidate.stored_provenance ? { stored_provenance: candidate.stored_provenance } : {}),
+        reviewer_decisions: {
+          expected_relationship: null,
+          expected_elements: null,
+          direct_support: null,
+          hard_negative: null,
+          reviewer_id: null,
+          reviewed_at: null,
+          notes: null,
+        },
+      })),
+    };
+  });
+  const multiCandidateWorksheetCase = worksheetCases.find((item) => item.case_id === MULTI_CANDIDATE_CASE_ID)!;
   const worksheet = {
     schema_version: "classifier-capability-reviewer-worksheet/v1",
     fixture_suite_hash: suite.suite_hash,
     unresolved_multi_candidate_blocker: suite.multi_candidate_review.blocker,
     multi_candidate_artifacts_inspected: MULTI_CANDIDATE_ARTIFACTS_INSPECTED,
-    multi_candidate_review_case: null,
-    cases: cases.map((fixtureCase) => {
-      const requirement = requirements.find((item) => item.id === fixtureCase.requirement_id)!;
-      return {
-        case_id: fixtureCase.id,
-        evaluation_role: fixtureCase.evaluation_role,
-        requirement: {
-          id: requirement.id,
-          title: requirement.title,
-          description: requirement.description,
-          element_definitions: requirement.coverageElements,
-        },
-        proposed_expected_status: fixtureCase.expected_status,
-        proposed_expected_supported_elements: fixtureCase.expected_supported_elements,
-        reviewer_decisions: { expected_status: null, expected_supported_elements: null, reviewer_id: null, reviewed_at: null, notes: null },
-        candidates: fixtureCase.candidates.map((candidate, index) => ({
-          order: index + 1,
-          candidate_id: candidate.chunk_id,
-          exact_candidate_text: candidate.content_preview,
-          proposed_expected_relationship: candidate.expected_relationship,
-          proposed_expected_elements: candidate.expected_covered_elements,
-          proposed_direct_support: candidate.direct_support_recovery,
-          proposed_hard_negative: candidate.hard_negative,
-          source: candidate.source,
-          reviewer_decisions: {
-            expected_relationship: null,
-            expected_elements: null,
-            direct_support: null,
-            hard_negative: null,
-            reviewer_id: null,
-            reviewed_at: null,
-            notes: null,
-          },
-        })),
-      };
-    }),
+    multi_candidate_review_case: multiCandidateWorksheetCase,
+    cases: worksheetCases.filter((item) => item.case_id !== MULTI_CANDIDATE_CASE_ID),
   };
   await writeFile(resolve(WORKSHEET_JSON_PATH), `${JSON.stringify(worksheet, null, 2)}\n`, "utf8");
   const markdown = [
@@ -498,20 +642,27 @@ async function main() {
     "",
     ...MULTI_CANDIDATE_ARTIFACTS_INSPECTED.map((path) => `- \`${path}\``),
     "",
-    "No multi-candidate review section was added because doing so would require fabricating missing candidate IDs or hashes.",
+    "The historical reports could not be reconstructed because their stored chunks no longer exist. The multi-candidate section below preserves a newly captured, document-scoped retrieval order and remains entirely unresolved.",
     "",
-    ...worksheet.cases.flatMap((fixtureCase) => [
-      `## ${fixtureCase.case_id}`,
+    ...[...worksheet.cases, worksheet.multi_candidate_review_case].flatMap((fixtureCase) => [
+      fixtureCase.case_id === MULTI_CANDIDATE_CASE_ID
+        ? `## Multi-candidate review: ${fixtureCase.case_id}`
+        : `## ${fixtureCase.case_id}`,
       "",
       `Role: \`${fixtureCase.evaluation_role}\``,
       `Requirement: **${fixtureCase.requirement.title}** (\`${fixtureCase.requirement.id}\`)`,
       fixtureCase.requirement.description,
       "",
-      `Proposed final status: \`${fixtureCase.proposed_expected_status.value}\``,
-      `Proposed supported elements: \`${fixtureCase.proposed_expected_supported_elements.value.join(", ") || "none"}\``,
+      ...(fixtureCase.case_id === MULTI_CANDIDATE_CASE_ID
+        ? ["Unconfirmed review aid only: Candidates 1 and 3 appear capable of complementary operative detail; Candidate 2 appears to be a high-signal inventory distractor; Candidate 5 may be a controls-context distractor.", ""]
+        : [
+          `Proposed final status: \`${fixtureCase.proposed_expected_status.value}\``,
+          `Proposed supported elements: \`${fixtureCase.proposed_expected_supported_elements.value?.join(", ") || "none"}\``,
+          "",
+        ]),
       "",
       "Reviewer final status: ____________________",
-      "Reviewer supported elements: ____________________",
+      "Reviewer case-supported elements: ____________________",
       "Reviewer ID: ____________________",
       "Reviewed at: ____________________",
       "",
@@ -522,9 +673,21 @@ async function main() {
         candidate.exact_candidate_text,
         "```",
         "",
-        `Proposed: relationship \`${candidate.proposed_expected_relationship.value}\`; elements \`${candidate.proposed_expected_elements.value.join(", ") || "none"}\`; direct-support \`${candidate.proposed_direct_support.value}\`; hard-negative \`${candidate.proposed_hard_negative.value}\`.`,
-        "",
+        ...(fixtureCase.case_id === MULTI_CANDIDATE_CASE_ID
+          ? []
+          : [
+            `Proposed: relationship \`${candidate.proposed_expected_relationship.value}\`; elements \`${candidate.proposed_expected_elements.value?.join(", ") || "none"}\`; direct-support \`${candidate.proposed_direct_support.value}\`; hard-negative \`${candidate.proposed_hard_negative.value}\`.`,
+            "",
+          ]),
         `Provenance: \`${candidate.proposed_expected_relationship.provenance.source_type}\`, ${candidate.proposed_expected_relationship.provenance.source_path}, ${candidate.proposed_expected_relationship.provenance.source_locator}.`,
+        ...(candidate.stored_provenance ? [
+          `Stored row: workspace \`${candidate.stored_provenance.workspace_id}\`; document \`${candidate.stored_provenance.document_id}\`; chunk \`${candidate.stored_provenance.chunk_id}\`; index \`${candidate.stored_provenance.chunk_index}\`; original position \`${candidate.stored_provenance.original_position}\`.`,
+          `Citation: ${candidate.stored_provenance.filename}, pages ${candidate.stored_provenance.page_start}-${candidate.stored_provenance.page_end}; section \`${candidate.stored_provenance.section_heading}\`; parent \`${candidate.stored_provenance.parent_heading}\`; path \`${candidate.stored_provenance.section_path}\`.`,
+          `Hashes: stored source \`${candidate.stored_provenance.stored_content_sha256}\`; recomputed \`${candidate.stored_provenance.independently_recomputed_sha256}\`; stored embedding input \`${candidate.stored_provenance.stored_embedding_input_sha256}\`.`,
+          `Ranks: semantic \`${candidate.stored_provenance.semantic_rank ?? "unavailable"}\`; keyword \`${candidate.stored_provenance.keyword_rank ?? "unavailable"}\`; merged \`${candidate.stored_provenance.merged_rank ?? "unavailable"}\`. Retrieval selection: \`${JSON.stringify(candidate.stored_provenance.retrieval_selection_metadata)}\`.`,
+          `Normalization: ${candidate.stored_provenance.normalization_recipe}`,
+          "",
+        ] : []),
         "",
         "Reviewer relationship: ____________________",
         "Reviewer elements: ____________________",

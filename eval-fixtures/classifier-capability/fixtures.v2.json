@@ -355,8 +355,8 @@
   },
   "multi_candidate_review": {
     "status": "unresolved",
-    "case_id": null,
-    "blocker": "No suitable frozen local artifact was found. The requirement and retrieval reports preserve ordered candidate text, document IDs, and chunk indexes, but omit original candidate chunk IDs and exact candidate-text hashes; the isolated corpus results contain case summaries rather than ordered candidates. A review case cannot be created without fabricating identity or provenance."
+    "case_id": "recovery-remediation-validation-multi-candidate-review",
+    "blocker": "Multi-candidate case recovery-remediation-validation-multi-candidate-review is source-complete but unresolved. Paid mode remains blocked until a reviewer manually adjudicates the final status, case-supported elements, and every candidate relationship, element, direct-support, and hard-negative field."
   },
   "cases": [
     {
@@ -1621,7 +1621,567 @@
           "normalization_recipe": null
         }
       }
+    },
+    {
+      "id": "recovery-remediation-validation-multi-candidate-review",
+      "requirement_id": "response_recovery_remediation_validation",
+      "category": "recovery_remediation_validation",
+      "evaluation_role": "unresolved",
+      "expected_status": {
+        "value": null,
+        "provenance": {
+          "confirmed": false,
+          "source_type": "implementation_inference",
+          "reviewer_id": null,
+          "reviewed_at": null,
+          "source_path": "eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json",
+          "source_locator": "candidates[0]",
+          "source_hash": "1fa1229a39d731d4474e48980b800c0b54ba83b84686a6a57ee4d8cfbdfc6a88",
+          "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+        }
+      },
+      "expected_supported_elements": {
+        "value": null,
+        "provenance": {
+          "confirmed": false,
+          "source_type": "implementation_inference",
+          "reviewer_id": null,
+          "reviewed_at": null,
+          "source_path": "eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json",
+          "source_locator": "candidates[0]",
+          "source_hash": "1fa1229a39d731d4474e48980b800c0b54ba83b84686a6a57ee4d8cfbdfc6a88",
+          "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+        }
+      },
+      "notes": "Newly captured retrieval order. Candidates 1 and 3 appear capable of supplying complementary operative recovery, remediation, and validation detail. Candidate 2 appears to be a high-signal distractor because it is an incident-file contents inventory rather than necessarily an operative procedure. Candidate 5 may provide another high-signal controls-context distractor. These observations are not reviewer decisions or labels.",
+      "candidates": [
+        {
+          "chunk_id": "5e7de7c7-f2b1-4550-a35f-aabdf8289972",
+          "rank": 1,
+          "document_id": "0cca8649-fd13-42f1-b259-28e54d12fe37",
+          "filename": "northline_regulation_sp_policy.pdf",
+          "page_start": 6,
+          "page_end": 6,
+          "chunk_index": 13,
+          "section_path": "14. Recovery, Remediation, and Validation",
+          "content_preview": "14. Recovery, Remediation, and Validation\n\nRecovery begins after the response lead confirms that immediate containment is stable. System owners restore services\nfrom approved configurations and backups, reset or reissue credentials, apply patches or configuration changes, and\nverify that unauthorized access paths have been removed.\nBefore returning a material customer information system to normal operation, the owner validates security logging,\naccess permissions, data integrity, critical transactions, and required business functions. Remediation items are\nassigned owners and due dates and remain open until evidence of completion is reviewed.\n\n• document restored systems and data sources;\n• perform targeted monitoring for recurrence;\n• confirm customer-service and notice obligations remain on track;\n• complete a lessons-learned review and update procedures, safeguards, or service-provider requirements;\n• obtain closure approval from the incident lead and Compliance.",
+          "similarity": 1,
+          "evidence_reason": "meaningful_policy_context",
+          "embedding_input": null,
+          "source_type": "client_policy",
+          "evidence_role": "organization_evidence",
+          "rerank_score": 158,
+          "rerank_reason": "semantic 100.0; action signals: recover, remediation, confirm; topic signals: recovery, remediation, validation; section/path signals: recover, remediation; role organization_evidence; source client_policy; classifier meaningful policy context",
+          "expected_relationship": {
+            "value": null,
+            "provenance": {
+              "confirmed": false,
+              "source_type": "implementation_inference",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json",
+              "source_locator": "candidates[0]",
+              "source_hash": "1fa1229a39d731d4474e48980b800c0b54ba83b84686a6a57ee4d8cfbdfc6a88",
+              "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+            }
+          },
+          "expected_covered_elements": {
+            "value": null,
+            "provenance": {
+              "confirmed": false,
+              "source_type": "implementation_inference",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json",
+              "source_locator": "candidates[0]",
+              "source_hash": "1fa1229a39d731d4474e48980b800c0b54ba83b84686a6a57ee4d8cfbdfc6a88",
+              "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+            }
+          },
+          "direct_support_recovery": {
+            "value": null,
+            "provenance": {
+              "confirmed": false,
+              "source_type": "implementation_inference",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json",
+              "source_locator": "candidates[0]",
+              "source_hash": "1fa1229a39d731d4474e48980b800c0b54ba83b84686a6a57ee4d8cfbdfc6a88",
+              "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+            }
+          },
+          "hard_negative": {
+            "value": null,
+            "provenance": {
+              "confirmed": false,
+              "source_type": "implementation_inference",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json",
+              "source_locator": "candidates[0]",
+              "source_hash": "1fa1229a39d731d4474e48980b800c0b54ba83b84686a6a57ee4d8cfbdfc6a88",
+              "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+            }
+          },
+          "source": {
+            "kind": "retrieval_capture",
+            "path": "eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json",
+            "locator": "candidates[0]",
+            "content_sha256": "22613ed6414b147e970c986979c32578ff1deffd8146f7e5f5949e144d1942fc",
+            "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+          },
+          "stored_provenance": {
+            "original_position": 1,
+            "workspace_id": "af584c33-42fe-4ce4-b641-c3b381c98214",
+            "document_id": "0cca8649-fd13-42f1-b259-28e54d12fe37",
+            "chunk_id": "5e7de7c7-f2b1-4550-a35f-aabdf8289972",
+            "chunk_index": 13,
+            "filename": "northline_regulation_sp_policy.pdf",
+            "page_start": 6,
+            "page_end": 6,
+            "section_path": "14. Recovery, Remediation, and Validation",
+            "stored_content_sha256": "22613ed6414b147e970c986979c32578ff1deffd8146f7e5f5949e144d1942fc",
+            "independently_recomputed_sha256": "22613ed6414b147e970c986979c32578ff1deffd8146f7e5f5949e144d1942fc",
+            "stored_embedding_input_sha256": "70eebb19c4f136173d33ed1ceb6d3c3bce2a3fd230556a95c0ac4ca646d54302",
+            "section_heading": "14. Recovery, Remediation, and Validation",
+            "parent_heading": "Document",
+            "retrieval_selection_metadata": {
+              "similarity": 1,
+              "evidence_reason": "meaningful_policy_context",
+              "rerank_score": 158,
+              "rerank_reason": "semantic 100.0; action signals: recover, remediation, confirm; topic signals: recovery, remediation, validation; section/path signals: recover, remediation; role organization_evidence; source client_policy; classifier meaningful policy context"
+            },
+            "semantic_rank": null,
+            "keyword_rank": null,
+            "merged_rank": 1,
+            "source_artifact_path": "eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json",
+            "source_artifact_locator": "candidates[0]",
+            "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+          }
+        },
+        {
+          "chunk_id": "8c104761-0821-4330-9cfc-5b843b4d5175",
+          "rank": 2,
+          "document_id": "0cca8649-fd13-42f1-b259-28e54d12fe37",
+          "filename": "northline_regulation_sp_policy.pdf",
+          "page_start": 7,
+          "page_end": 7,
+          "chunk_index": 16,
+          "section_path": "17. Appendix A - Incident File Minimum Contents",
+          "content_preview": "17. Appendix A - Incident File Minimum Contents\n\n• incident identifier, discovery date, and awareness date;\n• affected systems, business processes, customer information types, and individuals;\n• investigation timeline, containment actions, and recovery steps;\n• notification analysis, decision, approvals, and copies of notices;\n• service-provider notices, contracts, communications, and remediation;\n• logs, exports, screenshots, evidence sources, and preservation details;\n• corrective actions, validation results, post-incident findings, and closure approval.",
+          "similarity": 0.795002243099655,
+          "evidence_reason": "meaningful_policy_context",
+          "embedding_input": null,
+          "source_type": "client_policy",
+          "evidence_role": "organization_evidence",
+          "rerank_score": 139.5,
+          "rerank_reason": "semantic 79.5; direct signals: corrective action, corrective actions; action signals: recover, remediation, corrective action; topic signals: recovery, remediation, validation; section/path signals: incident; role organization_evidence; source client_policy; classifier meaningful policy context",
+          "expected_relationship": {
+            "value": null,
+            "provenance": {
+              "confirmed": false,
+              "source_type": "implementation_inference",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json",
+              "source_locator": "candidates[1]",
+              "source_hash": "1fa1229a39d731d4474e48980b800c0b54ba83b84686a6a57ee4d8cfbdfc6a88",
+              "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+            }
+          },
+          "expected_covered_elements": {
+            "value": null,
+            "provenance": {
+              "confirmed": false,
+              "source_type": "implementation_inference",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json",
+              "source_locator": "candidates[1]",
+              "source_hash": "1fa1229a39d731d4474e48980b800c0b54ba83b84686a6a57ee4d8cfbdfc6a88",
+              "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+            }
+          },
+          "direct_support_recovery": {
+            "value": null,
+            "provenance": {
+              "confirmed": false,
+              "source_type": "implementation_inference",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json",
+              "source_locator": "candidates[1]",
+              "source_hash": "1fa1229a39d731d4474e48980b800c0b54ba83b84686a6a57ee4d8cfbdfc6a88",
+              "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+            }
+          },
+          "hard_negative": {
+            "value": null,
+            "provenance": {
+              "confirmed": false,
+              "source_type": "implementation_inference",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json",
+              "source_locator": "candidates[1]",
+              "source_hash": "1fa1229a39d731d4474e48980b800c0b54ba83b84686a6a57ee4d8cfbdfc6a88",
+              "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+            }
+          },
+          "source": {
+            "kind": "retrieval_capture",
+            "path": "eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json",
+            "locator": "candidates[1]",
+            "content_sha256": "7dce6f4d89abb84465546fae07568a2fc3d218b6390d15f6aa9606237cd78322",
+            "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+          },
+          "stored_provenance": {
+            "original_position": 2,
+            "workspace_id": "af584c33-42fe-4ce4-b641-c3b381c98214",
+            "document_id": "0cca8649-fd13-42f1-b259-28e54d12fe37",
+            "chunk_id": "8c104761-0821-4330-9cfc-5b843b4d5175",
+            "chunk_index": 16,
+            "filename": "northline_regulation_sp_policy.pdf",
+            "page_start": 7,
+            "page_end": 7,
+            "section_path": "17. Appendix A - Incident File Minimum Contents",
+            "stored_content_sha256": "7dce6f4d89abb84465546fae07568a2fc3d218b6390d15f6aa9606237cd78322",
+            "independently_recomputed_sha256": "7dce6f4d89abb84465546fae07568a2fc3d218b6390d15f6aa9606237cd78322",
+            "stored_embedding_input_sha256": "6a44d45ae586bf804bbd0f1e3ef7098790d3219e198a5ce2daf345f834e3420f",
+            "section_heading": "17. Appendix A - Incident File Minimum Contents",
+            "parent_heading": "Document",
+            "retrieval_selection_metadata": {
+              "similarity": 0.795002243099655,
+              "evidence_reason": "meaningful_policy_context",
+              "rerank_score": 139.5,
+              "rerank_reason": "semantic 79.5; direct signals: corrective action, corrective actions; action signals: recover, remediation, corrective action; topic signals: recovery, remediation, validation; section/path signals: incident; role organization_evidence; source client_policy; classifier meaningful policy context"
+            },
+            "semantic_rank": null,
+            "keyword_rank": null,
+            "merged_rank": 2,
+            "source_artifact_path": "eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json",
+            "source_artifact_locator": "candidates[1]",
+            "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+          }
+        },
+        {
+          "chunk_id": "f67e4e3d-d73a-4cc8-a331-04bb9f2c1b6e",
+          "rank": 3,
+          "document_id": "0cca8649-fd13-42f1-b259-28e54d12fe37",
+          "filename": "northline_regulation_sp_policy.pdf",
+          "page_start": 3,
+          "page_end": 3,
+          "chunk_index": 3,
+          "section_path": "4. Cyber Incident Response Governance",
+          "content_preview": "4. Cyber Incident Response Governance\n\nNorthline Brokerage Services, Inc. maintains this written incident response program as part of its customer information\nsafeguards framework. The program is reasonably designed to detect, respond to, and recover from unauthorized\naccess to or use of customer information. It applies to customer information in paper, electronic, and other forms,\nincluding information maintained by service providers on the firm's behalf.\nThe program begins when monitoring, employee reporting, a service-provider notice, or another reliable source indicates\nthat unauthorized access or use has occurred or is reasonably likely to have occurred. The Incident Response Lead\nopens a case, assigns severity, preserves relevant records, and coordinates assessment, containment, customer-notice\nanalysis, recovery, and closure.\n\n• Detect: monitor security alerts, access anomalies, customer complaints, lost devices, vendor notices, and misuse\nreports.\n• Respond: investigate, contain, control, communicate, and document decisions.\n• Recover: restore approved services, remediate root causes, validate controls and access, and complete a\npost-incident review.",
+          "similarity": 0.80532111990042,
+          "evidence_reason": "meaningful_policy_context",
+          "embedding_input": null,
+          "source_type": "client_policy",
+          "evidence_role": "organization_evidence",
+          "rerank_score": 126.53,
+          "rerank_reason": "semantic 80.5; direct signals: recover from unauthorized access; action signals: recover, remediate, validate; topic signals: recovery, closure, incident; section/path signals: incident, response; preferred sections: written incident response program; less relevant sections: vendor, service provider; role organization_evidence; source client_policy; classifier meaningful policy context",
+          "expected_relationship": {
+            "value": null,
+            "provenance": {
+              "confirmed": false,
+              "source_type": "implementation_inference",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json",
+              "source_locator": "candidates[2]",
+              "source_hash": "1fa1229a39d731d4474e48980b800c0b54ba83b84686a6a57ee4d8cfbdfc6a88",
+              "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+            }
+          },
+          "expected_covered_elements": {
+            "value": null,
+            "provenance": {
+              "confirmed": false,
+              "source_type": "implementation_inference",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json",
+              "source_locator": "candidates[2]",
+              "source_hash": "1fa1229a39d731d4474e48980b800c0b54ba83b84686a6a57ee4d8cfbdfc6a88",
+              "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+            }
+          },
+          "direct_support_recovery": {
+            "value": null,
+            "provenance": {
+              "confirmed": false,
+              "source_type": "implementation_inference",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json",
+              "source_locator": "candidates[2]",
+              "source_hash": "1fa1229a39d731d4474e48980b800c0b54ba83b84686a6a57ee4d8cfbdfc6a88",
+              "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+            }
+          },
+          "hard_negative": {
+            "value": null,
+            "provenance": {
+              "confirmed": false,
+              "source_type": "implementation_inference",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json",
+              "source_locator": "candidates[2]",
+              "source_hash": "1fa1229a39d731d4474e48980b800c0b54ba83b84686a6a57ee4d8cfbdfc6a88",
+              "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+            }
+          },
+          "source": {
+            "kind": "retrieval_capture",
+            "path": "eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json",
+            "locator": "candidates[2]",
+            "content_sha256": "ad8d9652a9012326951de4e989cfc0b4c04765b63ca80b5fc50268247ec3156b",
+            "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+          },
+          "stored_provenance": {
+            "original_position": 3,
+            "workspace_id": "af584c33-42fe-4ce4-b641-c3b381c98214",
+            "document_id": "0cca8649-fd13-42f1-b259-28e54d12fe37",
+            "chunk_id": "f67e4e3d-d73a-4cc8-a331-04bb9f2c1b6e",
+            "chunk_index": 3,
+            "filename": "northline_regulation_sp_policy.pdf",
+            "page_start": 3,
+            "page_end": 3,
+            "section_path": "4. Cyber Incident Response Governance",
+            "stored_content_sha256": "ad8d9652a9012326951de4e989cfc0b4c04765b63ca80b5fc50268247ec3156b",
+            "independently_recomputed_sha256": "ad8d9652a9012326951de4e989cfc0b4c04765b63ca80b5fc50268247ec3156b",
+            "stored_embedding_input_sha256": "4942e75572bf3038dac556b87c6924105cba6694a4c45902dc90b43e1653024b",
+            "section_heading": "4. Cyber Incident Response Governance",
+            "parent_heading": "Document",
+            "retrieval_selection_metadata": {
+              "similarity": 0.80532111990042,
+              "evidence_reason": "meaningful_policy_context",
+              "rerank_score": 126.53,
+              "rerank_reason": "semantic 80.5; direct signals: recover from unauthorized access; action signals: recover, remediate, validate; topic signals: recovery, closure, incident; section/path signals: incident, response; preferred sections: written incident response program; less relevant sections: vendor, service provider; role organization_evidence; source client_policy; classifier meaningful policy context"
+            },
+            "semantic_rank": null,
+            "keyword_rank": null,
+            "merged_rank": 3,
+            "source_artifact_path": "eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json",
+            "source_artifact_locator": "candidates[2]",
+            "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+          }
+        },
+        {
+          "chunk_id": "88ca5971-6e57-4aa1-998b-658eb2482105",
+          "rank": 4,
+          "document_id": "0cca8649-fd13-42f1-b259-28e54d12fe37",
+          "filename": "northline_regulation_sp_policy.pdf",
+          "page_start": 6,
+          "page_end": 6,
+          "chunk_index": 11,
+          "section_path": "12. Logging and Investigation Records",
+          "content_preview": "12. Logging and Investigation Records\n\nThe incident manager maintains a contemporaneous incident file containing alerts, system and identity logs, relevant\nexports, screenshots, investigation notes, affected-system and data inventories, decisions, approvals, containment\nsteps, customer-notice analysis, provider communications, recovery tests, and closure documentation.\nRelevant logs and volatile information are preserved promptly. Exports are stored in access-controlled case folders with\nsource, collection time, custodian, and integrity information when material to the investigation. Routine log retention is not\nshortened while an incident, investigation, examination, or legal hold is open.",
+          "similarity": 0.801800376110184,
+          "evidence_reason": "meaningful_policy_context",
+          "embedding_input": null,
+          "source_type": "client_policy",
+          "evidence_role": "organization_evidence",
+          "rerank_score": 111.18,
+          "rerank_reason": "semantic 80.2; action signals: recover, test; topic signals: recovery, closure, incident; role organization_evidence; source client_policy; classifier meaningful policy context",
+          "expected_relationship": {
+            "value": null,
+            "provenance": {
+              "confirmed": false,
+              "source_type": "implementation_inference",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json",
+              "source_locator": "candidates[3]",
+              "source_hash": "1fa1229a39d731d4474e48980b800c0b54ba83b84686a6a57ee4d8cfbdfc6a88",
+              "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+            }
+          },
+          "expected_covered_elements": {
+            "value": null,
+            "provenance": {
+              "confirmed": false,
+              "source_type": "implementation_inference",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json",
+              "source_locator": "candidates[3]",
+              "source_hash": "1fa1229a39d731d4474e48980b800c0b54ba83b84686a6a57ee4d8cfbdfc6a88",
+              "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+            }
+          },
+          "direct_support_recovery": {
+            "value": null,
+            "provenance": {
+              "confirmed": false,
+              "source_type": "implementation_inference",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json",
+              "source_locator": "candidates[3]",
+              "source_hash": "1fa1229a39d731d4474e48980b800c0b54ba83b84686a6a57ee4d8cfbdfc6a88",
+              "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+            }
+          },
+          "hard_negative": {
+            "value": null,
+            "provenance": {
+              "confirmed": false,
+              "source_type": "implementation_inference",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json",
+              "source_locator": "candidates[3]",
+              "source_hash": "1fa1229a39d731d4474e48980b800c0b54ba83b84686a6a57ee4d8cfbdfc6a88",
+              "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+            }
+          },
+          "source": {
+            "kind": "retrieval_capture",
+            "path": "eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json",
+            "locator": "candidates[3]",
+            "content_sha256": "bcee3ecee0a117407c150a303e6a1e85fbdb6321af473644f97bd37337af037a",
+            "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+          },
+          "stored_provenance": {
+            "original_position": 4,
+            "workspace_id": "af584c33-42fe-4ce4-b641-c3b381c98214",
+            "document_id": "0cca8649-fd13-42f1-b259-28e54d12fe37",
+            "chunk_id": "88ca5971-6e57-4aa1-998b-658eb2482105",
+            "chunk_index": 11,
+            "filename": "northline_regulation_sp_policy.pdf",
+            "page_start": 6,
+            "page_end": 6,
+            "section_path": "12. Logging and Investigation Records",
+            "stored_content_sha256": "bcee3ecee0a117407c150a303e6a1e85fbdb6321af473644f97bd37337af037a",
+            "independently_recomputed_sha256": "bcee3ecee0a117407c150a303e6a1e85fbdb6321af473644f97bd37337af037a",
+            "stored_embedding_input_sha256": "1783c179d965521c4407a379b2c6c51eb6011a2f8e597a7b7733346b785925f5",
+            "section_heading": "12. Logging and Investigation Records",
+            "parent_heading": "Document",
+            "retrieval_selection_metadata": {
+              "similarity": 0.801800376110184,
+              "evidence_reason": "meaningful_policy_context",
+              "rerank_score": 111.18,
+              "rerank_reason": "semantic 80.2; action signals: recover, test; topic signals: recovery, closure, incident; role organization_evidence; source client_policy; classifier meaningful policy context"
+            },
+            "semantic_rank": null,
+            "keyword_rank": null,
+            "merged_rank": 4,
+            "source_artifact_path": "eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json",
+            "source_artifact_locator": "candidates[3]",
+            "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+          }
+        },
+        {
+          "chunk_id": "db0f84c9-17e5-4a41-a6e9-a79f444859fd",
+          "rank": 5,
+          "document_id": "0cca8649-fd13-42f1-b259-28e54d12fe37",
+          "filename": "northline_regulation_sp_policy.pdf",
+          "page_start": 5,
+          "page_end": 5,
+          "chunk_index": 8,
+          "section_path": "9. Customer Information Security Controls",
+          "content_preview": "9. Customer Information Security Controls\n\nThe safeguards program applies to customer information in the firm's possession and customer information handled or\nmaintained on its behalf. It also applies to nonpublic personal information received from another financial institution about\nthat institution's customers. Controls are selected to ensure confidentiality, protect against anticipated threats or hazards,\nand prevent unauthorized access or use that could result in substantial harm or inconvenience.\n\n• Administrative safeguards: risk assessment, assigned ownership, workforce training, access approval, change\nmanagement, service-provider oversight, and periodic control review.\n• Technical safeguards: multi-factor authentication, least privilege, encryption in transit and at rest where appropriate,\nendpoint protection, vulnerability management, secure configuration, logging, monitoring, and tested backups.\n• Physical safeguards: controlled office and records-room access, visitor management, locked storage, secure\ntransport, clean-desk expectations, and destruction controls for paper and media.",
+          "similarity": 0.756843237649262,
+          "evidence_reason": "substantive_requirement_or_procedure",
+          "embedding_input": null,
+          "source_type": "client_policy",
+          "evidence_role": "organization_evidence",
+          "rerank_score": 109.68,
+          "rerank_reason": "semantic 75.7; action signals: test; topic signals: vulnerability, appear, unauthorized; section/path signals: customer; role organization_evidence; source client_policy; classifier substantive requirement or procedure",
+          "expected_relationship": {
+            "value": null,
+            "provenance": {
+              "confirmed": false,
+              "source_type": "implementation_inference",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json",
+              "source_locator": "candidates[4]",
+              "source_hash": "1fa1229a39d731d4474e48980b800c0b54ba83b84686a6a57ee4d8cfbdfc6a88",
+              "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+            }
+          },
+          "expected_covered_elements": {
+            "value": null,
+            "provenance": {
+              "confirmed": false,
+              "source_type": "implementation_inference",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json",
+              "source_locator": "candidates[4]",
+              "source_hash": "1fa1229a39d731d4474e48980b800c0b54ba83b84686a6a57ee4d8cfbdfc6a88",
+              "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+            }
+          },
+          "direct_support_recovery": {
+            "value": null,
+            "provenance": {
+              "confirmed": false,
+              "source_type": "implementation_inference",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json",
+              "source_locator": "candidates[4]",
+              "source_hash": "1fa1229a39d731d4474e48980b800c0b54ba83b84686a6a57ee4d8cfbdfc6a88",
+              "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+            }
+          },
+          "hard_negative": {
+            "value": null,
+            "provenance": {
+              "confirmed": false,
+              "source_type": "implementation_inference",
+              "reviewer_id": null,
+              "reviewed_at": null,
+              "source_path": "eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json",
+              "source_locator": "candidates[4]",
+              "source_hash": "1fa1229a39d731d4474e48980b800c0b54ba83b84686a6a57ee4d8cfbdfc6a88",
+              "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+            }
+          },
+          "source": {
+            "kind": "retrieval_capture",
+            "path": "eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json",
+            "locator": "candidates[4]",
+            "content_sha256": "05ccf1538fcfc6bce219215dddce251b2063b8d405e1291573347b1f1b5fd917",
+            "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+          },
+          "stored_provenance": {
+            "original_position": 5,
+            "workspace_id": "af584c33-42fe-4ce4-b641-c3b381c98214",
+            "document_id": "0cca8649-fd13-42f1-b259-28e54d12fe37",
+            "chunk_id": "db0f84c9-17e5-4a41-a6e9-a79f444859fd",
+            "chunk_index": 8,
+            "filename": "northline_regulation_sp_policy.pdf",
+            "page_start": 5,
+            "page_end": 5,
+            "section_path": "9. Customer Information Security Controls",
+            "stored_content_sha256": "05ccf1538fcfc6bce219215dddce251b2063b8d405e1291573347b1f1b5fd917",
+            "independently_recomputed_sha256": "05ccf1538fcfc6bce219215dddce251b2063b8d405e1291573347b1f1b5fd917",
+            "stored_embedding_input_sha256": "21ffefee1018e949a82c46c46afa53d816ecd4c55ebe5e7e7d9f34b0434b881f",
+            "section_heading": "9. Customer Information Security Controls",
+            "parent_heading": "Document",
+            "retrieval_selection_metadata": {
+              "similarity": 0.756843237649262,
+              "evidence_reason": "substantive_requirement_or_procedure",
+              "rerank_score": 109.68,
+              "rerank_reason": "semantic 75.7; action signals: test; topic signals: vulnerability, appear, unauthorized; section/path signals: customer; role organization_evidence; source client_policy; classifier substantive requirement or procedure"
+            },
+            "semantic_rank": null,
+            "keyword_rank": null,
+            "merged_rank": 5,
+            "source_artifact_path": "eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json",
+            "source_artifact_locator": "candidates[4]",
+            "normalization_recipe": "Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace."
+          }
+        }
+      ]
     }
   ],
-  "suite_hash": "9870600f6a6a01d586f3da0de52a5c97a830c3e81a5f5fc4b6879b63a292c8a9"
+  "suite_hash": "8b46bf196f5ca1745b5fb3cb792e1423c74e4db48e781e8c60dc09349bd28e96"
 }

@@ -1,10 +1,10 @@
 # Classifier capability reviewer worksheet
 
-Fixture suite hash: `9870600f6a6a01d586f3da0de52a5c97a830c3e81a5f5fc4b6879b63a292c8a9`
+Fixture suite hash: `8b46bf196f5ca1745b5fb3cb792e1423c74e4db48e781e8c60dc09349bd28e96`
 
 ## Unresolved blocker
 
-No suitable frozen local artifact was found. The requirement and retrieval reports preserve ordered candidate text, document IDs, and chunk indexes, but omit original candidate chunk IDs and exact candidate-text hashes; the isolated corpus results contain case summaries rather than ordered candidates. A review case cannot be created without fabricating identity or provenance.
+Multi-candidate case recovery-remediation-validation-multi-candidate-review is source-complete but unresolved. Paid mode remains blocked until a reviewer manually adjudicates the final status, case-supported elements, and every candidate relationship, element, direct-support, and hard-negative field.
 
 Artifacts inspected:
 
@@ -13,8 +13,9 @@ Artifacts inspected:
 - `eval-results/classifier-capability/dry-run.json`
 - `eval-results/corpus-regspan-v1-isolated-*/results.{json,csv}`
 - `eval-results/corpus-regspan-v2-realistic-company-policies-isolated-*/results.{json,csv}`
+- `eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json`
 
-No multi-candidate review section was added because doing so would require fabricating missing candidate IDs or hashes.
+The historical reports could not be reconstructed because their stored chunks no longer exist. The multi-candidate section below preserves a newly captured, document-scoped retrieval order and remains entirely unresolved.
 
 ## assessment-full-operative-procedure
 
@@ -25,8 +26,9 @@ The reviewed documents appear to define how the firm assesses the nature and sco
 Proposed final status: `covered`
 Proposed supported elements: `assesses_scope, customer_information_systems, containment_control`
 
+
 Reviewer final status: ____________________
-Reviewer supported elements: ____________________
+Reviewer case-supported elements: ____________________
 Reviewer ID: ____________________
 Reviewed at: ____________________
 
@@ -61,8 +63,9 @@ The reviewed documents appear to define how the firm assesses the nature and sco
 Proposed final status: `missing`
 Proposed supported elements: `none`
 
+
 Reviewer final status: ____________________
-Reviewer supported elements: ____________________
+Reviewer case-supported elements: ____________________
 Reviewer ID: ____________________
 Reviewed at: ____________________
 
@@ -91,8 +94,9 @@ The reviewed documents appear to define how the firm assesses the nature and sco
 Proposed final status: `partial`
 Proposed supported elements: `customer_information_systems`
 
+
 Reviewer final status: ____________________
-Reviewer supported elements: ____________________
+Reviewer case-supported elements: ____________________
 Reviewer ID: ____________________
 Reviewed at: ____________________
 
@@ -121,8 +125,9 @@ The reviewed documents appear to preserve logs, records, forensic evidence, and 
 Proposed final status: `covered`
 Proposed supported elements: `incident_materials, integrity_or_chain_of_custody, preservation_process`
 
+
 Reviewer final status: ____________________
-Reviewer supported elements: ____________________
+Reviewer case-supported elements: ____________________
 Reviewer ID: ____________________
 Reviewed at: ____________________
 
@@ -152,8 +157,9 @@ The reviewed documents appear to preserve logs, records, forensic evidence, and 
 Proposed final status: `covered`
 Proposed supported elements: `incident_materials, preservation_process`
 
+
 Reviewer final status: ____________________
-Reviewer supported elements: ____________________
+Reviewer case-supported elements: ____________________
 Reviewer ID: ____________________
 Reviewed at: ____________________
 
@@ -182,8 +188,9 @@ The reviewed documents appear to preserve logs, records, forensic evidence, and 
 Proposed final status: `partial`
 Proposed supported elements: `incident_materials`
 
+
 Reviewer final status: ____________________
-Reviewer supported elements: ____________________
+Reviewer case-supported elements: ____________________
 Reviewer ID: ____________________
 Reviewed at: ____________________
 
@@ -214,8 +221,9 @@ The reviewed documents appear to preserve logs, records, forensic evidence, and 
 Proposed final status: `missing`
 Proposed supported elements: `none`
 
+
 Reviewer final status: ____________________
-Reviewer supported elements: ____________________
+Reviewer case-supported elements: ____________________
 Reviewer ID: ____________________
 Reviewed at: ____________________
 
@@ -244,8 +252,9 @@ The reviewed documents appear to define how the firm recovers from unauthorized 
 Proposed final status: `covered`
 Proposed supported elements: `recovery_steps, remediation_tracking, validation_testing`
 
+
 Reviewer final status: ____________________
-Reviewer supported elements: ____________________
+Reviewer case-supported elements: ____________________
 Reviewer ID: ____________________
 Reviewed at: ____________________
 
@@ -280,8 +289,9 @@ The reviewed documents appear to define how the firm recovers from unauthorized 
 Proposed final status: `missing`
 Proposed supported elements: `none`
 
+
 Reviewer final status: ____________________
-Reviewer supported elements: ____________________
+Reviewer case-supported elements: ____________________
 Reviewer ID: ____________________
 Reviewed at: ____________________
 
@@ -310,8 +320,9 @@ The reviewed documents appear to define how the firm recovers from unauthorized 
 Proposed final status: `missing`
 Proposed supported elements: `none`
 
+
 Reviewer final status: ____________________
-Reviewer supported elements: ____________________
+Reviewer case-supported elements: ____________________
 Reviewer ID: ____________________
 Reviewed at: ____________________
 
@@ -340,8 +351,9 @@ The reviewed documents appear to define how the firm recovers from unauthorized 
 Proposed final status: `partial`
 Proposed supported elements: `recovery_steps`
 
+
 Reviewer final status: ____________________
-Reviewer supported elements: ____________________
+Reviewer case-supported elements: ____________________
 Reviewer ID: ____________________
 Reviewed at: ____________________
 
@@ -354,6 +366,175 @@ After containment, the firm returns systems to service and monitors for recurrin
 Proposed: relationship `partially_supports`; elements `recovery_steps`; direct-support `false`; hard-negative `false`.
 
 Provenance: `manual_adjudication`, eval/corpora/regspan-v2-realistic-corpus/documents/stonehaven_privacy_cybersecurity_practices.pdf, PDF page 5, section 14.
+
+Reviewer relationship: ____________________
+Reviewer elements: ____________________
+Reviewer direct-support designation: ____________________
+Reviewer hard-negative designation: ____________________
+Reviewer notes: ____________________
+
+## Multi-candidate review: recovery-remediation-validation-multi-candidate-review
+
+Role: `unresolved`
+Requirement: **Response recovery and remediation validation** (`response_recovery_remediation_validation`)
+The reviewed documents appear to define how the firm recovers from unauthorized access or use of customer information and validates remediation or corrective action.
+
+Unconfirmed review aid only: Candidates 1 and 3 appear capable of complementary operative detail; Candidate 2 appears to be a high-signal inventory distractor; Candidate 5 may be a controls-context distractor.
+
+
+Reviewer final status: ____________________
+Reviewer case-supported elements: ____________________
+Reviewer ID: ____________________
+Reviewed at: ____________________
+
+### Candidate 1: 5e7de7c7-f2b1-4550-a35f-aabdf8289972
+
+```text
+14. Recovery, Remediation, and Validation
+
+Recovery begins after the response lead confirms that immediate containment is stable. System owners restore services
+from approved configurations and backups, reset or reissue credentials, apply patches or configuration changes, and
+verify that unauthorized access paths have been removed.
+Before returning a material customer information system to normal operation, the owner validates security logging,
+access permissions, data integrity, critical transactions, and required business functions. Remediation items are
+assigned owners and due dates and remain open until evidence of completion is reviewed.
+
+• document restored systems and data sources;
+• perform targeted monitoring for recurrence;
+• confirm customer-service and notice obligations remain on track;
+• complete a lessons-learned review and update procedures, safeguards, or service-provider requirements;
+• obtain closure approval from the incident lead and Compliance.
+```
+
+Provenance: `implementation_inference`, eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json, candidates[0].
+Stored row: workspace `af584c33-42fe-4ce4-b641-c3b381c98214`; document `0cca8649-fd13-42f1-b259-28e54d12fe37`; chunk `5e7de7c7-f2b1-4550-a35f-aabdf8289972`; index `13`; original position `1`.
+Citation: northline_regulation_sp_policy.pdf, pages 6-6; section `14. Recovery, Remediation, and Validation`; parent `Document`; path `14. Recovery, Remediation, and Validation`.
+Hashes: stored source `22613ed6414b147e970c986979c32578ff1deffd8146f7e5f5949e144d1942fc`; recomputed `22613ed6414b147e970c986979c32578ff1deffd8146f7e5f5949e144d1942fc`; stored embedding input `70eebb19c4f136173d33ed1ceb6d3c3bce2a3fd230556a95c0ac4ca646d54302`.
+Ranks: semantic `unavailable`; keyword `unavailable`; merged `1`. Retrieval selection: `{"similarity":1,"evidence_reason":"meaningful_policy_context","rerank_score":158,"rerank_reason":"semantic 100.0; action signals: recover, remediation, confirm; topic signals: recovery, remediation, validation; section/path signals: recover, remediation; role organization_evidence; source client_policy; classifier meaningful policy context"}`.
+Normalization: Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace.
+
+
+Reviewer relationship: ____________________
+Reviewer elements: ____________________
+Reviewer direct-support designation: ____________________
+Reviewer hard-negative designation: ____________________
+Reviewer notes: ____________________
+
+### Candidate 2: 8c104761-0821-4330-9cfc-5b843b4d5175
+
+```text
+17. Appendix A - Incident File Minimum Contents
+
+• incident identifier, discovery date, and awareness date;
+• affected systems, business processes, customer information types, and individuals;
+• investigation timeline, containment actions, and recovery steps;
+• notification analysis, decision, approvals, and copies of notices;
+• service-provider notices, contracts, communications, and remediation;
+• logs, exports, screenshots, evidence sources, and preservation details;
+• corrective actions, validation results, post-incident findings, and closure approval.
+```
+
+Provenance: `implementation_inference`, eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json, candidates[1].
+Stored row: workspace `af584c33-42fe-4ce4-b641-c3b381c98214`; document `0cca8649-fd13-42f1-b259-28e54d12fe37`; chunk `8c104761-0821-4330-9cfc-5b843b4d5175`; index `16`; original position `2`.
+Citation: northline_regulation_sp_policy.pdf, pages 7-7; section `17. Appendix A - Incident File Minimum Contents`; parent `Document`; path `17. Appendix A - Incident File Minimum Contents`.
+Hashes: stored source `7dce6f4d89abb84465546fae07568a2fc3d218b6390d15f6aa9606237cd78322`; recomputed `7dce6f4d89abb84465546fae07568a2fc3d218b6390d15f6aa9606237cd78322`; stored embedding input `6a44d45ae586bf804bbd0f1e3ef7098790d3219e198a5ce2daf345f834e3420f`.
+Ranks: semantic `unavailable`; keyword `unavailable`; merged `2`. Retrieval selection: `{"similarity":0.795002243099655,"evidence_reason":"meaningful_policy_context","rerank_score":139.5,"rerank_reason":"semantic 79.5; direct signals: corrective action, corrective actions; action signals: recover, remediation, corrective action; topic signals: recovery, remediation, validation; section/path signals: incident; role organization_evidence; source client_policy; classifier meaningful policy context"}`.
+Normalization: Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace.
+
+
+Reviewer relationship: ____________________
+Reviewer elements: ____________________
+Reviewer direct-support designation: ____________________
+Reviewer hard-negative designation: ____________________
+Reviewer notes: ____________________
+
+### Candidate 3: f67e4e3d-d73a-4cc8-a331-04bb9f2c1b6e
+
+```text
+4. Cyber Incident Response Governance
+
+Northline Brokerage Services, Inc. maintains this written incident response program as part of its customer information
+safeguards framework. The program is reasonably designed to detect, respond to, and recover from unauthorized
+access to or use of customer information. It applies to customer information in paper, electronic, and other forms,
+including information maintained by service providers on the firm's behalf.
+The program begins when monitoring, employee reporting, a service-provider notice, or another reliable source indicates
+that unauthorized access or use has occurred or is reasonably likely to have occurred. The Incident Response Lead
+opens a case, assigns severity, preserves relevant records, and coordinates assessment, containment, customer-notice
+analysis, recovery, and closure.
+
+• Detect: monitor security alerts, access anomalies, customer complaints, lost devices, vendor notices, and misuse
+reports.
+• Respond: investigate, contain, control, communicate, and document decisions.
+• Recover: restore approved services, remediate root causes, validate controls and access, and complete a
+post-incident review.
+```
+
+Provenance: `implementation_inference`, eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json, candidates[2].
+Stored row: workspace `af584c33-42fe-4ce4-b641-c3b381c98214`; document `0cca8649-fd13-42f1-b259-28e54d12fe37`; chunk `f67e4e3d-d73a-4cc8-a331-04bb9f2c1b6e`; index `3`; original position `3`.
+Citation: northline_regulation_sp_policy.pdf, pages 3-3; section `4. Cyber Incident Response Governance`; parent `Document`; path `4. Cyber Incident Response Governance`.
+Hashes: stored source `ad8d9652a9012326951de4e989cfc0b4c04765b63ca80b5fc50268247ec3156b`; recomputed `ad8d9652a9012326951de4e989cfc0b4c04765b63ca80b5fc50268247ec3156b`; stored embedding input `4942e75572bf3038dac556b87c6924105cba6694a4c45902dc90b43e1653024b`.
+Ranks: semantic `unavailable`; keyword `unavailable`; merged `3`. Retrieval selection: `{"similarity":0.80532111990042,"evidence_reason":"meaningful_policy_context","rerank_score":126.53,"rerank_reason":"semantic 80.5; direct signals: recover from unauthorized access; action signals: recover, remediate, validate; topic signals: recovery, closure, incident; section/path signals: incident, response; preferred sections: written incident response program; less relevant sections: vendor, service provider; role organization_evidence; source client_policy; classifier meaningful policy context"}`.
+Normalization: Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace.
+
+
+Reviewer relationship: ____________________
+Reviewer elements: ____________________
+Reviewer direct-support designation: ____________________
+Reviewer hard-negative designation: ____________________
+Reviewer notes: ____________________
+
+### Candidate 4: 88ca5971-6e57-4aa1-998b-658eb2482105
+
+```text
+12. Logging and Investigation Records
+
+The incident manager maintains a contemporaneous incident file containing alerts, system and identity logs, relevant
+exports, screenshots, investigation notes, affected-system and data inventories, decisions, approvals, containment
+steps, customer-notice analysis, provider communications, recovery tests, and closure documentation.
+Relevant logs and volatile information are preserved promptly. Exports are stored in access-controlled case folders with
+source, collection time, custodian, and integrity information when material to the investigation. Routine log retention is not
+shortened while an incident, investigation, examination, or legal hold is open.
+```
+
+Provenance: `implementation_inference`, eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json, candidates[3].
+Stored row: workspace `af584c33-42fe-4ce4-b641-c3b381c98214`; document `0cca8649-fd13-42f1-b259-28e54d12fe37`; chunk `88ca5971-6e57-4aa1-998b-658eb2482105`; index `11`; original position `4`.
+Citation: northline_regulation_sp_policy.pdf, pages 6-6; section `12. Logging and Investigation Records`; parent `Document`; path `12. Logging and Investigation Records`.
+Hashes: stored source `bcee3ecee0a117407c150a303e6a1e85fbdb6321af473644f97bd37337af037a`; recomputed `bcee3ecee0a117407c150a303e6a1e85fbdb6321af473644f97bd37337af037a`; stored embedding input `1783c179d965521c4407a379b2c6c51eb6011a2f8e597a7b7733346b785925f5`.
+Ranks: semantic `unavailable`; keyword `unavailable`; merged `4`. Retrieval selection: `{"similarity":0.801800376110184,"evidence_reason":"meaningful_policy_context","rerank_score":111.18,"rerank_reason":"semantic 80.2; action signals: recover, test; topic signals: recovery, closure, incident; role organization_evidence; source client_policy; classifier meaningful policy context"}`.
+Normalization: Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace.
+
+
+Reviewer relationship: ____________________
+Reviewer elements: ____________________
+Reviewer direct-support designation: ____________________
+Reviewer hard-negative designation: ____________________
+Reviewer notes: ____________________
+
+### Candidate 5: db0f84c9-17e5-4a41-a6e9-a79f444859fd
+
+```text
+9. Customer Information Security Controls
+
+The safeguards program applies to customer information in the firm's possession and customer information handled or
+maintained on its behalf. It also applies to nonpublic personal information received from another financial institution about
+that institution's customers. Controls are selected to ensure confidentiality, protect against anticipated threats or hazards,
+and prevent unauthorized access or use that could result in substantial harm or inconvenience.
+
+• Administrative safeguards: risk assessment, assigned ownership, workforce training, access approval, change
+management, service-provider oversight, and periodic control review.
+• Technical safeguards: multi-factor authentication, least privilege, encryption in transit and at rest where appropriate,
+endpoint protection, vulnerability management, secure configuration, logging, monitoring, and tested backups.
+• Physical safeguards: controlled office and records-room access, visitor management, locked storage, secure
+transport, clean-desk expectations, and destruction controls for paper and media.
+```
+
+Provenance: `implementation_inference`, eval-fixtures/classifier-capability/retrieval-capture.response-recovery-remediation-validation.json, candidates[4].
+Stored row: workspace `af584c33-42fe-4ce4-b641-c3b381c98214`; document `0cca8649-fd13-42f1-b259-28e54d12fe37`; chunk `db0f84c9-17e5-4a41-a6e9-a79f444859fd`; index `8`; original position `5`.
+Citation: northline_regulation_sp_policy.pdf, pages 5-5; section `9. Customer Information Security Controls`; parent `Document`; path `9. Customer Information Security Controls`.
+Hashes: stored source `05ccf1538fcfc6bce219215dddce251b2063b8d405e1291573347b1f1b5fd917`; recomputed `05ccf1538fcfc6bce219215dddce251b2063b8d405e1291573347b1f1b5fd917`; stored embedding input `21ffefee1018e949a82c46c46afa53d816ecd4c55ebe5e7e7d9f34b0434b881f`.
+Ranks: semantic `unavailable`; keyword `unavailable`; merged `5`. Retrieval selection: `{"similarity":0.756843237649262,"evidence_reason":"substantive_requirement_or_procedure","rerank_score":109.68,"rerank_reason":"semantic 75.7; action signals: test; topic signals: vulnerability, appear, unauthorized; section/path signals: customer; role organization_evidence; source client_policy; classifier substantive requirement or procedure"}`.
+Normalization: Convert CRLF and lone CR to LF, then apply Unicode NFC; do not trim or collapse whitespace.
+
 
 Reviewer relationship: ____________________
 Reviewer elements: ____________________
