@@ -339,6 +339,7 @@ export function FindingsClient() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [reportMessage, setReportMessage] = useState("");
   const submissionInFlight = useRef(false);
   const hadActiveRun = useRef(false);
@@ -479,6 +480,36 @@ export function FindingsClient() {
     }
   }
 
+  async function exportPdfReport() {
+    if (!latestRun || isExportingPdf) return;
+    setIsExportingPdf(true);
+    setReportMessage("");
+    setError("");
+    try {
+      const token = await getAccessToken();
+      const response = await fetch(`/api/findings/export/pdf?runId=${encodeURIComponent(latestRun.id)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) {
+        const body = await response.json();
+        throw new Error(body.error || "Unable to export PDF.");
+      }
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "regspan-reg-s-p-assessment.pdf";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setReportMessage("PDF assessment exported.");
+    } catch (exportError) {
+      setError(exportError instanceof Error ? exportError.message : "Unable to export PDF.");
+    } finally {
+      setIsExportingPdf(false);
+    }
+  }
+
   async function copyReport() {
     setReportMessage("");
     setError("");
@@ -587,6 +618,9 @@ export function FindingsClient() {
             </p>
           </div>
           <PageToolbar>
+            <Button type="button" variant="appPrimary" onClick={exportPdfReport} disabled={isExportingPdf || !latestRun || latestRun.status !== "completed"}>
+              {isExportingPdf ? "Preparing PDF…" : "Export PDF"}
+            </Button>
             <Button type="button" variant="appSecondary" onClick={copyReport}>
               Copy report
             </Button>

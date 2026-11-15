@@ -9,7 +9,7 @@ export default function ReportsPage() {
       <PageHeader
         eyebrow="Reports"
         title="Reports are exported from Analysis"
-        description="Use Analysis to review findings, client source excerpts, and Reg S-P basis links before copying or exporting the Markdown report."
+        description="Use Analysis to review findings, client source excerpts, and Reg S-P basis links before exporting a PDF assessment or Markdown workpaper."
         actions={
           <Button href="/findings" variant="appPrimary">
             Open Analysis
@@ -26,7 +26,7 @@ export default function ReportsPage() {
               </p>
               <h2 className="mt-1 text-base font-semibold text-app-text">Analysis report export</h2>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-app-muted">
-                Copy report and Export Markdown remain available inside Analysis so reviewers can confirm
+                Export PDF, Copy report, and Export Markdown are available inside Analysis so reviewers can confirm
                 status, risk, and source separation before distributing the workpaper.
               </p>
             </div>
@@ -45,7 +45,7 @@ export default function ReportsPage() {
             },
             {
               label: "Export workpaper",
-              body: "Use Copy report or Export Markdown from the Analysis toolbar.",
+              body: "Use Export PDF for the assessment report, or Copy report and Export Markdown for text workpapers.",
             },
           ].map((item) => (
             <div key={item.label} className="px-5 py-4">

@@ -3486,7 +3486,7 @@ test("findings generation schema and routes preserve workspace/security boundari
   const [migration, generator, route, generateRoute, securityHelper] = await Promise.all([
     readFile("supabase/migrations/016_create_findings_generation_tables.sql", "utf8"),
     readFile("lib/findingsGeneration.ts", "utf8"),
-    readFile("app/api/findings/route.ts", "utf8"),
+    Promise.all([readFile("app/api/findings/route.ts", "utf8"), readFile("lib/findingsData.ts", "utf8")]).then(parts => parts.join("\n")),
     readFile("app/api/findings/generate/route.ts", "utf8"),
     readFile("lib/documentSecurity.ts", "utf8"),
   ]);
@@ -3593,7 +3593,7 @@ test("findings UI shows generation and empty states", async () => {
 
 test("findings UI displays stored client evidence rows and exact quote fallbacks", async () => {
   const client = await readFile("components/FindingsClient.tsx", "utf8");
-  const route = await readFile("app/api/findings/route.ts", "utf8");
+  const route = await Promise.all([readFile("app/api/findings/route.ts", "utf8"), readFile("lib/findingsData.ts", "utf8")]).then(parts => parts.join("\n"));
   const evidenceLookup = route.slice(route.indexOf('.from("finding_evidence")'), route.indexOf("if (evidenceError)"));
 
   assert.match(route, /\.from\("finding_evidence"\)/);
@@ -3839,7 +3839,7 @@ test("analysis lifecycle uses an active-only run lock, document snapshots, and a
 
 test("findings API and client reconcile active, previous, and invalid analysis states", async () => {
   const [route, generateRoute, client] = await Promise.all([
-    readFile("app/api/findings/route.ts", "utf8"),
+    Promise.all([readFile("app/api/findings/route.ts", "utf8"), readFile("lib/findingsData.ts", "utf8")]).then(parts => parts.join("\n")),
     readFile("app/api/findings/generate/route.ts", "utf8"),
     readFile("components/FindingsClient.tsx", "utf8"),
   ]);

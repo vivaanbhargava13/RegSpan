@@ -571,7 +571,7 @@ test("service-role application reads retain explicit workspace scope", async () 
   const [documentSecurity, worker, findings, generation, mockProcess, ingestion] = await Promise.all([
     readFile("lib/documentSecurity.ts", "utf8"),
     readFile("app/api/internal/ingest/process-job/route.ts", "utf8"),
-    readFile("app/api/findings/route.ts", "utf8"),
+    Promise.all([readFile("app/api/findings/route.ts", "utf8"), readFile("lib/findingsData.ts", "utf8")]).then(parts => parts.join("\n")),
     readFile("lib/findingsGeneration.ts", "utf8"),
     readFile("app/api/documents/[id]/mock-process/route.ts", "utf8"),
     readFile("lib/ingestion.ts", "utf8"),
