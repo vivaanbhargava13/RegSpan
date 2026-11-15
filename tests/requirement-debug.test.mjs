@@ -1758,6 +1758,213 @@ test("source quote extraction recovers real evidence across core requirements", 
   }
 });
 
+test("quote alignment recovery uses the smallest contiguous operative span and retains only proven elements", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { postProcessOpenAiClassification, classifierInputForChunk }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementEvidenceClassifier.ts"),
+  ]);
+  const requirement = REG_SP_REQUIREMENTS.find(
+    (item) => item.id === "customer_notification_unauthorized_access",
+  );
+  const trigger = "Following access or use lacking permission to account-\nholder records, the notice analysis treats customer notice as required.";
+  const timing = "The notice must be issued no later than 30 days after awareness.";
+  const unrelated = "The communications team maintains a public FAQ.";
+
+  const result = postProcessOpenAiClassification({
+    relationship: "supports",
+    confidence: "high",
+    requirement_supported: true,
+    control_absent_or_out_of_scope: false,
+    covered_elements: requirement.requiredElementsForCovered,
+    missing_elements: [],
+    vague_elements: [],
+    reason: "The model found a complete notice workflow.",
+    supporting_quote: "The notice workflow is complete.",
+  }, classifierInputForChunk(requirement, organizationChunk(`${trigger} ${timing} ${unrelated}`)));
+
+  assert.equal(result.relationship, "partially_supports");
+  assert.deepEqual(result.covered_elements, ["unauthorized_access_or_use", "notice_timing"]);
+  assert.deepEqual(result.alignment_diagnostics?.rejected_element_ids, ["notice_trigger_standard"]);
+  assert.equal(result.alignment_diagnostics?.exact_match_result, "none");
+  assert.match(result.alignment_diagnostics?.recovered_span ?? "", /account-\nholder records/);
+  assert.doesNotMatch(result.supporting_quote ?? "", /public FAQ/);
+});
+
+test("quote alignment recovery admits independently operative non-V3 procedures across requirements", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { postProcessOpenAiClassification, classifierInputForChunk }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementEvidenceClassifier.ts"),
+  ]);
+  const fixtures = [
+    {
+      id: "unauthorized_access_detection_escalation",
+      text: "The security response team assesses the nature and scope of each security event and identifies affected information types. A containment control keeps affected systems isolated until access is controlled.",
+      covered: ["assesses_scope", "customer_information_systems", "containment_control"],
+    },
+    {
+      id: "vendor_incident_handling",
+      text: "The organization obligates each service organization handling customer records to protect them from unauthorized access. The agreement requires the provider to alert the security officer within 72 hours of a breach.",
+      covered: ["service_provider_scope", "provider_safeguards", "notice_to_firm"],
+    },
+    {
+      id: "written_compliance_records",
+      text: "The compliance office maintains an official control record collection for safeguard revisions, incident decisions, notification determinations, and copies of customer notices. These records are retained for five years and are kept in accessible storage.",
+      covered: ["compliance_record_scope", "notice_determination_records", "retention_accessibility"],
+    },
+    {
+      id: "regulator_law_enforcement_notification",
+      text: "A customer notification may be delayed only after the securities regulator receives a written direction from law enforcement for the incident.",
+      covered: ["external_notification_decisioning"],
+    },
+    {
+      id: "evidence_log_preservation",
+      text: "The incident lead directs system owners to suspend routine log rotation and preserve relevant communications. The restricted case folder keeps the collected materials for investigation.",
+      covered: ["incident_materials", "preservation_process"],
+    },
+    {
+      id: "written_incident_response_program",
+      text: "The organization documents a formal security-event playbook for account-holder information. The playbook assigns detection, response, and recovery responsibilities.",
+      covered: ["written_program", "customer_information_scope", "response_recovery_responsibilities"],
+    },
+  ];
+
+  for (const fixture of fixtures) {
+    const requirement = REG_SP_REQUIREMENTS.find((item) => item.id === fixture.id);
+    const result = postProcessOpenAiClassification({
+      relationship: "partially_supports",
+      confidence: "high",
+      requirement_supported: false,
+      control_absent_or_out_of_scope: false,
+      covered_elements: [...fixture.covered, "not_a_real_element"],
+      missing_elements: requirement.requiredElementsForCovered.filter((id) => !fixture.covered.includes(id)),
+      vague_elements: [],
+      reason: "The provider identified an operative procedure but formatted its quote differently.",
+      supporting_quote: "provider-formatted paraphrase",
+    }, classifierInputForChunk(requirement, organizationChunk(fixture.text)));
+
+    assert.equal(fixture.text.includes(result.supporting_quote ?? ""), true, fixture.id);
+    assert.deepEqual(result.covered_elements, fixture.covered, fixture.id);
+    assert.equal(result.alignment_diagnostics?.exact_match_result, "none", fixture.id);
+    assert.equal(result.alignment_diagnostics?.recovered_span, result.supporting_quote, fixture.id);
+  }
+});
+
+test("quote alignment recovery rejects records, inventories, optional controls, adjacent workflows, and noncontiguous proof", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { postProcessOpenAiClassification, classifierInputForChunk }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementEvidenceClassifier.ts"),
+  ]);
+  const cases = [
+    {
+      id: "evidence_log_preservation",
+      text: "The incident register lists a restoration field and a validation field.",
+      elements: ["incident_materials", "preservation_process"],
+    },
+    {
+      id: "written_compliance_records",
+      text: "The data inventory identifies customer records and assigns a records owner.",
+      elements: ["compliance_record_scope"],
+    },
+    {
+      id: "customer_information_safeguards",
+      text: "Staff may note password resets in the support ticket.",
+      elements: ["technical_safeguards"],
+    },
+    {
+      id: "remediation_recovery_validation",
+      text: "The disposal release check confirms that retired media may leave storage.",
+      elements: ["validation_testing"],
+    },
+    {
+      id: "customer_notification_content",
+      text: "A tabletop scenario describes affected individuals. Unrelated training later lists a service-desk extension.",
+      elements: ["incident_description", "contact_information"],
+    },
+  ];
+
+  for (const testCase of cases) {
+    const requirement = REG_SP_REQUIREMENTS.find((item) => item.id === testCase.id);
+    const result = postProcessOpenAiClassification({
+      relationship: "partially_supports",
+      confidence: "medium",
+      requirement_supported: false,
+      control_absent_or_out_of_scope: false,
+      covered_elements: testCase.elements,
+      missing_elements: requirement.requiredElementsForCovered.filter((id) => !testCase.elements.includes(id)),
+      vague_elements: [],
+      reason: "The provider inferred support from topical language.",
+      supporting_quote: "unmatched quote",
+    }, classifierInputForChunk(requirement, organizationChunk(testCase.text)));
+
+    assert.equal(result.relationship, "background_context", testCase.id);
+    assert.equal(result.supporting_quote, null, testCase.id);
+    assert.deepEqual(result.covered_elements, [], testCase.id);
+  }
+});
+
+test("audited source fragments recover only their directly supported elements after a provider quote mismatch", async () => {
+  const [{ REG_SP_REQUIREMENTS }, { postProcessOpenAiClassification, classifierInputForChunk }] = await Promise.all([
+    loadTsModule("lib/regSpRequirements.ts"),
+    loadTsModule("lib/requirementEvidenceClassifier.ts"),
+  ]);
+  const fixtures = [
+    {
+      id: "customer_notification_unauthorized_access",
+      text: "Once the trust becomes aware of access or use lacking permission for shareholder-related information involving sensitive shareholder-related information, the communications analysis proceeds on the assumption that customer letter is required. The information officer records the facts, affected population, information involved, harm analysis, and whether the information was reasonably likely accessed or used. Delivery must occur as soon as practicable and no later than 30 days after the trust becomes aware of the access or use lacking permission.",
+      covered: ["unauthorized_access_or_use", "notice_trigger_standard", "notice_timing"],
+    },
+    {
+      id: "unauthorized_access_detection_escalation",
+      text: "For the protected-information workflow, scope is revisited when logs, interviews, or service-company facts change. A containment measure remains in place until the avenue for further access or use lacking permission for shareholder-related information has been controlled. Name the affected information types held in the portal.",
+      covered: ["assesses_scope", "customer_information_systems", "containment_control"],
+    },
+    {
+      id: "regulator_law_enforcement_notification",
+      text: "The trust delays customer letter only after the Securities and Exchange Commission receives a written request from the United States Attorney General stating that delivery would create a substantial risk to national security or public safety.",
+      covered: ["external_notification_decisioning"],
+    },
+    {
+      id: "vendor_incident_handling",
+      text: "Service organizations with shareholder-related information remain under written review throughout the relationship. The contract obligates measures designed to protect against access or use lacking permission for shareholder-related information. It also obligates the specialist service company to alert the chief compliance officer within 72 hours after becoming aware that a security breach caused unauthorized access.",
+      covered: ["service_provider_scope", "provider_safeguards", "notice_to_firm"],
+    },
+    {
+      id: "written_compliance_records",
+      text: "The operations coordinator maintains a governed control register set for the policies and procedures in this handbook and the actions taken under them. The control register set is retained for six years, with the first two years readily accessible. It includes safeguards versions; response actions; investigation results, customer-letter determinations, and copies of customer letters; materials supporting a government-requested delay; service-company oversight; and retirement procedures.",
+      covered: ["compliance_record_scope", "notice_determination_records", "retention_accessibility"],
+    },
+    {
+      id: "evidence_log_preservation",
+      text: "The operational alert lead identifies case sources and instructs system owners to stop routine deletion or rotation where relevant. The hold can cover authentication and application logs, audit trails, endpoint images, email, chat, call recordings, access reports, and supplier correspondence. Access to the case sources workspace is limited and logged.",
+      covered: ["incident_materials", "preservation_process"],
+    },
+    {
+      id: "written_incident_response_program",
+      text: "The event framework is handbooked around three outcomes: early detection, coordinated response, and dependable controlled resumption when shareholder-related information may have been accessed or used without authority.",
+      covered: ["written_program", "customer_information_scope", "response_recovery_responsibilities"],
+    },
+  ];
+
+  for (const fixture of fixtures) {
+    const requirement = REG_SP_REQUIREMENTS.find((item) => item.id === fixture.id);
+    const result = postProcessOpenAiClassification({
+      relationship: "partially_supports",
+      confidence: "high",
+      requirement_supported: false,
+      control_absent_or_out_of_scope: false,
+      covered_elements: fixture.covered,
+      missing_elements: requirement.requiredElementsForCovered.filter((id) => !fixture.covered.includes(id)),
+      vague_elements: [],
+      reason: "The provider described operative support but did not return an exact source excerpt.",
+      supporting_quote: "provider reformatted the source passage",
+    }, classifierInputForChunk(requirement, organizationChunk(fixture.text)));
+
+    assert.equal(fixture.text.includes(result.supporting_quote ?? ""), true, fixture.id);
+    assert.deepEqual(result.covered_elements, fixture.covered, fixture.id);
+    assert.equal(result.alignment_diagnostics?.recovered_span, result.supporting_quote, fixture.id);
+  }
+});
+
 test("synopsis and embedding input cannot satisfy findings without raw chunk evidence", async () => {
   const [{ REG_SP_REQUIREMENTS }, { classifyRequirementEvidenceHeuristically, classifierInputForChunk }] = await Promise.all([
     loadTsModule("lib/regSpRequirements.ts"),

@@ -116,6 +116,29 @@ type StoredFindingResult = {
   persistedEvidenceRows: number;
 };
 
+type ClassifierCandidateAlignmentAuditEventRow = {
+  workspace_id: string;
+  action: "classifier_quote_alignment";
+  target_type: "document_chunk";
+  target_id: string;
+  result: string;
+  correlation_id: string;
+  metadata: {
+    analysis_run_id: string;
+    requirement_id: string;
+    classifier_provider: string;
+    raw_relationship: string;
+    raw_element_ids: string[];
+    raw_proposed_quote: string | null;
+    exact_match_result: string;
+    recovered_span: string | null;
+    retained_element_ids: string[];
+    rejected_element_ids: string[];
+    final_relationship: string;
+    downgrade_reason: string | null;
+  };
+};
+
 function evaluationCaseIdForProgress(
   evaluationCaseIdByDocumentId: ReadonlyMap<string, string> | undefined,
 ) {
@@ -131,6 +154,57 @@ function allGradedChunks(match: Awaited<ReturnType<typeof buildRequirementMatchR
     ...match.background,
     ...match.irrelevant,
   ];
+}
+
+async function storeClassifierCandidateAlignmentDiagnostics({
+  supabase,
+  workspaceId,
+  analysisRunId,
+  requirementId,
+  chunks,
+}: {
+  supabase: SupabaseClient;
+  workspaceId: string;
+  analysisRunId: string;
+  requirementId: string;
+  chunks: GradedEvidenceChunk[];
+}) {
+  const rows: ClassifierCandidateAlignmentAuditEventRow[] = chunks.map((chunk) => {
+    const diagnostics = chunk.alignment_diagnostics;
+    return {
+      workspace_id: workspaceId,
+      action: "classifier_quote_alignment",
+      target_type: "document_chunk",
+      target_id: chunk.chunk_id,
+      result: diagnostics?.final_relationship ?? chunk.evidence_relationship,
+      correlation_id: analysisRunId,
+      metadata: {
+        analysis_run_id: analysisRunId,
+        requirement_id: requirementId,
+        classifier_provider: chunk.classifier_provider,
+        raw_relationship: diagnostics?.raw_relationship ?? chunk.evidence_relationship,
+        raw_element_ids: diagnostics?.raw_element_ids ?? chunk.covered_elements,
+        raw_proposed_quote: diagnostics?.raw_proposed_quote ?? chunk.supporting_quote,
+        exact_match_result: diagnostics?.exact_match_result ?? "not_applicable",
+        recovered_span: diagnostics?.recovered_span ?? null,
+        retained_element_ids: diagnostics?.retained_element_ids ?? chunk.covered_elements,
+        rejected_element_ids: diagnostics?.rejected_element_ids ?? [],
+        final_relationship: diagnostics?.final_relationship ?? chunk.evidence_relationship,
+        downgrade_reason: diagnostics?.downgrade_reason ?? null,
+      },
+    };
+  });
+  if (rows.length === 0) return;
+
+  const { error } = await supabase
+    .from("security_audit_events")
+    .insert(rows);
+  if (error) {
+    throw new FindingsGenerationError(
+      "classifier_alignment_diagnostics_persist_failed",
+      "Unable to persist classifier quote-alignment diagnostics for analysis.",
+    );
+  }
 }
 
 async function hydrateSelectedClassifierCandidateSources({
@@ -594,6 +668,13 @@ export async function generateFindingsForWorkspace({
               requirementId: requirement.id,
               phase: "classification_complete",
               timestamp: new Date().toISOString(),
+            });
+            await storeClassifierCandidateAlignmentDiagnostics({
+              supabase,
+              workspaceId,
+              analysisRunId: analysisRun.id,
+              requirementId: requirement.id,
+              chunks: allGradedChunks(match) as GradedEvidenceChunk[],
             });
             const finding = aggregateFindingForRequirement(
               requirement,

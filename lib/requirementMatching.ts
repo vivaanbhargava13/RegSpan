@@ -9,6 +9,7 @@ import {
   type RequirementEvidenceClassifierTelemetry,
   type RequirementEvidenceClassifierProvider,
   type RequirementEvidenceConfidence,
+  type RequirementEvidenceAlignmentDiagnostics,
   type RequirementEvidenceRelationship,
 } from "./requirementEvidenceClassifier";
 
@@ -29,6 +30,7 @@ export type GradedEvidenceChunk = RetrievedChunk & {
   vague_elements: string[];
   supporting_quote: string | null;
   classifier_provider: RequirementEvidenceClassifierProvider;
+  alignment_diagnostics?: RequirementEvidenceAlignmentDiagnostics;
 };
 
 export type RequirementMatchResult = {
@@ -109,6 +111,7 @@ function chunkWithClassification(
     vague_elements: classification.vague_elements,
     supporting_quote: classification.supporting_quote,
     classifier_provider: classification.classifier_provider,
+    alignment_diagnostics: classification.alignment_diagnostics,
   };
 }
 

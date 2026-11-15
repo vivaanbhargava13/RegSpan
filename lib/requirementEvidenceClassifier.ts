@@ -57,6 +57,23 @@ export type RequirementEvidenceClassifierProviderFailureEvent = {
   retryAfter: string | null;
 };
 
+/**
+ * Audit trail for deterministic quote grounding. These fields deliberately
+ * retain source excerpts only after they have been selected from the cited
+ * candidate chunk; they never retain a prompt or provider response body.
+ */
+export type RequirementEvidenceAlignmentDiagnostics = {
+  raw_relationship: RequirementEvidenceRelationship;
+  raw_element_ids: string[];
+  raw_proposed_quote: string | null;
+  exact_match_result: "exact" | "normalized" | "token_span" | "none" | "not_applicable";
+  recovered_span: string | null;
+  retained_element_ids: string[];
+  rejected_element_ids: string[];
+  final_relationship: RequirementEvidenceRelationship;
+  downgrade_reason: string | null;
+};
+
 /** A sanitized retry observation. It intentionally contains no request or source content. */
 export type RequirementEvidenceClassifierProviderRetryEvent = RequirementEvidenceClassifierProviderFailureEvent & {
   retryDelayMs: number;
@@ -124,6 +141,7 @@ export type RequirementEvidenceClassification = {
   reason: string;
   supporting_quote: string | null;
   classifier_provider: RequirementEvidenceClassifierProvider;
+  alignment_diagnostics?: RequirementEvidenceAlignmentDiagnostics;
 };
 
 export type RequirementEvidenceClassifier = {
@@ -227,6 +245,9 @@ const INFERRED_ABSENCE_REASON_PATTERNS = [
 function normalize(value: string | null | undefined) {
   return (value ?? "")
     .toLowerCase()
+    // PDF extraction can soft-wrap a compound word at a line ending. Normalize
+    // that artifact for semantic matching while retaining the raw source quote.
+    .replace(/([a-z0-9])-\s*\n\s*([a-z0-9])/gi, "$1-$2")
     .replace(/[^a-z0-9\s-]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -734,7 +755,11 @@ function normalizeWhitespace(value: string | null | undefined) {
 }
 
 function evidenceSentences(rawText: string) {
-  return (rawText.match(/[^.!?]+[.!?]+|[^.!?]+$/g) ?? [rawText])
+  // PDF extraction commonly turns policy bullets into newline-delimited prose.
+  // Keep those units distinct so recovery can select an exact, contiguous
+  // sentence span without joining unrelated list entries.
+  return rawText
+    .split(/(?<=[.!?])\s+|\n(?=\s*(?:[\u2022*-]|\d+[.)])\s+)/)
     .map((sentence) => sentence.trim())
     .filter(Boolean);
 }
@@ -1418,9 +1443,13 @@ function extractSourceQuote(
   const candidates = new Set<string>();
   for (let index = 0; index < sentences.length; index += 1) {
     candidates.add(sentences[index]);
-    const next = sentences[index + 1];
-    if (next) {
-      const span = rawSpanForSentences(input.chunkContent, sentences[index], next);
+    // A policy duty can name the governed object in the immediately preceding
+    // or following sentence. Restrict recovery to a short, contiguous window;
+    // this never creates a synthetic or cross-chunk quotation.
+    for (let spanLength = 2; spanLength <= 3; spanLength += 1) {
+      const last = sentences[index + spanLength - 1];
+      if (!last) continue;
+      const span = rawSpanForSentences(input.chunkContent, sentences[index], last);
       if (span) candidates.add(span);
     }
   }
@@ -1749,22 +1778,37 @@ function coerceNullableString(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-function sanitizeSupportingQuote(quote: string | null, chunkContent: string) {
+type SupportingQuoteMatch = {
+  quote: string | null;
+  result: RequirementEvidenceAlignmentDiagnostics["exact_match_result"];
+};
+
+function supportingQuoteMatch(quote: string | null, chunkContent: string): SupportingQuoteMatch {
   if (!quote) {
-    return null;
+    return { quote: null, result: "none" };
   }
   const trimmed = quote.trim();
-  if (chunkContent.includes(trimmed)) return completedSourceQuote(chunkContent, trimmed);
+  if (chunkContent.includes(trimmed)) {
+    return { quote: completedSourceQuote(chunkContent, trimmed), result: "exact" };
+  }
 
   const normalizedQuote = normalizeWhitespace(trimmed);
   const matched = sourceSentences(chunkContent).find((sentence) =>
     normalizeWhitespace(sentence) === normalizedQuote
     || normalizeWhitespace(sentence).includes(normalizedQuote)
   );
-  if (matched) return completedSourceQuote(chunkContent, matched);
+  if (matched) {
+    return { quote: completedSourceQuote(chunkContent, matched), result: "normalized" };
+  }
 
   const normalizedSpan = normalizedSourceQuoteSpan(chunkContent, trimmed);
-  return normalizedSpan ? completedSourceQuote(chunkContent, normalizedSpan) : null;
+  return normalizedSpan
+    ? { quote: completedSourceQuote(chunkContent, normalizedSpan), result: "token_span" }
+    : { quote: null, result: "none" };
+}
+
+function sanitizeSupportingQuote(quote: string | null, chunkContent: string) {
+  return supportingQuoteMatch(quote, chunkContent).quote;
 }
 
 function relationshipRequiresSourceQuote(relationship: RequirementEvidenceRelationship) {
@@ -1792,9 +1836,11 @@ function downgradeUngroundedEvidence(
       }
       const coverageDelta = right.supportedElements.length - left.supportedElements.length;
       if (coverageDelta !== 0) return coverageDelta;
-      const scoreDelta = right.score - left.score;
-      if (scoreDelta !== 0) return scoreDelta;
-      return left.quote.length - right.quote.length;
+      // Once competing spans prove the same claimed elements, retain the
+      // smallest contiguous source excerpt rather than incidental context.
+      const lengthDelta = left.quote.length - right.quote.length;
+      if (lengthDelta !== 0) return lengthDelta;
+      return right.score - left.score;
     })[0];
 
   if (supportingQuote) {
@@ -1996,6 +2042,39 @@ function parseOpenAiClassification(
   };
 }
 
+function withOpenAiAlignmentDiagnostics(
+  raw: Omit<RequirementEvidenceClassification, "classifier_provider">,
+  classification: Omit<RequirementEvidenceClassification, "classifier_provider">,
+  input: RequirementEvidenceClassifierInput,
+): Omit<RequirementEvidenceClassification, "classifier_provider"> {
+  const quoteMatch = supportingQuoteMatch(raw.supporting_quote, input.chunkContent);
+  const retainedElementIds = uniqueStrings(classification.covered_elements ?? []);
+  const rawElementIds = uniqueStrings(raw.covered_elements ?? []);
+  const rejectedElementIds = rawElementIds.filter((elementId) => !retainedElementIds.includes(elementId));
+  const rawPositive = raw.relationship === "supports" || raw.relationship === "partially_supports";
+  const downgraded = rawPositive
+    && (classification.relationship === "background_context" || classification.relationship === "irrelevant");
+
+  return {
+    ...classification,
+    alignment_diagnostics: {
+      raw_relationship: raw.relationship,
+      raw_element_ids: rawElementIds,
+      raw_proposed_quote: raw.supporting_quote,
+      exact_match_result: quoteMatch.result,
+      recovered_span: rawPositive
+        && classification.supporting_quote
+        && classification.supporting_quote !== quoteMatch.quote
+        ? classification.supporting_quote
+        : null,
+      retained_element_ids: retainedElementIds,
+      rejected_element_ids: rejectedElementIds,
+      final_relationship: classification.relationship,
+      downgrade_reason: downgraded ? classification.reason : null,
+    },
+  };
+}
+
 export function postProcessOpenAiClassification(
   parsed: Omit<RequirementEvidenceClassification, "classifier_provider">,
   input: RequirementEvidenceClassifierInput,
@@ -2030,10 +2109,10 @@ export function postProcessOpenAiClassification(
       supporting_quote: null,
     };
     const recovery = recoverOperativeElementSupport(downgradedNegative, input);
-    return preserveRecoveredElementLevelSupport(
+    return withOpenAiAlignmentDiagnostics(parsed, preserveRecoveredElementLevelSupport(
       downgradeUngroundedEvidence(recovery.classification, input),
       recovery.promoteElementLevelSupport,
-    );
+    ), input);
   }
 
   if (
@@ -2041,7 +2120,7 @@ export function postProcessOpenAiClassification(
     && parsedCoveredElements.length > 0
     && (!supportingQuote || !detectNegativeEvidence(supportingQuote, input.requirement.directSignals).isNegativeEvidence)
   ) {
-    return downgradeUngroundedEvidence({
+    return withOpenAiAlignmentDiagnostics(parsed, downgradeUngroundedEvidence({
       relationship: "partially_supports",
       confidence: parsed.confidence === "high" ? "medium" : parsed.confidence,
       requirement_supported: false,
@@ -2057,7 +2136,7 @@ export function postProcessOpenAiClassification(
       reason:
         `Downgraded from negative_evidence because the cited client text supports required elements and the supporting quote is not explicit absence language. ${parsed.reason}`,
       supporting_quote: supportingQuote,
-    }, input);
+    }, input), input);
   }
 
   const recovery = recoverOperativeElementSupport(parsed, input);
@@ -2070,7 +2149,7 @@ export function postProcessOpenAiClassification(
     ? "partially_supports"
     : recovered.relationship;
 
-  return preserveRecoveredElementLevelSupport(downgradeUngroundedEvidence({
+  return withOpenAiAlignmentDiagnostics(parsed, preserveRecoveredElementLevelSupport(downgradeUngroundedEvidence({
     ...recovered,
     relationship,
     requirement_supported: relationship === "supports" && requiredMissing.length === 0
@@ -2083,7 +2162,7 @@ export function postProcessOpenAiClassification(
     missing_elements: uniqueStrings([...(recovered.missing_elements ?? []), ...requiredMissing]),
     vague_elements: recovered.vague_elements ?? [],
     supporting_quote: recovered.supporting_quote,
-  }, input), recovery.promoteElementLevelSupport);
+  }, input), recovery.promoteElementLevelSupport), input);
 }
 
 export function buildRequirementEvidenceClassifierPrompt(input: RequirementEvidenceClassifierInput) {
