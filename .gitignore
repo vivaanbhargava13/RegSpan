@@ -15,3 +15,7 @@ pnpm-debug.log*
 eval-results/
 eval-fixtures/classifier-capability/generated/
 eval/corpora/**/generated/*.pdf
+
+# Generated files
+.Rhistory
+/output/pdf/*.pdf
